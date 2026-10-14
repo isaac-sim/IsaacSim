@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.2] - 2026-09-23
+### Fixed
+- Handle unavailable render-product and OS metadata in ROS 2 helper APIs.
+
+## [1.11.1] - 2026-09-23
+### Fixed
+- `camera_info_utils.compute_relative_pose`: return the true relative rotation for verged and tilted stereo rigs. The rotation is now read directly from the relative transform instead of being round-tripped through Euler angles, which were emitted in degrees but consumed as radians and silently corrupted stereo `CameraInfo` extrinsics.
+
 ## [1.11.0] - 2026-07-23
 ### Added
 - `Ros2ContextHandle.getDomainId`: add an API for querying the effective ROS domain ID.

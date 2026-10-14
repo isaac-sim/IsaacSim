@@ -471,7 +471,8 @@ public:
     {
         std::vector<std::string> removedPaths;
         auto& physicsScenes = m_usdNoticeListener->getPhysicsScenes();
-        pxr::UsdStagePtr stage = omni::usd::UsdContext::getContext()->getStage();
+        auto usdContext = omni::usd::UsdContext::getContext();
+        pxr::UsdStagePtr stage = usdContext ? usdContext->getStage() : pxr::UsdStagePtr();
 
         // Collect paths of invalid physics scenes
         std::vector<pxr::SdfPath> invalidPaths;
@@ -629,9 +630,18 @@ private:
         static const carb::RStringKey s_kEventName("IsaacSimStageOpenedUsdNoticeListener");
         m_stageEventSubscription = ed->observeEvent(
             s_kEventName, 1000, usdContext->stageEventName(omni::usd::StageEventType::eOpened),
-            [this, usdContext](const auto&)
+            [this](const auto&)
             {
+                auto usdContext = omni::usd::UsdContext::getContext();
+                if (!usdContext)
+                {
+                    return;
+                }
                 auto stage = usdContext->getStage();
+                if (!stage)
+                {
+                    return;
+                }
                 PXR_NS::UsdStageCache& cache = PXR_NS::UsdUtilsStageCache::Get();
                 omni::fabric::UsdStageId stageId = { static_cast<uint64_t>(cache.GetId(stage).ToLongInt()) };
                 omni::fabric::IStageReaderWriter* iStageReaderWriter =

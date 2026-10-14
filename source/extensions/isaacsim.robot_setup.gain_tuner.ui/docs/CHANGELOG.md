@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.1] - 2026-09-29
+### Fixed
+- "Disable self collisions" takes effect on robots that carry only the base `UsdPhysics` articulation schema.
+- "Disable self collisions" takes effect under Newton as well as PhysX.
+- Running a test no longer modifies the selected robot or leaves the stage with unsaved edits.
+- A test reports when disabling self-collisions cannot take effect on the active physics engine.
+- Stopping the timeline restores self-collisions instead of leaving them off for the session.
+- A test no longer inherits the self-collision state of an interrupted earlier run.
+- The timeline no longer restarts every frame when a robot reports DOFs but no tunable joints.
+
 ## [2.2.0] - 2026-08-30
 ### Added
 - Chart value readout: a "Value Readout" section at the bottom of each Position, Effort, and dt-sweep chart reports the x value under the pointer and the value of *every* visible series as the pointer moves across the plot, instead of a single unlabeled number. It is a row per joint and a column per legend group, so a multi-joint selection is read as a table and every selected joint is listed. It is part of the chart's layout rather than a popup over it, so it never covers the traces it reports, and it sits below the plot and the axis controls, so opening it moves neither. It starts closed, keeps whatever state it was left in, and its header states what hovering the chart does. The readout resolves the pointer against the stretch of the time axis each trace is drawn across, so a trace clipped where its response diverged reads correctly inside its own span and reports no value past its end.

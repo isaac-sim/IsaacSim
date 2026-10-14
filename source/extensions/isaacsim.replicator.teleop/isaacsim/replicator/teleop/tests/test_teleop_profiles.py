@@ -29,6 +29,7 @@ from isaacsim.replicator.teleop import (
     GraspControllerProfile,
     GraspSideProfile,
     LocomotionProfile,
+    MarkersManager,
     TeleopProfile,
     TeleopSettingsProfile,
     VisualCueSideProfile,
@@ -46,6 +47,28 @@ from isaacsim.replicator.teleop import (
 
 class TestTeleopProfiles(omni.kit.test.AsyncTestCase):
     """Verify teleop profiles round-trip through YAML."""
+
+    async def test_curated_scene_profiles_use_existing_ui_offsets(self) -> None:
+        """Curated scenes use rotation choices exposed by the Teleop UI."""
+        from isaacsim.replicator.teleop.controllers._utils import ROTATION_OFFSET_DEGREES
+
+        profiles = dict(scan_teleop_profiles(get_builtin_teleop_profiles_dir()))
+        for name in ("xarm", "robotiq_2f85", "hand_e"):
+            profile, errors = load_teleop_profile(profiles[f"floating_{name}"])
+            self.assertEqual(errors, [])
+            self.assertTrue(profile.floating.right.enabled)
+            self.assertTrue(profile.grasp.right.enabled)
+            self.assertTrue(profile.locomotion.enabled)
+            self.assertEqual(profile.locomotion.settings["prim_path"], MarkersManager.ORIGIN_PATH)
+            self.assertTrue(profile.floating.right.settings["prim_path"].startswith(f"/World/teleop_{name}/"))
+            self.assertTrue(profile.grasp.right.prim_path.startswith(f"/World/teleop_{name}/"))
+            for axis in "xyz":
+                self.assertIn(profile.floating.right.settings[f"target_rot_{axis}_deg"], ROTATION_OFFSET_DEGREES)
+            grasp, errors = load_grasp_config(profile.grasp.right.config_path)
+            self.assertEqual(errors, [])
+            self.assertIsNotNone(grasp)
+            if name == "hand_e":
+                self.assertEqual(profile.floating.right.settings["target_rot_x_deg"], -90)
 
     async def test_autosave_path_is_outside_builtin_profiles(self) -> None:
         """Autosave state must never overwrite an installed built-in profile."""

@@ -194,7 +194,7 @@ class ResultsPanel:
 
             with self._card("Validation", background=INFO_BACKGROUND_COLOR):
                 self._validation_results_label = ui.Label(
-                    "Validation chunks run after optimization.",
+                    "Untuned and tuned parameters replay on the same validation chunks.",
                     word_wrap=True,
                     style=_BODY_TEXT_STYLE,
                 )

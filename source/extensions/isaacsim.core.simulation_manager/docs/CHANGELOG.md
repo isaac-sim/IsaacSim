@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.17.4] - 2026-09-30
+### Fixed
+- Initialize native `PhysicsScene` objects constructed from `SdfPath` or `UsdPrim` inputs.
+
+## [1.17.3] - 2026-09-26
+### Fixed
+- Avoid simulation-manager crashes when USD notices or physics-scene APIs run without an active USD context or stage.
+
+## [1.17.2] - 2026-09-23
+### Fixed
+- Preserve omitted default callback settings when updating selected simulation lifecycle callbacks.
+
 ## [1.17.1] - 2026-08-25
 ### Fixed
 - Use the supported Carb warning logger when Newton initialization fails.

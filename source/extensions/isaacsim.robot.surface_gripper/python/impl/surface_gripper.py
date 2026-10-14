@@ -20,7 +20,7 @@ from __future__ import annotations
 __all__ = ["create_surface_gripper"]
 
 import omni.usd
-from pxr import Usd
+from pxr import Sdf, Usd
 from usd.schema.isaac import robot_schema
 
 
@@ -41,5 +41,7 @@ def create_surface_gripper(
     Returns:
         The created Surface Gripper prim.
     """
-    gripper_path = omni.usd.get_stage_next_free_path(stage, prim_path + "/SurfaceGripper", False)
+    parent_path = Sdf.Path(prim_path or "/")
+    child_path = parent_path.AppendChild("SurfaceGripper")
+    gripper_path = omni.usd.get_stage_next_free_path(stage, str(child_path), False)
     return robot_schema.CreateSurfaceGripper(stage, gripper_path)

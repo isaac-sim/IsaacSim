@@ -13,17 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Prepare registered module carrier extensions for the repository build."""
+"""Build and stage library wheels in Kit extensions for the repository build."""
 
 from __future__ import annotations
 
-import shutil
+import importlib.util
 import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from os import environ
 from pathlib import Path
+
+_STAGING_MANIFEST_SPEC = importlib.util.spec_from_file_location(
+    "isaacsim_wheel_staging_manifest", Path(__file__).with_name("wheel_staging_manifest.py")
+)
+if _STAGING_MANIFEST_SPEC is None or _STAGING_MANIFEST_SPEC.loader is None:
+    raise RuntimeError("Cannot load wheel staging manifest helpers")
+_STAGING_MANIFEST = importlib.util.module_from_spec(_STAGING_MANIFEST_SPEC)
+_STAGING_MANIFEST_SPEC.loader.exec_module(_STAGING_MANIFEST)
+
+_PATHS_SPEC = importlib.util.spec_from_file_location(
+    "isaacsim_wheel_staging_paths", Path(__file__).with_name("wheel_staging_paths.py")
+)
+if _PATHS_SPEC is None or _PATHS_SPEC.loader is None:
+    raise RuntimeError("Cannot load wheel staging path helpers")
+_PATHS = importlib.util.module_from_spec(_PATHS_SPEC)
+_PATHS_SPEC.loader.exec_module(_PATHS)
 
 LIBRARIES_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = LIBRARIES_DIRECTORY.parents[1]
@@ -40,7 +56,7 @@ _MULTI_CHARACTER_SHORT_OPTIONS = ("-mc", "-mpc")
 
 @dataclass(frozen=True, slots=True)
 class _BuildSelection:
-    """Module carrier work implied by one root build invocation."""
+    """Wheel staging work implied by one root build invocation."""
 
     configurations: tuple[str, ...]
     clean_only: bool = False
@@ -151,7 +167,7 @@ def _parse_root_build_arguments(arguments: Sequence[str]) -> _BuildSelection:
 
     if not configurations:
         # Repo Build falls back to release alone, and only pulls that configuration's
-        # dependencies. Preparing debug carriers here would need OpenUSD packages the
+        # dependencies. Preparing debug wheels here would need OpenUSD packages the
         # root build never fetched.
         configurations.append("release")
 
@@ -167,8 +183,8 @@ def _parse_root_build_arguments(arguments: Sequence[str]) -> _BuildSelection:
     )
 
 
-def _discover_carrier_extensions(repository_root: Path = REPOSITORY_ROOT) -> tuple[str, ...]:
-    """Return every extension that declares a module carrier manifest.
+def _discover_wheel_staging_extensions(repository_root: Path = REPOSITORY_ROOT) -> tuple[str, ...]:
+    """Return every extension that declares a wheel staging manifest.
 
     Args:
         repository_root: Repository root directory.
@@ -177,7 +193,7 @@ def _discover_carrier_extensions(repository_root: Path = REPOSITORY_ROOT) -> tup
         The resulting value.
     """
     extension_root = repository_root / "source" / "extensions"
-    return tuple(sorted(path.parent.name for path in extension_root.glob("*/module-carrier.toml")))
+    return tuple(sorted(path.parent.name for path in _STAGING_MANIFEST.find_manifests(extension_root)))
 
 
 def _should_prepare_repository_build(
@@ -217,39 +233,45 @@ def _run_library_build(command: Sequence[object]) -> None:
     subprocess.run(command_strings, cwd=REPOSITORY_ROOT, check=True)
 
 
-def _clean_carrier_outputs(configuration: str) -> None:
-    """Remove generated carrier artifacts owned by one configuration.
+def _clean_wheel_staging_outputs(configuration: str) -> None:
+    """Remove generated wheel staging artifacts owned by one configuration.
 
     Args:
         configuration: Build configuration name.
     """
     for path in (
+        LIBRARY_BUILD_ROOT / "extension-wheel-artifacts" / configuration,
+        LIBRARY_BUILD_ROOT / "extension-wheel-stages" / configuration,
         LIBRARY_BUILD_ROOT / "module-carrier-artifacts" / configuration,
         LIBRARY_BUILD_ROOT / "module-carriers" / configuration,
     ):
-        shutil.rmtree(path, ignore_errors=True)
+        _PATHS.remove_generated_path(path)
 
 
-def _ensure_carrier_link_targets(configuration: str, extensions: Sequence[str]) -> None:
-    """Create the carrier stage directories that Kit extensions link against.
+def _ensure_wheel_stage_link_targets(configuration: str, extensions: Sequence[str]) -> None:
+    """Create the wheel stage directories that Kit extensions link against.
 
-    A generate-only build configures the modules without staging carrier
-    artifacts, but the Kit extensions still declare an unconditional prebuild
-    link into the carrier stage. Without these directories the root build's
+    A generate-only build configures the modules without staging wheels, but
+    the Kit extensions still declare an unconditional prebuild link into the
+    wheel stage. Without these directories the root build's
     staging step fails before generation finishes.
 
     Args:
         configuration: Build configuration name.
-        extensions: Carrier extensions to stage.
+        extensions: Extensions that stage wheels.
     """
     for extension in extensions:
-        stage = LIBRARY_BUILD_ROOT / "module-carriers" / configuration / extension
+        stage = LIBRARY_BUILD_ROOT / "extension-wheel-stages" / configuration / extension
         for relative_path in ("pip_prebundle", "sdk/include"):
             (stage / relative_path).mkdir(parents=True, exist_ok=True)
+        legacy = LIBRARY_BUILD_ROOT / "module-carriers" / configuration / extension
+        _PATHS.ensure_directory_alias(legacy, stage, preserve_directory=True)
+        for relative_path in ("pip_prebundle", "sdk/include"):
+            (legacy / relative_path).mkdir(parents=True, exist_ok=True)
 
 
 def _prepare(arguments: Sequence[str]) -> None:
-    """Prepare all discovered carriers required by the root build.
+    """Build and stage wheels for every registered extension in the root build.
 
     Args:
         arguments: Parsed command-line arguments.
@@ -262,7 +284,7 @@ def _prepare(arguments: Sequence[str]) -> None:
         _run_library_build((LIBRARY_BUILD_LAUNCHER, "--pull-only"))
         return
 
-    extensions = _discover_carrier_extensions()
+    extensions = _discover_wheel_staging_extensions()
     if not extensions:
         return
 
@@ -270,12 +292,12 @@ def _prepare(arguments: Sequence[str]) -> None:
         configuration_flag = "-d" if configuration == "debug" else "-r"
         if selection.clean_only:
             _run_library_build((LIBRARY_BUILD_LAUNCHER, configuration_flag, "--clean"))
-            _clean_carrier_outputs(configuration)
+            _clean_wheel_staging_outputs(configuration)
             continue
 
         command: list[object] = [LIBRARY_BUILD_LAUNCHER, configuration_flag]
         if selection.rebuild:
-            _clean_carrier_outputs(configuration)
+            _clean_wheel_staging_outputs(configuration)
             command.append("--rebuild")
         if selection.reuse_dependencies:
             command.append("--no-pull")
@@ -286,15 +308,15 @@ def _prepare(arguments: Sequence[str]) -> None:
             print(f"Configuring Kit-independent modules ({configuration})", flush=True)
         else:
             for extension in extensions:
-                command.extend(("--carrier", extension))
-            print(f"Preparing module carriers ({configuration}): {', '.join(extensions)}", flush=True)
+                command.extend(("--stage-wheel", extension))
+            print(f"Preparing extension wheels ({configuration}): {', '.join(extensions)}", flush=True)
         _run_library_build(command)
         if selection.generate_only:
-            _ensure_carrier_link_targets(configuration, extensions)
+            _ensure_wheel_stage_link_targets(configuration, extensions)
 
 
 def _main() -> int:
-    """Prepare module carriers selected by the root build arguments.
+    """Prepare extension wheels selected by the root build arguments.
 
     Returns:
         The resulting value.

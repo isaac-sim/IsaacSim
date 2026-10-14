@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.9.5] - 2026-09-23
+### Fixed
+
+- Prefer robot-schema joint names, retaining legacy fallback with a deprecation warning and preserving link names.
+
 ## [2.9.4] - 2026-07-28
 ### Fixed
 - Guard Fabric transform lookups when a prim exists in USD but is missing from USDRT.

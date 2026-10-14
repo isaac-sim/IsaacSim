@@ -566,7 +566,9 @@ def get_link_position(link: Usd.Prim | Sdf.Path | str | None) -> Gf.Vec3d | None
 
 
 @Trace.TraceFunction
-def get_joint_position(robot_root_path: Sdf.Path | str, joint_path: Sdf.Path | str) -> Gf.Vec3d | None:
+def get_joint_position(
+    robot_root_path: Sdf.Path | str, joint_path: Sdf.Path | str, stage: Usd.Stage | None = None
+) -> Gf.Vec3d | None:
     """Return the world-space position of a robot joint.
 
     Retrieves the joint pose from the robot schema and transforms it
@@ -575,6 +577,7 @@ def get_joint_position(robot_root_path: Sdf.Path | str, joint_path: Sdf.Path | s
     Args:
         robot_root_path: Path to the robot root prim.
         joint_path: Path to the joint prim.
+        stage: Source stage. Omit to use the current USD context.
 
     Returns:
         Joint world-space position, or None if computation fails.
@@ -585,7 +588,8 @@ def get_joint_position(robot_root_path: Sdf.Path | str, joint_path: Sdf.Path | s
 
         position = get_joint_position("/World/Robot", "/World/Robot/joint")
     """
-    stage = get_stage_safe()
+    if stage is None:
+        stage = get_stage_safe()
     if not stage:
         return None
 
@@ -626,6 +630,9 @@ class _SpecPrim:
     a ``PrimSpec`` in that tiny surface lets the hierarchy be authored straight
     into an :class:`Sdf.Layer` with **no UsdStage attached**, which is what keeps
     it from emitting global ``UsdNotice::ObjectsChanged`` notices.
+
+    Args:
+        spec: Specification to wrap.
     """
 
     __slots__ = ("spec",)
@@ -665,6 +672,9 @@ class _HierarchyLayerBuilder:
     populated, authoring produces no USD object-change notices at all (see
     :func:`_generate_robot_hierarchy_stage_inner`, which opens the stage once
     from the finished layer).
+
+    Args:
+        layer: Destination layer.
     """
 
     __slots__ = ("_layer",)
@@ -756,9 +766,13 @@ def _create_hierarchy_node(
         path_map.insert(current_joint_prim.GetPath(), hierarchy_joint_prim.GetPath())
 
         # Create connection item for this joint
-        joint_position = get_joint_position(robot_root_path, current_joint_prim.GetPath())
+        joint_position = get_joint_position(
+            robot_root_path, current_joint_prim.GetPath(), stage=current_joint_prim.GetStage()
+        )
         if parent_joint_in_chain:
-            parent_joint_position = get_joint_position(robot_root_path, parent_joint_in_chain.GetPath())
+            parent_joint_position = get_joint_position(
+                robot_root_path, parent_joint_in_chain.GetPath(), stage=parent_joint_in_chain.GetStage()
+            )
         else:
             parent_joint_position = get_link_position(parent_link_source_prim)
 
@@ -849,7 +863,7 @@ def _generate_flat_hierarchy(
             _copy_applied_schemas(joint_prim, hier_joint_prim)
             path_map.insert(joint_prim.GetPath(), hier_joint_path)
 
-            joint_position = get_joint_position(robot_root_path, joint_prim.GetPath())
+            joint_position = get_joint_position(robot_root_path, joint_prim.GetPath(), stage=joint_prim.GetStage())
             parent_link_prim = None
             parent_pos = None
             phys_joint = UsdPhysics.Joint(joint_prim)
@@ -931,9 +945,13 @@ def _create_hierarchy_node_mujoco(
         _copy_applied_schemas(current_joint_prim, hierarchy_joint_prim)
         path_map.insert(current_joint_prim.GetPath(), hierarchy_joint_prim.GetPath())
 
-        joint_position = get_joint_position(robot_root_path, current_joint_prim.GetPath())
+        joint_position = get_joint_position(
+            robot_root_path, current_joint_prim.GetPath(), stage=current_joint_prim.GetStage()
+        )
         if parent_joint_in_chain:
-            parent_joint_position = get_joint_position(robot_root_path, parent_joint_in_chain.GetPath())
+            parent_joint_position = get_joint_position(
+                robot_root_path, parent_joint_in_chain.GetPath(), stage=parent_joint_in_chain.GetStage()
+            )
         else:
             parent_joint_position = get_link_position(parent_link_source_prim)
 
@@ -1007,13 +1025,18 @@ def generate_robot_hierarchy_stage(
     if not isinstance(robot_root_path, Sdf.Path):
         robot_root_path = Sdf.Path(str(robot_root_path))
 
-    if masking_layer_id:
+    mute_mask = (
+        masking_layer_id
+        and not stage.IsLayerMuted(masking_layer_id)
+        and any(layer.identifier == masking_layer_id for layer in stage.GetLayerStack())
+    )
+    if mute_mask:
         stage.MuteLayer(masking_layer_id)
 
     try:
         return _generate_robot_hierarchy_stage_inner(stage, mode, robot_root_path)
     finally:
-        if masking_layer_id:
+        if mute_mask:
             stage.UnmuteLayer(masking_layer_id)
 
 

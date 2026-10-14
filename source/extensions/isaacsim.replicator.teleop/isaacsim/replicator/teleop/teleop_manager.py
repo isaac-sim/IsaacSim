@@ -304,11 +304,17 @@ class TeleopManager:
         self._left_input_world_pos = None
         self._right_input_world_pos = None
         self._last_input_frame = None
+        self._debug_left_snapshot = _DebugControllerSnapshot()
+        self._debug_right_snapshot = _DebugControllerSnapshot()
+        self._frame_count = 0
         self._tracking_space_enabled = False
         self._tracking_space_xform = None
         self._tracking_space_world_pose_cache.clear()
         self._tracking_space_prim_path = ""
         self._active_tracking_space_prim_path = ""
+        self._cached_tracking_space = None
+        self._cached_tracking_space_frame = -1
+        self._tracking_space_retry_failed = False
 
         if self._on_stage_cleanup_completed:
             self._on_stage_cleanup_completed()
@@ -842,6 +848,12 @@ class TeleopManager:
             if on_status_changed:
                 on_status_changed(f"Error: {message}")
             return False
+        if self._is_connected:
+            message = "Already connected"
+            print("[Teleop][Session] A teleop input provider is already connected.")
+            if on_status_changed:
+                on_status_changed(f"Error: {message}")
+            return False
         capabilities = get_teleop_capabilities()
         native_input_available = (
             capabilities.mcap_replay if mode == TeleopInputMode.MCAP_REPLAY else capabilities.live_input
@@ -908,6 +920,7 @@ class TeleopManager:
         if self._debug_tracking_enabled:
             self.set_debug_tracking(False)
 
+        previous_on_status_changed = self._on_status_changed
         self._on_status_changed = on_status_changed
         self._update_fail_count = 0
 
@@ -921,6 +934,9 @@ class TeleopManager:
             if on_status_changed:
                 on_status_changed(f"Error: {self._short_connect_error(str(exc))}")
             stack.close()
+            # A provider that never opened sends no data status, so the callback
+            # registered before this attempt stays in place.
+            self._on_status_changed = previous_on_status_changed
             return False
 
         self._session_stack = stack

@@ -20,6 +20,8 @@ import shutil
 import tempfile
 
 import omni.kit.test
+from isaacsim.asset.transformer import AssetTransformerManager, RuleProfile, RuleRegistry, RuleSpec
+from isaacsim.asset.transformer.rules import DEFAULT_PROFILE_PATH, register_all_rules
 from isaacsim.asset.transformer.rules.structure.interface import (
     CONNECTION_PAYLOAD,
     CONNECTION_REFERENCE,
@@ -28,7 +30,7 @@ from isaacsim.asset.transformer.rules.structure.interface import (
 )
 from pxr import Sdf, Usd
 
-from .common import _TEST_DATA_DIR
+from .common import _TEST_DATA_DIR, _UR10E_SHOULDER_USD
 
 # Path to UR10e interface test asset (pre-organized payloads for interface testing)
 _TEST_DATA_INTERFACE_DIR = os.path.join(_TEST_DATA_DIR, "ur10e_interface")
@@ -1022,3 +1024,107 @@ class TestInterfaceConnectionRule(omni.kit.test.AsyncTestCase):
         if errors:
             self.fail("\n".join(errors))
         self._success = True
+
+
+class TestInterfacePackageReplacement(omni.kit.test.AsyncTestCase):
+    """Use the real interface rule to verify reused package isolation."""
+
+    async def test_stale_physics_files_and_interface_do_not_change_export(self) -> None:
+        """NVBug 6380931: seeded Physics files must not create variants."""
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, "input.usda")
+            source = Usd.Stage.CreateNew(source_path)
+            source.SetDefaultPrim(source.DefinePrim("/Robot", "Xform"))
+            source.GetRootLayer().Save()
+            registry = RuleRegistry()
+            registry.register(InterfaceConnectionRule)
+            profile = RuleProfile(
+                profile_name="replacement",
+                base_name="base.usda",
+                interface_asset_name="robot.usda",
+                rules=[
+                    RuleSpec(
+                        name="Generate interface",
+                        type=f"{InterfaceConnectionRule.__module__}.{InterfaceConnectionRule.__qualname__}",
+                        params={"generate_folder_variants": True},
+                    )
+                ],
+            )
+            manager = AssetTransformerManager(registry)
+            clean = manager.run(source_path, profile, os.path.join(directory, "clean"))
+            clean_layer = Sdf.Layer.FindOrOpen(clean.output_stage_path)
+            expected = clean_layer.ExportToString()
+            clean_layer = None
+            output = os.path.join(directory, "reused")
+            stale_path = os.path.join(output, "payloads", "Physics", "mujoco.usda")
+            os.makedirs(os.path.dirname(stale_path))
+            stale = Sdf.Layer.CreateNew(stale_path)
+            Sdf.CreatePrimInLayer(stale, "/Robot/Stale")
+            stale.defaultPrim = "Robot"
+            stale.Save()
+            stale = None
+            with open(stale_path, "rb") as stream:
+                stale_bytes = stream.read()
+            # Leave both an obsolete interface variant and a cached output
+            # layer behind, as in an earlier export still open in the UI.
+            old = Usd.Stage.CreateNew(os.path.join(output, "robot.usda"))
+            old.SetDefaultPrim(old.DefinePrim("/Robot", "Xform"))
+            old.GetDefaultPrim().GetVariantSets().AddVariantSet("Physics").AddVariant("obsolete")
+            old.GetRootLayer().Save()
+            for _ in range(2):
+                report = manager.run(source_path, profile, output)
+                self.assertTrue(all(result.success for result in report.results))
+                self.assertEqual(report.composition_errors, [])
+                self.assertEqual(old.GetRootLayer().ExportToString(), expected)
+                self.assertEqual(old.GetDefaultPrim().GetVariantSet("Physics").GetVariantNames(), [])
+                self.assertTrue(
+                    all(os.path.isfile(path) for result in report.results for path in result.affected_stages)
+                )
+                with open(stale_path, "rb") as stream:
+                    self.assertEqual(stream.read(), stale_bytes)
+            # Re-export the open interface into its own package, resolving its
+            # existing dependencies before replacing any of them.
+            profile.flatten_source = True
+            report = manager.run(old, profile, output)
+            self.assertTrue(all(result.success for result in report.results))
+            self.assertEqual(report.composition_errors, [])
+            self.assertEqual(old.GetRootLayer().ExportToString(), expected)
+            old = None
+            source = None
+
+    async def test_default_profile_ignores_stale_physics_payload(self) -> None:
+        """Cover the public-API UR10e reproduction from NVBug 6380931."""
+        register_all_rules()
+        with open(DEFAULT_PROFILE_PATH, encoding="utf-8") as stream:
+            profile_json = stream.read()
+        with tempfile.TemporaryDirectory() as directory:
+            clean_root = os.path.join(directory, "clean")
+            stale_root = os.path.join(directory, "stale")
+            stale_path = os.path.join(stale_root, "payloads", "Physics", "mujoco.usda")
+            os.makedirs(os.path.dirname(stale_path))
+            stale = Sdf.Layer.CreateNew(stale_path)
+            stale.ImportFromString('#usda 1.0\n(defaultPrim="STALE")\ndef Xform "STALE" {}\n')
+            stale.Save()
+            # Keep the old payload cached as in the reported reproduction.
+            expected = None
+            for output in (clean_root, stale_root, stale_root):
+                with self.subTest(output=output):
+                    report = AssetTransformerManager().run(
+                        _UR10E_SHOULDER_USD, RuleProfile.from_json(profile_json), package_root=output
+                    )
+                    self.assertEqual([(r.rule.name, r.error) for r in report.results if not r.success], [])
+                    self.assertEqual(report.composition_errors, [])
+                    self.assertEqual(report.output_stage_path, os.path.join(output, "ur10e.usda"))
+                    # Read disk contents independently of any cached output layer.
+                    layer = Sdf.Layer.CreateAnonymous("interface.usda")
+                    self.assertTrue(layer.Import(report.output_stage_path))
+                    prim = layer.GetPrimAtPath("/" + layer.defaultPrim)
+                    self.assertEqual([name for name, _ in prim.variantSets.items() if "hysics" in name], [])
+                    contents = layer.ExportToString()
+                    if expected is None:
+                        expected = contents
+                    else:
+                        self.assertEqual(contents, expected)
+                    prim = None
+                    layer = None
+            stale = None

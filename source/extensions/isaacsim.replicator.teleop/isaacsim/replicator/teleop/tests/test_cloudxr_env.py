@@ -17,18 +17,42 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import socket
 import tempfile
+import types
+from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
 import omni.kit.test
+from isaacsim.replicator.teleop import cloudxr_env
 from isaacsim.replicator.teleop.cloudxr_env import (
+    cloudxr_runtime_ipc_socket,
     is_cloudxr_runtime_ready,
     load_and_apply_cloudxr_env,
     parse_cloudxr_env_file,
     prepare_live_cloudxr_env,
 )
+
+_HAS_UNIX_SOCKETS = hasattr(socket, "AF_UNIX")
+
+
+@contextlib.contextmanager
+def _live_runtime(install_dir: Path) -> Iterator[None]:
+    """Listen on the IPC path a live CloudXR runtime serves, where the platform has Unix sockets.
+
+    Platforms without Unix domain sockets have no IPC probe, so the readiness sentinel alone
+    marks the runtime as live there.
+    """
+    if not _HAS_UNIX_SOCKETS:
+        yield
+        return
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as runtime:
+        runtime.bind(str(cloudxr_runtime_ipc_socket(install_dir)))
+        runtime.listen()
+        yield
 
 
 class TestCloudXREnvHelpers(omni.kit.test.AsyncTestCase):
@@ -55,14 +79,38 @@ class TestCloudXREnvHelpers(omni.kit.test.AsyncTestCase):
                 self.assertEqual(os.environ["XR_RUNTIME_JSON"], "/tmp/test/openxr_cloudxr.json")
 
     async def test_is_cloudxr_runtime_ready(self) -> None:
-        """Run the is cloudxr runtime ready test."""
+        """A runtime is ready only once its sentinel exists and it serves its IPC socket."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.assertFalse(is_cloudxr_runtime_ready(root))
-            (root / "run").mkdir()
+            run_dir = root / "run"
+            run_dir.mkdir()
             self.assertFalse(is_cloudxr_runtime_ready(root))
-            (root / "run" / "runtime_started").write_text("", encoding="utf-8")
-            self.assertTrue(is_cloudxr_runtime_ready(root))
+            (run_dir / "runtime_started").write_text("", encoding="utf-8")
+            with _live_runtime(root):
+                self.assertTrue(is_cloudxr_runtime_ready(root))
+
+    async def test_stale_sentinel_is_not_ready(self) -> None:
+        """A readiness sentinel without a listening runtime does not count as ready."""
+        if not _HAS_UNIX_SOCKETS:
+            self.skipTest("Unix domain sockets are unavailable on this platform")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "run"
+            run_dir.mkdir()
+            (run_dir / "runtime_started").write_text("", encoding="utf-8")
+            self.assertFalse(is_cloudxr_runtime_ready(root))
+
+    async def test_sentinel_decides_readiness_without_unix_sockets(self) -> None:
+        """Platforms without Unix domain sockets fall back to the readiness sentinel."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_dir = root / "run"
+            run_dir.mkdir()
+            with mock.patch.object(cloudxr_env, "socket", types.SimpleNamespace()):
+                self.assertFalse(is_cloudxr_runtime_ready(root))
+                (run_dir / "runtime_started").write_text("", encoding="utf-8")
+                self.assertTrue(is_cloudxr_runtime_ready(root))
 
     async def test_prepare_live_cloudxr_env(self) -> None:
         """prepare_live_cloudxr_env applies env vars when the runtime is ready."""
@@ -81,10 +129,11 @@ class TestCloudXREnvHelpers(omni.kit.test.AsyncTestCase):
                 self.assertEqual(message, "CloudXR not running")
 
                 (run_dir / "runtime_started").write_text("", encoding="utf-8")
-                ok, message = prepare_live_cloudxr_env(root)
-                self.assertTrue(ok)
-                self.assertEqual(message, "")
-                self.assertEqual(os.environ["XR_RUNTIME_JSON"], "/tmp/openxr.json")
+                with _live_runtime(root):
+                    ok, message = prepare_live_cloudxr_env(root)
+                    self.assertTrue(ok)
+                    self.assertEqual(message, "")
+                    self.assertEqual(os.environ["XR_RUNTIME_JSON"], "/tmp/openxr.json")
 
     async def test_parse_cloudxr_env_empty_and_quoted_values(self) -> None:
         """The env parser handles empty assignments and quoted spaces."""
@@ -104,6 +153,7 @@ class TestCloudXREnvHelpers(omni.kit.test.AsyncTestCase):
             run_dir.mkdir()
             (run_dir / "runtime_started").write_text("", encoding="utf-8")
             (run_dir / "cloudxr.env").write_text('BROKEN="unterminated\n', encoding="utf-8")
-            ok, message = prepare_live_cloudxr_env(root)
-            self.assertFalse(ok)
-            self.assertIn("CloudXR env invalid", message)
+            with _live_runtime(root):
+                ok, message = prepare_live_cloudxr_env(root)
+                self.assertFalse(ok)
+                self.assertIn("CloudXR env invalid", message)

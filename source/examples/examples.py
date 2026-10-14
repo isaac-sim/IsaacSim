@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import hashlib
+import importlib.machinery
 import importlib.metadata
 import importlib.util
 import json
@@ -37,7 +39,7 @@ import sysconfig
 import tempfile
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -53,6 +55,7 @@ from packaging.version import InvalidVersion, Version
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 60
 PROCESS_TERMINATION_TIMEOUT_SECONDS = 5
+GPU_PROBE_TIMEOUT_SECONDS = 10
 DEVELOPER_ENVIRONMENT_VARIABLE = "ISAACSIM_EXAMPLES_DEVELOPER_ENVIRONMENT"
 DEVELOPER_ENVIRONMENT_DIRECTORY = "developer-environment"
 DEVELOPER_ENVIRONMENT_LOCK_SUFFIX = "developer-environment.lock"
@@ -64,11 +67,12 @@ EXAMPLE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 TARGET_PATTERN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*")
 ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-ALLOWED_EXAMPLE_GROUPS = frozenset({"libraries", "series"})
+EXAMPLE_GROUP_NAMES = {"benchmarks": "benchmark", "libraries": "library", "series": "series"}
+ALLOWED_EXAMPLE_GROUPS = frozenset(EXAMPLE_GROUP_NAMES)
 ALLOWED_LEVELS = frozenset({"beginner", "intermediate", "expert"})
 ALLOWED_SERIES_KINDS = frozenset({"collection", "sequence"})
 ALLOWED_MODULE_SURFACES = frozenset({"native_sdk", "python"})
-SYSTEM_REQUIREMENT_NAMES = frozenset({"c", "cmake", "cpp", "python", "python_development"})
+SYSTEM_REQUIREMENT_NAMES = frozenset({"c", "cmake", "cpp", "gpu", "python", "python_development"})
 SYSTEM_REQUIREMENTS_FIELDS = frozenset(
     {"c_standard", "cmake_minimum_version", "cmake_policy_maximum_version", "cpp_standard", "python_version"}
 )
@@ -92,6 +96,33 @@ GENERATED_FILE_SUFFIXES = frozenset({".a", ".dll", ".dylib", ".exe", ".lib", ".o
 
 class ExampleError(RuntimeError):
     """Error raised for an invalid example or failed example operation."""
+
+
+@functools.cache
+def _has_gpu() -> bool:
+    """Report whether this host exposes an NVIDIA GPU.
+
+    Unlike the toolchain requirements, which the developer environment installs, a GPU is a property of the machine
+    the tests happen to run on. The driver utility is asked rather than the device files so the answer also covers
+    Windows and reflects a driver that is present but unusable.
+
+    Returns:
+        True when the driver reports at least one device.
+    """
+    executable = shutil.which("nvidia-smi")
+    if executable is None:
+        return False
+    try:
+        result = subprocess.run(
+            [executable, "--list-gpus"],
+            capture_output=True,
+            text=True,
+            timeout=GPU_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and result.stdout.startswith("GPU ")
 
 
 def _initialize_windows_native_toolchain() -> None:
@@ -129,6 +160,7 @@ class _RunConfiguration:
     target: str | None = None
     path: Path | None = None
     arguments: tuple[str, ...] = ()
+    command: str | None = None
 
 
 @dataclass(frozen=True)
@@ -231,6 +263,7 @@ class _Example:
     run: _RunConfiguration
     requirements: _Requirements
     tests: tuple[_TestConfiguration, ...]
+    named_runs: tuple[tuple[str, _RunConfiguration], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -273,6 +306,8 @@ class _DeveloperBuild:
     python_install_dir: str
     python_runtime_dependencies: Path
     developer_environment: Path
+    artifact_digest: str
+    artifact_mtime_ns: int
     generator: str
     generator_platform: str | None
     generator_toolset: str | None
@@ -471,14 +506,14 @@ def _read_cmake_cache(path: Path) -> dict[str, str]:
     return values
 
 
-def _library_source_digest(root: Path) -> str:
-    """Fingerprint authored library sources using the build tool's exclusions.
+def _source_digest(root: Path) -> str:
+    """Fingerprint an authored source tree using the build tool's exclusions.
 
     Args:
         root: Root directory to process.
 
     Returns:
-        The resulting value.
+        Hexadecimal SHA-256 digest of relative paths and file contents.
     """
     excluded = frozenset({"__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", "dist"})
     digest = hashlib.sha256()
@@ -493,6 +528,21 @@ def _library_source_digest(root: Path) -> str:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(chunk)
     return digest.hexdigest()
+
+
+def _artifact_state_digest(path: Path) -> str:
+    """Fingerprint validated artifact state without its build timestamp.
+
+    Args:
+        path: Artifact state JSON file.
+
+    Returns:
+        Stable digest of inputs that identify the built SDK.
+    """
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state.pop("completed_at", None)
+    serialized = json.dumps(state, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(serialized).hexdigest()
 
 
 def _validate_developer_artifact_state(
@@ -549,7 +599,7 @@ def _validate_developer_artifact_state(
     if (
         not isinstance(expected_source_digest, str)
         or re.fullmatch(r"[0-9a-f]{64}", expected_source_digest) is None
-        or (validate_sources and _library_source_digest(source_root) != expected_source_digest)
+        or (validate_sources and _source_digest(source_root) != expected_source_digest)
     ):
         raise ExampleError("Developer library sources changed since the build; rebuild source/libraries")
     developer_environment = artifact_state.get("developer_environment")
@@ -715,6 +765,9 @@ def _read_developer_build(repository_root: Path, config: str, *, validate_source
     developer_environment = _validate_developer_artifact_state(
         repository_root, library_build_dir, config, validate_sources=validate_sources
     )
+    artifact_path = library_build_dir / "artifact-state.json"
+    artifact_digest = _artifact_state_digest(artifact_path)
+    artifact_mtime_ns = artifact_path.stat().st_mtime_ns
     for required_directory in (
         developer_environment / "lib" / "cmake",
         developer_environment / python_install_dir,
@@ -729,10 +782,43 @@ def _read_developer_build(repository_root: Path, config: str, *, validate_source
         python_install_dir=str(python_install_dir),
         python_runtime_dependencies=python_runtime_dependencies,
         developer_environment=developer_environment,
+        artifact_digest=artifact_digest,
+        artifact_mtime_ns=artifact_mtime_ns,
         generator=cache["CMAKE_GENERATOR"],
         generator_platform=cache.get("CMAKE_GENERATOR_PLATFORM") or None,
         generator_toolset=cache.get("CMAKE_GENERATOR_TOOLSET") or None,
         make_program=cache.get("CMAKE_MAKE_PROGRAM") or None,
+    )
+
+
+def _check_developer_build(
+    repository_root: Path, config: str, *, validate_sources: bool = True
+) -> tuple[dict[str, Any], _DeveloperBuild | None]:
+    """Report developer readiness without building or preparing dependencies.
+
+    Args:
+        repository_root: Isaac Sim repository root.
+        config: Requested build configuration.
+        validate_sources: Whether to compare library sources with the recorded digest.
+
+    Returns:
+        Structured readiness details and the valid developer build, when available.
+    """
+    command = "source\\libraries\\build.bat" if os.name == "nt" else "./source/libraries/build.sh"
+    command += " -d" if config.lower() == "debug" else " -r"
+    try:
+        developer_build = _read_developer_build(repository_root, config, validate_sources=validate_sources)
+    except (ExampleError, OSError) as error:
+        return {
+            "schema_version": 1,
+            "ready": False,
+            "message": f"The {config} SDK build is not ready for this checkout.",
+            "instructions": f"From {repository_root}, run:\n\n{command}\n\nWhen the build finishes, retry your action.",
+            "details": str(error),
+        }, None
+    return (
+        {"schema_version": 1, "ready": True, "message": "SDK build ready.", "instructions": "", "details": ""},
+        developer_build,
     )
 
 
@@ -806,6 +892,12 @@ def _load_run_configuration(table: Any, example_root: Path, context: str) -> _Ru
         raise ExampleError(f"{context} must be a table")
     adapter = _read_string(table, "adapter", context)
     arguments = _read_argument_list(table, "arguments", context, required=False)
+    if adapter == "command":
+        _validate_keys(table, {"adapter", "command"}, {"arguments"}, context)
+        command = _read_string(table, "command", context)
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]*", command) is None:
+            raise ExampleError(f"{context}.command must be an executable name without a path or shell syntax")
+        return _RunConfiguration(adapter=adapter, command=command, arguments=arguments)
     if adapter == "executable":
         _validate_keys(table, {"adapter", "target"}, {"arguments"}, context)
         target = _read_string(table, "target", context)
@@ -819,6 +911,33 @@ def _load_run_configuration(table: Any, example_root: Path, context: str) -> _Ru
             raise ExampleError(f"{context}.path does not exist: {script_path}")
         return _RunConfiguration(adapter=adapter, path=script_path, arguments=arguments)
     raise ExampleError(f"{context}.adapter is unsupported: {adapter}")
+
+
+def _load_run_configurations(
+    table: Any, example_root: Path, context: str
+) -> tuple[_RunConfiguration, tuple[tuple[str, _RunConfiguration], ...]]:
+    """Load a default run and optional named run tables.
+
+    Args:
+        table: Run table containing default fields and named subtables.
+        example_root: Root containing the example.
+        context: User-facing location of the table.
+
+    Returns:
+        Default run and named runs in deterministic name order.
+    """
+    if not isinstance(table, dict):
+        raise ExampleError(f"{context} must be a table")
+    fields = {"adapter", "arguments", "command", "path", "target"}
+    named_runs = []
+    default_table = dict(table)
+    for name, value in sorted(table.items()):
+        if name not in fields and isinstance(value, dict):
+            if NAME_PATTERN.fullmatch(name) is None:
+                raise ExampleError(f"{context} has an invalid command name: {name}")
+            named_runs.append((name, _load_run_configuration(value, example_root, f"{context}.{name}")))
+            del default_table[name]
+    return _load_run_configuration(default_table, example_root, context), tuple(named_runs)
 
 
 def _load_test_configurations(
@@ -1005,6 +1124,7 @@ def _validate_requirement_coherence(
     run: _RunConfiguration,
     requirements: _Requirements,
     context: str,
+    additional_runs: tuple[_RunConfiguration, ...] = (),
 ) -> None:
     """Validate that adapters and declared requirements agree.
 
@@ -1013,6 +1133,7 @@ def _validate_requirement_coherence(
         run: Structured run configuration.
         requirements: Module and system requirements.
         context: User-facing location of the manifest.
+        additional_runs: Named commands sharing the example requirements.
     """
     surfaces = {surface for module in requirements.modules for surface in module.surfaces}
     system = set(requirements.system)
@@ -1024,14 +1145,15 @@ def _validate_requirement_coherence(
         if not {"c", "cpp"} & system:
             raise ExampleError(f"{context} uses the CMake adapter but does not require a C or C++ compiler")
 
-    if run.adapter == "python":
+    has_python_run = any(item.adapter == "python" for item in (run, *additional_runs))
+    if has_python_run:
         if "python" not in system:
             raise ExampleError(f"{context} uses the Python run adapter but does not require python")
         if build.adapter == "cmake" and "python_development" not in system:
             raise ExampleError(
                 f"{context} uses mixed CMake/Python adapters but does not require Python development headers"
             )
-    if requirements.python_packages and (run.adapter != "python" or "python" not in system):
+    if requirements.python_packages and (not has_python_run or "python" not in system):
         raise ExampleError(f"{context} declares Python packages without a Python run adapter and capability")
     if requirements.cpp_packages and (build.adapter != "cmake" or "cpp" not in system):
         raise ExampleError(f"{context} declares C++ packages without a CMake build adapter and C++ capability")
@@ -1074,11 +1196,14 @@ def _load_example(example_root: Path) -> _Example:
         if any(NAME_PATTERN.fullmatch(item) is None for item in values):
             raise ExampleError(f"{context}.{field} contains an invalid name")
     build = _load_build_configuration(table["build"], example_root, f"{context}.build")
-    run = _load_run_configuration(table["run"], example_root, f"{context}.run")
-    if run.adapter == "executable" and (build.adapter != "cmake" or run.target not in build.targets):
-        raise ExampleError(f"{context}.run.target must name a declared CMake build target")
+    run, named_runs = _load_run_configurations(table["run"], example_root, f"{context}.run")
+    for name, configuration in (("run", run), *((f"run.{name}", item) for name, item in named_runs)):
+        if configuration.adapter == "executable" and (
+            build.adapter != "cmake" or configuration.target not in build.targets
+        ):
+            raise ExampleError(f"{context}.{name}.target must name a declared CMake build target")
     requirements = _load_requirements(table["requirements"], f"{context}.requirements")
-    _validate_requirement_coherence(build, run, requirements, context)
+    _validate_requirement_coherence(build, run, requirements, context, tuple(item for _, item in named_runs))
     tests = _load_test_configurations(table.get("test"), example_root, run, f"{context}.test")
     return _Example(
         id=example_id,
@@ -1092,6 +1217,7 @@ def _load_example(example_root: Path) -> _Example:
         run=run,
         requirements=requirements,
         tests=tests,
+        named_runs=named_runs,
     )
 
 
@@ -1209,7 +1335,8 @@ def _discover_published_example_roots(examples_dir: Path) -> tuple[Path, ...]:
         root = manifest_path.parent.resolve()
         relative_parts = root.relative_to(examples_root).parts
         if not relative_parts or relative_parts[0] not in ALLOWED_EXAMPLE_GROUPS:
-            raise ExampleError(f"Example must start with libraries or series: {root}")
+            groups = ", ".join(sorted(ALLOWED_EXAMPLE_GROUPS))
+            raise ExampleError(f"Published example must start with one of {groups}: {root}")
         roots.append(root)
     return tuple(roots)
 
@@ -1311,9 +1438,53 @@ def _catalog_languages(example: _Example) -> list[str]:
     for language in ("c", "cpp"):
         if language in system:
             languages.append(language)
-    if example.run.adapter == "python":
+    if any(run.adapter == "python" for run in (example.run, *(item for _, item in example.named_runs))):
         languages.append("python")
     return languages
+
+
+def _serialize_listing(examples_dir: Path) -> dict[str, Any]:
+    """Serialize locally validated examples without requiring a built SDK catalog.
+
+    Args:
+        examples_dir: Root containing the example and series manifests.
+
+    Returns:
+        Versioned discovery data for CLI clients. Build and run configuration
+        remains owned by this runner; clients invoke commands using stable IDs.
+    """
+    examples, series = _load_collection(examples_dir)
+    return {
+        "schema_version": 1,
+        "examples": [
+            {
+                "id": example.id,
+                "title": example.title,
+                "summary": example.summary,
+                "path": example.root.relative_to(examples_dir).as_posix(),
+                "build_adapter": example.build.adapter,
+                "run_adapter": example.run.adapter,
+                "owners": list(example.owners),
+                "categories": list(example.categories),
+                "topics": list(example.topics),
+                "system_requirements": list(example.requirements.system),
+                "module_requirements": [
+                    {"name": item.name, "surfaces": list(item.surfaces)} for item in example.requirements.modules
+                ],
+                "tests": [test.name for test in example.tests],
+            }
+            for example in examples
+        ],
+        "series": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "summary": item.summary,
+                "steps": [{"example": step.example_id, "level": step.level} for step in item.steps],
+            }
+            for item in series
+        ],
+    }
 
 
 def _format_examples_table(examples: tuple[_Example, ...]) -> str:
@@ -1379,12 +1550,12 @@ def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
             raise ExampleError(f"Example {example.id} has unknown public API owners: {', '.join(unknown_owners)}")
         relative_root = example.root.relative_to(examples_dir).as_posix()
         relative_parts = example.root.relative_to(examples_dir).parts
-        group = {"libraries": "library", "series": "series"}[relative_parts[0]]
+        group = EXAMPLE_GROUP_NAMES[relative_parts[0]]
         membership = series_membership.get(example.id)
         entry_point = (
             example.run.path.relative_to(example.root).as_posix()
             if example.run.path is not None
-            else str(example.run.target)
+            else str(example.run.command or example.run.target)
         )
         serialized_examples.append(
             {
@@ -1409,6 +1580,10 @@ def _build_catalog(examples_dir: Path, library_catalog: Path) -> dict[str, Any]:
                     "build": f"python source/examples/examples.py build {example.id}",
                     "run": f"python source/examples/examples.py run {example.id}",
                     "test": f"python source/examples/examples.py test {example.id}",
+                    **{
+                        f"run:{name}": f"python source/examples/examples.py run {example.id}:{name}"
+                        for name, _ in example.named_runs
+                    },
                 },
                 "series_id": membership[0] if membership else None,
                 "series_position": membership[1] if membership else None,
@@ -1791,6 +1966,93 @@ def _require_python_dependencies(examples: tuple[_Example, ...], build_root: Pat
     return dependency_dir
 
 
+def _find_runnable_examples(
+    examples: tuple[_Example, ...],
+    build_root: Path,
+    config: str,
+    sdk_digest: str | None = None,
+    sdk_mtime_ns: int | None = None,
+    *,
+    selected_examples: tuple[_Example, ...] | None = None,
+) -> list[str]:
+    """Find examples with current outputs and shared dependencies.
+
+    Args:
+        examples: Complete examples payload.
+        build_root: Shared examples build root.
+        config: Required build configuration.
+        sdk_digest: Validated developer SDK artifact fingerprint, when applicable.
+        sdk_mtime_ns: Modification time of the validated SDK state, for legacy build validation.
+        selected_examples: Optional subset whose artifacts should be inspected.
+
+    Returns:
+        Stable IDs for examples that can run without a build.
+    """
+    try:
+        _require_python_dependencies(examples, build_root)
+        _require_cpp_dependencies(examples, build_root)
+    except (ExampleError, OSError):
+        return []
+    runnable = []
+    for example in examples if selected_examples is None else selected_examples:
+        build_dir = build_root / example.id
+        try:
+            command = _create_run_command(example, build_dir, ())
+            if example.build.adapter == "none":
+                if example.run.path is not None and example.run.path.is_file():
+                    runnable.append(example.id)
+                continue
+            cache = _read_cmake_cache(build_dir / "CMakeCache.txt")
+            if cache.get("CMAKE_BUILD_TYPE", "").lower() != config.lower():
+                continue
+            source_directory = cache.get("CMAKE_HOME_DIRECTORY")
+            if not source_directory or Path(source_directory).resolve() != example.root.resolve():
+                continue
+            if example.run.adapter == "executable":
+                outputs = [Path(command[0])]
+            else:
+                outputs = []
+                for target in example.build.targets:
+                    output = next(
+                        (
+                            path
+                            for suffix in importlib.machinery.EXTENSION_SUFFIXES
+                            if (path := build_dir / "python" / f"{target}{suffix}").is_file()
+                        ),
+                        None,
+                    )
+                    if output is None:
+                        break
+                    outputs.append(output)
+                if len(outputs) != len(example.build.targets):
+                    continue
+            oldest_output = min(path.stat().st_mtime_ns for path in outputs)
+            state_path = build_dir / ".example-build-state.json"
+            if state_path.exists():
+                # A successful incremental build can leave outputs older than
+                # documentation or Python entry points that need no compilation.
+                try:
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                except (ValueError, UnicodeError):
+                    continue
+                expected_state = {"config": config.lower(), "source_digest": _source_digest(example.root)}
+                if sdk_digest is not None:
+                    expected_state["sdk_digest"] = sdk_digest
+                if state != expected_state:
+                    continue
+                runnable.append(example.id)
+                continue
+            if sdk_mtime_ns is not None and sdk_mtime_ns > oldest_output:
+                continue
+            sources = (path for path in example.root.rglob("*") if path.is_file() and "__pycache__" not in path.parts)
+            if any(path.stat().st_mtime_ns > oldest_output for path in sources):
+                continue
+            runnable.append(example.id)
+        except (ExampleError, OSError):
+            continue
+    return runnable
+
+
 def _cpp_dependency_platform() -> str:
     """Return the Pixi platform supported by the current examples runner.
 
@@ -2025,6 +2287,7 @@ def _build_example(
     generator_platform: str | None,
     generator_toolset: str | None,
     make_program: str | None,
+    developer_build: _DeveloperBuild | None = None,
 ) -> Path:
     """Build one example incrementally and return its build directory.
 
@@ -2040,6 +2303,7 @@ def _build_example(
         generator_platform: Optional generator platform.
         generator_toolset: Optional generator toolset.
         make_program: Optional native build program.
+        developer_build: Source build providing the SDK identity and Linux toolchain.
 
     Returns:
         Isolated example build directory.
@@ -2049,6 +2313,12 @@ def _build_example(
         print(f"Build {example.id}: no build required")
         return build_dir
 
+    build_dir.mkdir(parents=True, exist_ok=True)
+    state_path = build_dir / ".example-build-state.json"
+    # Keep an invalid record on failure, rather than trusting legacy output
+    # timestamps after an incomplete build. Capture inputs before compilation.
+    state_path.write_text("{}\n", encoding="utf-8")
+    source_digest = _source_digest(example.root)
     _initialize_windows_native_toolchain()
     environment = os.environ.copy()
     if example.requirements.cpp_packages:
@@ -2068,6 +2338,16 @@ def _build_example(
         f"-DISAACSIM_CXX_STANDARD={system_requirements.cpp_standard}",
         f"-DISAACSIM_PYTHON_VERSION={system_requirements.python_version}",
     ]
+    if developer_build is not None and sys.platform == "linux":
+        library_cache = _read_cmake_cache(developer_build.library_build_dir / "CMakeCache.txt")
+        compilers = {name: library_cache[name] for name in ("CMAKE_C_COMPILER", "CMAKE_CXX_COMPILER")}
+        for name, compiler in compilers.items():
+            configure_command.append(f"-D{name}={compiler}")
+        cache_path = build_dir / "CMakeCache.txt"
+        if cache_path.is_file():
+            cache = _read_cmake_cache(cache_path)
+            if any(cache.get(name) and cache[name] != compiler for name, compiler in compilers.items()):
+                configure_command.append("--fresh")
     if "python" in example.requirements.system or "python_development" in example.requirements.system:
         configure_command.append(f"-DPython_EXECUTABLE={sys.executable}")
     if generator:
@@ -2098,6 +2378,11 @@ def _build_example(
         example.root,
         environment,
     )
+    if _source_digest(example.root) == source_digest:
+        state = {"config": config.lower(), "source_digest": source_digest}
+        if developer_build is not None:
+            state["sdk_digest"] = developer_build.artifact_digest
+        state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
     return build_dir
 
 
@@ -2129,7 +2414,7 @@ def _prefix_native_runtime_paths(prefix: Path) -> list[Path]:
     paths = [prefix / "bin"]
     if os.name == "nt":
         plugins = prefix / "bin" / "plugins"
-        paths.extend((plugins, plugins / "omni.client.lib", plugins / "omni.usd_resolver"))
+        paths.extend((prefix / "plugins", plugins, plugins / "omni.client.lib", plugins / "omni.usd_resolver"))
     return paths
 
 
@@ -2148,13 +2433,18 @@ def _create_developer_environment(
     environment = os.environ.copy()
     environment[DEVELOPER_ENVIRONMENT_VARIABLE] = str(developer_build.library_build_dir.resolve())
     environment["CMAKE_COMMAND"] = str(developer_build.cmake)
-    environment["CMAKE_PREFIX_PATH"] = str(prefix)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    runtime_dependencies = Path(developer_build.python_runtime_dependencies)
+    # Some third-party runtime distributions ship a CMake package inside the Python
+    # distribution, so an example that links one finds it where the environment installed
+    # it. The Isaac Sim prefix comes first, so an installed Isaac Sim package always wins
+    # over a same-named dependency package.
+    environment["CMAKE_PREFIX_PATH"] = os.pathsep.join((str(prefix), str(runtime_dependencies)))
     # Keep the developer environment isolated from incompatible Isaac Sim packages in the caller's Python path.
     environment["PYTHONPATH"] = os.pathsep.join(
         (
             str(prefix / developer_build.python_install_dir),
-            str(developer_build.python_runtime_dependencies),
+            str(runtime_dependencies),
         )
     )
     native_runtime_paths = _prefix_native_runtime_paths(prefix)
@@ -2168,7 +2458,13 @@ def _create_developer_environment(
     _prepend_environment_path(environment, "PATH", native_runtime_paths)
     if os.name != "nt":
         python_library_dir = developer_build.python.parent.parent / "lib"
-        _prepend_environment_path(environment, "LD_LIBRARY_PATH", [python_library_dir, prefix / "lib"])
+        library_paths = [python_library_dir, prefix / "lib"]
+        # Some wheels ship native libraries inside the package instead of a directory the
+        # loader already searches, so an import that links them fails without help. The
+        # NVIDIA CUDA wheels use the nvidia/<component>/lib layout; ovui's native _ui
+        # extension links libcudart from nvidia-cuda-runtime-cu12 this way.
+        library_paths.extend(sorted(runtime_dependencies.glob("nvidia/*/lib")))
+        _prepend_environment_path(environment, "LD_LIBRARY_PATH", library_paths)
     return environment
 
 
@@ -2214,7 +2510,12 @@ def _create_runtime_environment(
 
 
 def _create_run_command(
-    example: _Example, build_dir: Path, arguments: tuple[str, ...], *, python_path: Path | None = None
+    example: _Example,
+    build_dir: Path,
+    arguments: tuple[str, ...],
+    *,
+    python_path: Path | None = None,
+    environment: dict[str, str] | None = None,
 ) -> list[str]:
     """Create the command for an example run adapter.
 
@@ -2223,6 +2524,7 @@ def _create_run_command(
         build_dir: Example's isolated build directory.
         arguments: Arguments for the normal entry point.
         python_path: Optional test-specific Python entry point.
+        environment: Prepared environment used to resolve installed commands.
 
     Returns:
         Executable command and arguments.
@@ -2234,6 +2536,17 @@ def _create_run_command(
         return [sys.executable, str(script_path), *arguments]
     if python_path is not None:
         raise ExampleError(f"Executable example cannot use a Python test path: {example.id}")
+    if example.run.adapter == "command":
+        if example.run.command is None:
+            raise ExampleError(f"Command example has no executable name: {example.id}")
+        search_path = (os.environ if environment is None else environment).get("PATH", os.defpath)
+        executable = shutil.which(example.run.command, path=search_path)
+        if executable is None:
+            raise ExampleError(
+                f"Command {example.run.command!r} is unavailable in the prepared environment for {example.id}. "
+                "Build or install the example's required library components."
+            )
+        return [str(Path(executable).absolute()), *arguments]
     if example.run.target is None:
         raise ExampleError(f"Executable example has no target: {example.id}")
     executable = build_dir / "bin" / example.run.target
@@ -2330,6 +2643,11 @@ def _run_captured(
                 process.stderr.close()
             stdout, stderr = "", "Timed-out descendants did not close their output streams."
         return _CommandResult(process.returncode, stdout, stderr, timed_out=True)
+    except BaseException:
+        # Test children own a separate process group. Reap them if the caller
+        # interrupts the runner, including cancellation from a frontend.
+        _terminate_process_tree(process)
+        raise
     return _CommandResult(process.returncode, stdout, stderr)
 
 
@@ -2339,6 +2657,10 @@ def _run_example(
     arguments: tuple[str, ...],
     python_dependency_dir: Path | None = None,
     cpp_dependencies: _CppDependencyEnvironment | None = None,
+    *,
+    nsys_scope: str | None = None,
+    nsys_output: Path | None = None,
+    nsys_options: tuple[str, ...] = (),
 ) -> int:
     """Run one example interactively.
 
@@ -2348,22 +2670,40 @@ def _run_example(
         arguments: Additional user arguments.
         python_dependency_dir: Shared external Python dependency directory.
         cpp_dependencies: Shared external C++ dependency environment.
+        nsys_scope: Optional Nsight capture scope, ``benchmark`` or ``full``.
+        nsys_output: Optional report prefix or path.
+        nsys_options: Additional ``NAME=VALUE`` options for ``nsys profile``.
 
     Returns:
         Example process exit code.
     """
-    command = _wrap_cpp_dependency_command(
-        example,
-        cpp_dependencies,
-        _create_run_command(example, build_dir, example.run.arguments + arguments),
-    )
     environment = _create_runtime_environment(example, build_dir, python_dependency_dir)
+    command = _create_run_command(example, build_dir, example.run.arguments + arguments, environment=environment)
+    report = None
+    if nsys_scope is not None:
+        sys.dont_write_bytecode = True
+        from nsys import prepare_nsys_command
+
+        if nsys_output is None:
+            build_dir.mkdir(parents=True, exist_ok=True)
+            nsys_output = Path(tempfile.mkdtemp(prefix="nsys-", dir=build_dir)) / "report"
+        command, report = prepare_nsys_command(
+            command, environment, scope=nsys_scope, output=nsys_output, options=nsys_options
+        )
+    command = _wrap_cpp_dependency_command(example, cpp_dependencies, command)
     if example.requirements.cpp_packages:
         _scrub_pixi_update_environment(environment)
     print(f"Run {example.id}: {_render_command(command)}")
     process = subprocess.Popen(command, cwd=example.root, env=environment)
     try:
-        return process.wait()
+        status = process.wait()
+        if report is not None and status == 0:
+            if not report.is_file():
+                raise ExampleError(
+                    "Nsight produced no report. For workloads without MEASURE NVTX, use --nsys-scope full."
+                )
+            print(f"Nsight report: {report}")
+        return status
     except KeyboardInterrupt:
         try:
             process.wait(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
@@ -2399,12 +2739,12 @@ def _test_example(
         cpp_dependencies: Shared external C++ dependency environment.
     """
     arguments = example.run.arguments if test.arguments is None else test.arguments
+    environment = _create_runtime_environment(example, build_dir, python_dependency_dir, test.environment)
     command = _wrap_cpp_dependency_command(
         example,
         cpp_dependencies,
-        _create_run_command(example, build_dir, arguments, python_path=test.path),
+        _create_run_command(example, build_dir, arguments, python_path=test.path, environment=environment),
     )
-    environment = _create_runtime_environment(example, build_dir, python_dependency_dir, test.environment)
     if example.requirements.cpp_packages:
         _scrub_pixi_update_environment(environment)
     print(f"Test {example.id}:{test.name}: {_render_command(command)}")
@@ -2451,7 +2791,7 @@ def _select_examples(examples: tuple[_Example, ...], selectors: list[str]) -> tu
 
 
 def _select_run_example(examples: tuple[_Example, ...], selector: str, examples_dir: Path) -> _Example:
-    """Select one example by stable ID, root path, or declared Python script.
+    """Select a default or named run by example ID, root path, or Python script.
 
     Args:
         examples: Complete example collection.
@@ -2461,6 +2801,13 @@ def _select_run_example(examples: tuple[_Example, ...], selector: str, examples_
     Returns:
         Selected example.
     """
+    base, separator, command_name = selector.partition(":")
+    if separator:
+        example = _select_run_example(examples, base, examples_dir)
+        named_runs = dict(example.named_runs)
+        if command_name not in named_runs:
+            raise ExampleError(f"Unknown run command for {example.id}: {command_name}")
+        return replace(example, run=named_runs[command_name])
     examples_by_id = {example.id: example for example in examples}
     if selector in examples_by_id:
         return examples_by_id[selector]
@@ -2560,7 +2907,10 @@ def _create_argument_parser(default_build_root: Path) -> argparse.ArgumentParser
     parser.add_argument("--make-program")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("list", help="List examples by stable ID.")
+    list_parser = subparsers.add_parser("list", help="List examples by stable ID.")
+    list_parser.add_argument("--format", choices=("table", "json"), default="table")
+    check_parser = subparsers.add_parser("check", help="Check developer SDK readiness without building anything.")
+    check_parser.add_argument("--format", choices=("json",), default="json")
 
     build_parser = subparsers.add_parser("build", help="Build selected examples, or all examples by default.")
     _add_environment_arguments(build_parser, "command_environment_mode")
@@ -2568,7 +2918,26 @@ def _create_argument_parser(default_build_root: Path) -> argparse.ArgumentParser
 
     run_parser = subparsers.add_parser("run", help="Build and run one example by ID, root path, or Python script path.")
     _add_environment_arguments(run_parser, "command_environment_mode")
-    run_parser.add_argument("example", metavar="EXAMPLE_ID_OR_PATH")
+    run_parser.add_argument("--nsys", action="store_true", help="Profile the workload with Nsight Systems.")
+    run_parser.add_argument(
+        "--nsys-option",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Set an nsys profile option; repeat as needed.",
+    )
+    run_parser.add_argument(
+        "--nsys-scope",
+        choices=("benchmark", "full"),
+        help="Capture the measured benchmark phase (default) or full process.",
+    )
+    run_parser.add_argument(
+        "--nsys-output", type=Path, help="Report path or prefix (default: a fresh directory under the build root)."
+    )
+    run_parser.add_argument(
+        "--no-build", action="store_true", help="Run existing outputs without invoking build tools."
+    )
+    run_parser.add_argument("example", metavar="EXAMPLE_ID_OR_PATH[:COMMAND]")
     run_parser.add_argument("arguments", nargs=argparse.REMAINDER, metavar="EXAMPLE_ARGUMENT")
 
     test_parser = subparsers.add_parser("test", help="Build and test selected examples, or all examples by default.")
@@ -2606,12 +2975,55 @@ def _main() -> int:
     repository_root = examples_dir.parents[1]
     parser = _create_argument_parser(repository_root / "_build" / "examples")
     arguments = parser.parse_args()
+    if (
+        arguments.command == "run"
+        and not arguments.nsys
+        and (arguments.nsys_scope or arguments.nsys_output or arguments.nsys_option)
+    ):
+        parser.error("--nsys-scope, --nsys-output, and --nsys-option require --nsys")
     resources = contextlib.ExitStack()
     try:
+        if arguments.command == "check":
+            library_build_dir = repository_root / "_cmake_build" / f"isaacsim-libraries-{arguments.config.lower()}"
+            resources.enter_context(_developer_environment_lock(library_build_dir, exclusive=False))
+            expected_build = str(library_build_dir.resolve())
+            status, developer_build = _check_developer_build(
+                repository_root,
+                arguments.config,
+                validate_sources=os.environ.get(DEVELOPER_ENVIRONMENT_VARIABLE) == expected_build,
+            )
+            status["runnable_examples"] = []
+            if developer_build is not None:
+                if (
+                    os.environ.get(DEVELOPER_ENVIRONMENT_VARIABLE) != expected_build
+                    or Path(sys.executable).resolve() != developer_build.python.resolve()
+                ):
+                    return _restart_in_environment(
+                        developer_build.python, _create_developer_environment(developer_build)
+                    )
+                examples, _ = _load_collection(examples_dir)
+                build_root = arguments.build_root.resolve()
+                _validate_build_root(build_root, examples_dir)
+                if _collect_python_packages(examples):
+                    resources.enter_context(_python_dependency_lock(build_root, exclusive=False))
+                if _collect_cpp_packages(examples):
+                    resources.enter_context(_cpp_dependency_lock(build_root, exclusive=False))
+                status["runnable_examples"] = _find_runnable_examples(
+                    examples,
+                    build_root,
+                    arguments.config,
+                    developer_build.artifact_digest,
+                    developer_build.artifact_mtime_ns,
+                )
+            print(json.dumps(status, sort_keys=True))
+            return 0
         if arguments.command == "catalog":
             catalog = _build_catalog(examples_dir, arguments.library_catalog)
             arguments.output.parent.mkdir(parents=True, exist_ok=True)
             arguments.output.write_text(json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            return 0
+        if arguments.command == "list" and arguments.format == "json":
+            print(json.dumps(_serialize_listing(examples_dir), sort_keys=True))
             return 0
         if arguments.command == "list":
             print(_format_examples_table(_load_examples(examples_dir)))
@@ -2689,6 +3101,7 @@ def _main() -> int:
             arguments.generator_platform,
             arguments.generator_toolset,
             arguments.make_program,
+            developer_build,
         )
         if arguments.command == "build":
             for example in selected_build_examples:
@@ -2698,12 +3111,45 @@ def _main() -> int:
             if run_example is None:
                 raise ExampleError("Run command did not select an example")
             example = run_example
+            nsys_scope = (arguments.nsys_scope or "benchmark") if arguments.nsys else None
+            if nsys_scope == "benchmark" and not example.root.is_relative_to(examples_dir / "benchmarks"):
+                raise ExampleError("Measured capture requires a benchmark; use --nsys-scope full for other examples.")
             build_dir = build_root / example.id
-            _build_example(example, *common_build_arguments)
+            if not arguments.no_build:
+                _build_example(example, *common_build_arguments)
+            elif example.id not in _find_runnable_examples(
+                examples,
+                build_root,
+                arguments.config,
+                developer_build.artifact_digest if developer_build is not None else None,
+                developer_build.artifact_mtime_ns if developer_build is not None else None,
+                selected_examples=(example,),
+            ):
+                raise ExampleError(f"Example {example.id} has no current successful build; run the build command first")
             passthrough = tuple(arguments.arguments)
             if passthrough[:1] == ("--",):
                 passthrough = passthrough[1:]
-            return _run_example(example, build_dir, passthrough, python_dependency_dir, cpp_dependencies)
+            return _run_example(
+                example,
+                build_dir,
+                passthrough,
+                python_dependency_dir,
+                cpp_dependencies,
+                nsys_scope=nsys_scope,
+                nsys_output=arguments.nsys_output,
+                nsys_options=tuple(arguments.nsys_option),
+            )
+
+        # A GPU requirement is the one requirement the developer environment cannot satisfy, so a test that declares
+        # it is passed over on a machine without one instead of failing there. Selecting such a test by name still
+        # skips it, because the machine is what it is.
+        runnable_tests: list[tuple[_Example, _TestConfiguration]] = []
+        for example, test in tests:
+            if "gpu" in example.requirements.system and not _has_gpu():
+                print(f"Test {example.id}:{test.name}: skipped (requires a GPU)")
+            else:
+                runnable_tests.append((example, test))
+        tests = tuple(runnable_tests)
 
         selected_example_ids = {example.id for example, _ in tests}
         if arguments.selectors:
@@ -2721,8 +3167,18 @@ def _main() -> int:
                     build_directories[example.id] = build_dir
                 else:
                     build_directories[example.id] = _build_example(example, *common_build_arguments)
+        # Report every failing test rather than stopping at the first, so one run tells the whole
+        # story instead of revealing the next failure only once the previous one is fixed.
+        failed_tests: list[str] = []
         for example, test in tests:
-            _test_example(example, test, build_directories[example.id], python_dependency_dir, cpp_dependencies)
+            try:
+                _test_example(example, test, build_directories[example.id], python_dependency_dir, cpp_dependencies)
+            except (ExampleError, OSError) as error:
+                print(f"Error: {error}", file=sys.stderr)
+                failed_tests.append(f"{example.id}:{test.name}")
+        if failed_tests:
+            print(f"Error: {len(failed_tests)} of {len(tests)} tests failed: {', '.join(failed_tests)}")
+            return 1
         return 0
     except (ExampleError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)

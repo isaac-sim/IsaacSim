@@ -67,7 +67,7 @@ SUPPORTED_CAMERA_CONFIGS: dict[str, dict[str, Any]] = {
     },
     "/Isaac/Sensors/Orbbec/Gemini335/orbbec_gemini_335.usd": {
         "display_name": "Orbbec Gemini 335",
-        "is_depth_sensor": True,
+        "is_depth_sensor": False,  # TODO: Update this to True when the asset is updated to support depth sensor output.
     },
     "/Isaac/Sensors/Orbbec/Gemini335L/orbbec_gemini_335L.usd": {
         "display_name": "Orbbec Gemini 335L",

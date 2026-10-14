@@ -14,56 +14,52 @@
 # limitations under the License.
 
 import ctypes
-import glob
+import importlib.util
+import os
 import pathlib
 import sys
 
+import isaacsim.foundation.usd.openusd  # noqa: F401 - initialize OpenUSD bindings
+
 __all__ = []
+_dll_directory_handles: list[object] = []
+_native_library_handles: list[ctypes.CDLL] = []
 
 
-# Pre-load libusd_ms (hash-suffixed after packaging) into the global symbol namespace
-# before the C++ bindings .so is imported. Python's dlopen uses RTLD_NOW, so all symbols
-# in libisaacsim-foundation-usd-ovstage.so must be resolvable at load time - they are
-# only present if USD shared libraries are already in the process with RTLD_GLOBAL.
-def _preload_ovstage() -> None:
+def _ovstage_root() -> pathlib.Path:
+    """Get the installed ``ovstage`` dependency root without importing it."""
+    spec = importlib.util.find_spec("ovstage")
+    if spec is None or not spec.submodule_search_locations:
+        raise RuntimeError("Required Python package 'ovstage' is not installed.")
+    return pathlib.Path(next(iter(spec.submodule_search_locations))).resolve()
+
+
+def _load_ovstage_runtime() -> None:
+    """Load the pip-owned OVStage libraries before Isaac's native modules."""
+    root = _ovstage_root()
+    runtime = root / "bin"
     if sys.platform == "win32":
-        # Nanobind packages register their binding-local `plugins` directory,
-        # which contains OVStage's OpenUSD and TBB DLLs, before importing a .pyd.
-        return
+        directories = [runtime, runtime / "plugins"]
+        plugins = runtime / "plugins"
+        if plugins.is_dir():
+            directories.extend(path for path in plugins.iterdir() if path.is_dir())
+        for directory in directories:
+            if directory.is_dir():
+                _dll_directory_handles.append(os.add_dll_directory(directory))
+        names = ("ovstage-dynamic.dll", "ovstage.dll")
+    else:
+        names = ("libovstage-dynamic.so", "libovstage.so")
 
-    import pxr
-
-    # usd-core libraries
-    usd_core_libs = pathlib.Path(pxr.__path__[0]).parent / "usd_core.libs"
-    usd_core_libs_not_found = []
-    for pattern in ("libtbb*.so*", "libusd_ms*.so"):
-        candidates = glob.glob(str(usd_core_libs / pattern))
-        if not candidates:
-            usd_core_libs_not_found.append(pattern)
-            continue
-        ctypes.CDLL(candidates[0], mode=ctypes.RTLD_GLOBAL)
-    if not usd_core_libs_not_found:
-        return
-
-    # usd-exchange libraries
-    usd_exchange_libs = pathlib.Path(pxr.__path__[0]).parent / "usd_exchange.libs"
-    usd_exchange_libs_not_found = []
-    for pattern in ("libtbb*.so*", "libusd*.so"):
-        candidates = glob.glob(str(usd_exchange_libs / pattern))
-        if not candidates:
-            usd_exchange_libs_not_found.append(pattern)
-            continue
-        for candidate in candidates:
-            ctypes.CDLL(candidate, mode=ctypes.RTLD_GLOBAL)
-    if not usd_exchange_libs_not_found:
-        return
-
-    error_message = "Unable to find/load OpenUSD shared libraries."
-    if usd_core_libs_not_found:
-        error_message += f" Looked for {', '.join(usd_core_libs_not_found)} in {usd_core_libs}."
-    if usd_exchange_libs_not_found:
-        error_message += f" Looked for {', '.join(usd_exchange_libs_not_found)} in {usd_exchange_libs}."
-    raise RuntimeError(error_message)
+    os.environ["OVSTAGE_LIBRARY_PATH_HINT"] = str(runtime)
+    for name in names:
+        path = runtime / name
+        if not path.is_file():
+            raise RuntimeError(f"Required native dependency was not found: {path}")
+        if sys.platform == "win32":
+            library = ctypes.CDLL(str(path))
+        else:
+            library = ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+        _native_library_handles.append(library)
 
 
-_preload_ovstage()
+_load_ovstage_runtime()

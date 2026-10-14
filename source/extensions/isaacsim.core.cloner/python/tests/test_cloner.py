@@ -25,7 +25,7 @@ from isaacsim.core.cloner import Cloner, GridCloner
 from isaacsim.storage.native import get_assets_root_path_async
 from omni.physics.core import get_physics_simulation_interface
 from omni.physx import get_physxunittests_interface
-from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdUtils, Vt
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdUtils, Vt
 
 
 class TestSimpleCloner(omni.kit.test.AsyncTestCase):
@@ -170,6 +170,101 @@ class TestSimpleCloner(omni.kit.test.AsyncTestCase):
                 stage.GetPrimAtPath(f"/Clones/Xform_{i}").GetAttribute("xformOp:translate").Get()
                 == target_translations[i]
             )
+
+    # xformOp:orient precision -> (identity quaternion class, expected Sdf value type)
+    ORIENT_PRECISIONS = {
+        UsdGeom.XformOp.PrecisionHalf: (Gf.Quath, Sdf.ValueTypeNames.Quath),
+        UsdGeom.XformOp.PrecisionFloat: (Gf.Quatf, Sdf.ValueTypeNames.Quatf),
+        UsdGeom.XformOp.PrecisionDouble: (Gf.Quatd, Sdf.ValueTypeNames.Quatd),
+    }
+
+    def _define_env_0_with_orient_precision(self, stage: Usd.Stage, precision: UsdGeom.XformOp.Precision) -> None:
+        """Define /World/envs/env_0 with xformOp:orient authored at the given precision."""
+        quat_class, _ = self.ORIENT_PRECISIONS[precision]
+        UsdGeom.Scope.Define(stage, "/World/envs")
+        source = UsdGeom.Xform.Define(stage, "/World/envs/env_0")
+        source.AddXformOp(UsdGeom.XformOp.TypeTranslate, UsdGeom.XformOp.PrecisionDouble, "").Set(Gf.Vec3d(0, 0, 0))
+        source.AddXformOp(UsdGeom.XformOp.TypeOrient, precision, "").Set(quat_class(1, 0, 0, 0))
+
+    async def _assert_clone_applies_orientations(
+        self, precision: UsdGeom.XformOp.Precision, copy_from_source: bool
+    ) -> None:
+        """Clone with the source prim included in prim_paths and assert every clone is placed."""
+        stage = omni.usd.get_context().get_stage()
+        self._define_env_0_with_orient_precision(stage, precision)
+
+        cloner = Cloner()
+        # env_0 is the source prim and is deliberately included in the destination paths
+        target_paths = cloner.generate_paths("/World/envs/env", 4)
+        positions = np.array([[1.5, 2.25, 3.75], [3.0, 0.0, 0.0], [6.0, 0.0, 0.0], [9.0, 0.0, 0.0]])
+        # 90 degrees about Z as (w, x, y, z)
+        half_sqrt2 = float(np.sqrt(0.5))
+        orientations = np.array([[half_sqrt2, 0.0, 0.0, half_sqrt2]] * 4)
+
+        cloner.clone(
+            source_prim_path="/World/envs/env_0",
+            prim_paths=target_paths,
+            positions=positions,
+            orientations=orientations,
+            copy_from_source=copy_from_source,
+            replicate_physics=False,
+        )
+
+        # half precision carries ~3 decimal digits, so tolerate its quantization
+        places = 2 if precision == UsdGeom.XformOp.PrecisionHalf else 6
+        for i, path in enumerate(target_paths):
+            prim = stage.GetPrimAtPath(path)
+            self.assertTrue(prim.IsValid(), f"{path} was not created")
+            translation = prim.GetAttribute("xformOp:translate").Get()
+            for axis in range(3):
+                self.assertAlmostEqual(translation[axis], positions[i][axis], places=6)
+            orientation = prim.GetAttribute("xformOp:orient").Get()
+            self.assertAlmostEqual(orientation.GetReal(), half_sqrt2, places=places)
+            self.assertAlmostEqual(orientation.GetImaginary()[0], 0.0, places=places)
+            self.assertAlmostEqual(orientation.GetImaginary()[1], 0.0, places=places)
+            self.assertAlmostEqual(orientation.GetImaginary()[2], half_sqrt2, places=places)
+
+    async def test_clone_with_orientations_half_precision_source(self) -> None:
+        """Test cloning with orientations when the source authors xformOp:orient as quath."""
+        await self._assert_clone_applies_orientations(UsdGeom.XformOp.PrecisionHalf, copy_from_source=False)
+
+    async def test_clone_with_orientations_float_precision_source(self) -> None:
+        """Test cloning with orientations when the source authors xformOp:orient as quatf."""
+        await self._assert_clone_applies_orientations(UsdGeom.XformOp.PrecisionFloat, copy_from_source=False)
+
+    async def test_clone_with_orientations_double_precision_source(self) -> None:
+        """Test cloning with orientations when the source authors xformOp:orient as quatd."""
+        await self._assert_clone_applies_orientations(UsdGeom.XformOp.PrecisionDouble, copy_from_source=False)
+
+    async def test_clone_with_orientations_copy_from_source_preserves_precision(self) -> None:
+        """Test copy_from_source cloning with orientations for each xformOp:orient precision."""
+        for precision, (_, value_type) in self.ORIENT_PRECISIONS.items():
+            await omni.usd.get_context().new_stage_async()
+            await self._assert_clone_applies_orientations(precision, copy_from_source=True)
+            # copied specs keep the source precision, so clones must be written at that precision
+            stage = omni.usd.get_context().get_stage()
+            for path in ["/World/envs/env_0", "/World/envs/env_3"]:
+                orient = stage.GetPrimAtPath(path).GetAttribute("xformOp:orient")
+                self.assertEqual(orient.GetTypeName(), value_type, f"{path} at {precision}")
+
+    async def test_clone_preserves_source_orient_precision(self) -> None:
+        """Test that cloning does not change the precision of the source xformOp:orient attribute."""
+        for precision, (_, value_type) in self.ORIENT_PRECISIONS.items():
+            await omni.usd.get_context().new_stage_async()
+            stage = omni.usd.get_context().get_stage()
+            self._define_env_0_with_orient_precision(stage, precision)
+
+            cloner = Cloner()
+            target_paths = cloner.generate_paths("/World/envs/env", 2)
+            cloner.clone(
+                source_prim_path="/World/envs/env_0",
+                prim_paths=target_paths,
+                orientations=np.array([[1.0, 0.0, 0.0, 0.0]] * 2),
+                replicate_physics=False,
+            )
+
+            source_orient = stage.GetPrimAtPath("/World/envs/env_0").GetAttribute("xformOp:orient")
+            self.assertEqual(source_orient.GetTypeName(), value_type)
 
     async def test_simple_cloner_physics_replication(self) -> None:
         """Test simple cloner physics replication."""

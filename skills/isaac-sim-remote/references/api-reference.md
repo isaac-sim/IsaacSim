@@ -447,18 +447,18 @@ s = carb.settings.get_settings()
 # Read current asset root
 current = s.get("/persistent/isaac/asset_root/default")
 
-# Set to staging (recommended for 6.x builds)
+# Set to production for Isaac Sim 6.2
 s.set("/persistent/isaac/asset_root/default",
-      "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0")
-
-# Set to production
-s.set("/persistent/isaac/asset_root/default",
-      "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0")
+      "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2")
 
 # Verify
 from isaacsim.storage.native import get_assets_root_path
 result = get_assets_root_path()
 ```
+
+Use `https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2`
+only when explicitly testing staged assets. Otherwise, preserve the configured
+asset root or use the production preset.
 
 ## Frame Sequence Capture
 

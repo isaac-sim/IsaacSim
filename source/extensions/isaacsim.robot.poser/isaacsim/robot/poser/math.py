@@ -326,7 +326,7 @@ def _mat4_to_transform(mat: Any) -> Transform:
 
     mat_d = pxr.Gf.Matrix4d(mat)
     t = _gf_vec3_to_array(mat_d.ExtractTranslation())
-    q = _gf_quat_to_array(mat_d.ExtractRotation().GetQuat())
+    q = _gf_quat_to_array(mat_d.RemoveScaleShear().ExtractRotation().GetQuat())
     return Transform(t, q)
 
 

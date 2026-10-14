@@ -212,11 +212,11 @@ protected:
             auto data_fb = builder.CreateVector(reinterpret_cast<const uint8_t*>(f32.data()), count * sizeof(float));
             std::vector<int64_t> shape = { static_cast<int64_t>(count) };
             auto shape_fb = builder.CreateVector(shape);
-            isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLFloat, 32, 1);
-            isaac::DLDevice device(isaac::DLDeviceType_kDLCPU, 0);
+            holoscan::schema::DLDataType dtype(holoscan::schema::DLDataTypeCode_kDLFloat, 32, 1);
+            holoscan::schema::DLDevice device(holoscan::schema::DLDeviceType_kDLCPU, 0);
             std::vector<int64_t> strides = { 1 };
             auto strides_fb = builder.CreateVector(strides);
-            return isaac::CreateTensor(builder, data_fb, shape_fb, &dtype, &device, 1, strides_fb);
+            return holoscan::schema::CreateTensor(builder, data_fb, shape_fb, &dtype, &device, 1, strides_fb);
         };
 
         // Pose: position (x, y, z) and orientation (w, x, y, z)
@@ -234,8 +234,7 @@ protected:
         // Header
         const int64_t time_ns = static_cast<int64_t>(data.timestamp * 1e9);
         auto frame_id_fb = builder.CreateString("");
-        auto stamp_fb = isaac::CreateTime(builder, time_ns, 0);
-        auto header_fb = isaac::CreateHeader(builder, stamp_fb, frame_id_fb);
+        auto header_fb = holoscan::schema::CreateHeader(builder, 0, frame_id_fb, time_ns);
 
         auto odometry_fb = isaac::CreateOdometry(builder, header_fb, pose_cov_fb, twist_cov_fb);
         builder.Finish(odometry_fb);

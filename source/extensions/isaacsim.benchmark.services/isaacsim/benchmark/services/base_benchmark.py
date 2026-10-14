@@ -503,13 +503,18 @@ class BaseIsaacBenchmark(_BaseIsaacBenchmarkCore):
         Args:
             usd_path: Path to USD stage.
 
+        Raises:
+            RuntimeError: If the stage could not be opened.
+
         Example:
 
         .. code-block:: python
 
             benchmark.fully_load_stage("/path/to/scene.usd")
         """
-        stage_utils.open_stage(usd_path)
+        result, _ = stage_utils.open_stage(usd_path)
+        if not result:
+            raise RuntimeError(f"Failed to open USD stage: {usd_path}")
         wait_until_stage_is_fully_loaded()
 
     def store_custom_measurement(self, phase_name: str, custom_measurement: measurements.Measurement) -> None:
@@ -672,13 +677,18 @@ class BaseIsaacBenchmarkAsync(_BaseIsaacBenchmarkCore, omni.kit.test.AsyncTestCa
         Args:
             usd_path: Path to USD stage.
 
+        Raises:
+            RuntimeError: If the stage could not be opened.
+
         Example:
 
         .. code-block:: python
 
             await benchmark.fully_load_stage("/path/to/scene.usd")
         """
-        stage_utils.open_stage(usd_path)
+        result, _ = stage_utils.open_stage(usd_path)
+        if not result:
+            raise RuntimeError(f"Failed to open USD stage: {usd_path}")
         await wait_until_stage_is_fully_loaded_async()
 
     async def store_custom_measurement(self, phase_name: str, custom_measurement: measurements.Measurement) -> None:

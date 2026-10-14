@@ -610,8 +610,11 @@ function(isaacsim_add_module)
         LIBRARY_OUTPUT_DIRECTORY "${module_output_dir}/lib"
         RUNTIME_OUTPUT_DIRECTORY "${module_output_dir}/lib"
         ARCHIVE_OUTPUT_DIRECTORY "${module_output_dir}/lib"
-        BUILD_RPATH "${ISAACSIM_LOADER_ORIGIN}"
+        # Track compiler runtime paths so install-time rewriting also removes
+        # paths appended by compiler specs rather than only CMake's own paths.
+        BUILD_RPATH "${ISAACSIM_LOADER_ORIGIN};${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES}"
         INSTALL_RPATH "${ISAACSIM_LOADER_ORIGIN}"
+        INSTALL_REMOVE_ENVIRONMENT_RPATH YES
         ISAACSIM_MODULE_NAME "${ARG_NAME}"
         ISAACSIM_GROUP_NAME "${group_name}"
         ISAACSIM_PACKAGE_VERSION "${group_version}"
@@ -748,8 +751,8 @@ function(isaacsim_add_header_module)
 endfunction()
 
 function(isaacsim_add_runtime_directory)
-    set(options NATIVE_ONLY WINDOWS_PYTHON_SHARED)
-    set(one_value_args MODULE SOURCE DESTINATION WINDOWS_INSTALL_DESTINATION)
+    set(options NATIVE_ONLY WINDOWS_BESIDE_MODULE WINDOWS_PYTHON_SHARED)
+    set(one_value_args MODULE SOURCE DESTINATION)
     cmake_parse_arguments(ARG "${options}" "${one_value_args}" "" ${ARGN})
     if(ARG_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "isaacsim_add_runtime_directory received unknown arguments: ${ARG_UNPARSED_ARGUMENTS}")
@@ -771,12 +774,6 @@ function(isaacsim_add_runtime_directory)
     # Install from the resolved directory so its contents are copied instead.
     file(REAL_PATH "${ARG_SOURCE}" ARG_SOURCE)
     _isaacsim_validate_relative_path("${ARG_MODULE} runtime destination" "${ARG_DESTINATION}")
-    if(ARG_WINDOWS_INSTALL_DESTINATION)
-        _isaacsim_validate_relative_path(
-            "${ARG_MODULE} Windows runtime install destination"
-            "${ARG_WINDOWS_INSTALL_DESTINATION}"
-        )
-    endif()
     _isaacsim_get_module_names("${ARG_MODULE}" module_target module_alias module_path module_output_dir)
     if(NOT TARGET "${module_target}")
         message(FATAL_ERROR "isaacsim_add_runtime_directory requires a registered module: ${ARG_MODULE}")
@@ -812,9 +809,13 @@ function(isaacsim_add_runtime_directory)
     )
     add_custom_target(${runtime_stage_target} ALL DEPENDS "${runtime_stage_stamp}")
     add_dependencies(${module_target} ${runtime_stage_target})
-    set(runtime_install_destination "${CMAKE_INSTALL_LIBDIR}/${ARG_DESTINATION}")
-    if(WIN32 AND ARG_WINDOWS_INSTALL_DESTINATION)
-        set(runtime_install_destination "${ARG_WINDOWS_INSTALL_DESTINATION}")
+    # WINDOWS_BESIDE_MODULE marks a payload the module resolves from its own directory, which
+    # Windows places in the binary directory rather than the library directory the other platforms
+    # share. The relative destination is the same either way, so only the root moves.
+    if(WIN32 AND ARG_WINDOWS_BESIDE_MODULE)
+        set(runtime_install_destination "${CMAKE_INSTALL_BINDIR}/${ARG_DESTINATION}")
+    else()
+        set(runtime_install_destination "${CMAKE_INSTALL_LIBDIR}/${ARG_DESTINATION}")
     endif()
     install(DIRECTORY "${ARG_SOURCE}/"
         DESTINATION "${runtime_install_destination}"
@@ -831,6 +832,12 @@ function(isaacsim_add_runtime_directory)
             ISAACSIM_WINDOWS_PYTHON_SHARED_RUNTIME_DESTINATIONS "${ARG_DESTINATION}"
         )
     endif()
+    # Native tests need the complete runtime closure even when an installed
+    # Python dependency owns this payload. Keep test staging independent from
+    # the wheel-packaging properties below.
+    set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_TEST_RUNTIME_DIRECTORIES
+        "${ARG_SOURCE}" "${ARG_DESTINATION}"
+    )
     if(NOT ARG_NATIVE_ONLY)
         set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_RUNTIME_DIRECTORIES
             "${ARG_SOURCE}" "${ARG_DESTINATION}"
@@ -888,31 +895,46 @@ function(isaacsim_install_runtime_dependencies)
                 set_property(TARGET "${resolved_runtime_target}" PROPERTY IMPORTED_GLOBAL TRUE)
             endif()
         endif()
-        install(FILES "$<TARGET_FILE:${resolved_runtime_target}>"
-            DESTINATION "${runtime_install_dir}"
-            COMPONENT "${runtime_component}"
+        set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_TEST_RUNTIME_TARGETS
+            "${resolved_runtime_target}"
         )
-        if(NOT WIN32)
-            # file(INSTALL) preserves a symlink without copying its target. Add
-            # the resolved payload as well so imported linker-name symlinks do
-            # not become dangling links after relocation.
-            set(runtime_install_code
-                "file(REAL_PATH \"$<TARGET_FILE:${resolved_runtime_target}>\" runtime_real_path)\n"
-                "if(NOT runtime_real_path STREQUAL \"$<TARGET_FILE:${resolved_runtime_target}>\")\n"
-                "  file(INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${runtime_install_dir}\" "
-                "TYPE FILE FILES \"\${runtime_real_path}\")\n"
-                "endif()"
+        if(NOT runtime_target_imported)
+            # Built runtime targets need CMake's install rewrite, just like modules.
+            # Copying TARGET_FILE would leak build and compiler runtime paths.
+            set_property(TARGET ${resolved_runtime_target} APPEND PROPERTY
+                BUILD_RPATH "${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES}")
+            set_property(TARGET ${resolved_runtime_target} PROPERTY INSTALL_REMOVE_ENVIRONMENT_RPATH YES)
+            install(TARGETS ${resolved_runtime_target}
+                LIBRARY DESTINATION "${runtime_install_dir}" COMPONENT "${runtime_component}" NAMELINK_SKIP
+                RUNTIME DESTINATION "${runtime_install_dir}" COMPONENT "${runtime_component}"
             )
-            string(JOIN "" runtime_install_code ${runtime_install_code})
-            install(CODE "${runtime_install_code}" COMPONENT "${runtime_component}")
-            # Imported shared-library targets commonly name a fully versioned
-            # file while dependents load its SONAME. Install both spellings so
-            # relocated packages do not rely on the dependency build prefix.
+        else()
             install(FILES "$<TARGET_FILE:${resolved_runtime_target}>"
                 DESTINATION "${runtime_install_dir}"
-                RENAME "$<TARGET_SONAME_FILE_NAME:${resolved_runtime_target}>"
                 COMPONENT "${runtime_component}"
             )
+            if(NOT WIN32)
+                # file(INSTALL) preserves a symlink without copying its target. Add
+                # the resolved payload as well so imported linker-name symlinks do
+                # not become dangling links after relocation.
+                set(runtime_install_code
+                    "file(REAL_PATH \"$<TARGET_FILE:${resolved_runtime_target}>\" runtime_real_path)\n"
+                    "if(NOT runtime_real_path STREQUAL \"$<TARGET_FILE:${resolved_runtime_target}>\")\n"
+                    "  file(INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${runtime_install_dir}\" "
+                    "TYPE FILE FILES \"\${runtime_real_path}\")\n"
+                    "endif()"
+                )
+                string(JOIN "" runtime_install_code ${runtime_install_code})
+                install(CODE "${runtime_install_code}" COMPONENT "${runtime_component}")
+                # Imported shared-library targets commonly name a fully versioned
+                # file while dependents load its SONAME. Install both spellings so
+                # relocated packages do not rely on the dependency build prefix.
+                install(FILES "$<TARGET_FILE:${resolved_runtime_target}>"
+                    DESTINATION "${runtime_install_dir}"
+                    RENAME "$<TARGET_SONAME_FILE_NAME:${resolved_runtime_target}>"
+                    COMPONENT "${runtime_component}"
+                )
+            endif()
         endif()
         if(NOT ARG_NATIVE_ONLY)
             set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_EXTERNAL_RUNTIME_TARGETS
@@ -921,6 +943,13 @@ function(isaacsim_install_runtime_dependencies)
             set_property(TARGET ${module_target} APPEND PROPERTY ISAACSIM_EXTERNAL_RUNTIME_DESTINATIONS
                 "${runtime_destination}"
             )
+        else()
+            # The native SDK artifact remains self-contained, but a Python
+            # dependency owns this target's runtime in installed wheels. Mark
+            # the imported target so nanobind does not copy it beside every
+            # Windows binding merely because it appears in the link closure.
+            set_property(TARGET ${resolved_runtime_target} PROPERTY
+                ISAACSIM_PYTHON_RUNTIME_EXCLUDED TRUE)
         endif()
         if(BUILD_TESTING)
             string(MAKE_C_IDENTIFIER "${resolved_runtime_target}" runtime_test_suffix)

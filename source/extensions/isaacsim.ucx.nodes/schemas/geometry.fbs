@@ -1,0 +1,65 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+namespace holoscan.schema;
+
+// Fixed-size geometry primitives shared by every message that carries a pose, a rate, or an
+// uncertainty. They live here rather than in the first schema that needed them because a second
+// definition of a rotation is not a duplicate declaration, it is a second convention: two
+// four-float structs with the same name and different component order type-check against each
+// other and silently rotate the world. One definition makes that impossible to express.
+//
+// These are FlatBuffers structs, so they are fixed-layout and inline. Field order is wire layout,
+// and reordering is a breaking change that no version check on a containing table will catch.
+
+// Rotation quaternion in (x, y, z, w) order on the wire; identity is (0, 0, 0, 1).
+//
+// The order is the contract. It matches ROS, MCAP, Newton, Isaac Lab, Warp, and Eigen's internal
+// storage, so a consumer that memcpy's into any of those gets the rotation it expects. Note that
+// the positional constructor follows the wire order: Quaternionf{0, 0, 0, 1} is identity, and
+// Quaternionf{1, 0, 0, 0} is a 180-degree rotation about x.
+struct Quaternionf {
+  x: float;
+  y: float;
+  z: float;
+  w: float;
+}
+
+// Double-precision counterpart of Quaternionf, same (x, y, z, w) wire order and the same
+// positional-constructor contract. Use it where single-precision rounding would accumulate
+// visibly, for example long-running orientation integration.
+struct Quaterniond {
+  x: double;
+  y: double;
+  z: double;
+  w: double;
+}
+
+// Three-component vector in (x, y, z) order. Units are the containing field's concern: a
+// Vector3f is a triple of floats and asserts nothing about whether it holds metres, radians per
+// second, or metres per second squared.
+struct Vector3f {
+  x: float;
+  y: float;
+  z: float;
+}
+
+// Double-precision counterpart of Vector3f, for example a globally-referenced position where
+// single precision would lose sub-metre resolution far from the origin.
+struct Vector3d {
+  x: double;
+  y: double;
+  z: double;
+}
+
+// Row-major 3x3 matrix, used for covariance. Present only when the producer actually estimates
+// it; an absent matrix means "unknown", which is not the same as a zero matrix meaning
+// "perfectly certain".
+struct Matrix3f {
+  m: [float:9];
+}
+
+// Double-precision counterpart of Matrix3f.
+struct Matrix3d {
+  m: [double:9];
+}

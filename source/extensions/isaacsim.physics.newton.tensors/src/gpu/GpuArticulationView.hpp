@@ -234,6 +234,18 @@ public:
      * @return True on success; false otherwise.
      */
     bool getLinkVelocities(const TensorDesc* dstTensor) const override;
+    /**
+     * @brief Gets incoming joint forces in each child joint frame.
+     * @param[out] dstTensor Destination tensor that receives the requested values.
+     * @return True on success; false otherwise.
+     */
+    bool getLinkIncomingJointForce(const TensorDesc* dstTensor) const override;
+    /**
+     * @brief Gets incoming joint wrenches projected onto each DOF motion direction.
+     * @param[out] dstTensor Destination tensor that receives the requested values.
+     * @return True on success; false otherwise.
+     */
+    bool getDofProjectedJointForces(const TensorDesc* dstTensor) const override;
 
     /**
      * @brief Gets the masses.
@@ -286,6 +298,19 @@ public:
      * @return True on success; false otherwise.
      */
     bool setInertias(const TensorDesc* srcTensor, const TensorDesc* indexTensor) override;
+    /**
+     * @brief Sets the DOF friction properties.
+     * @param[in] srcTensor Source tensor providing the values to write.
+     * @param[in] indexTensor Tensor of view indices selecting which elements to write.
+     * @return True on success; false otherwise.
+     */
+    bool setDofFrictionProperties(const TensorDesc* srcTensor, const TensorDesc* indexTensor) override;
+    /**
+     * @brief Gets the DOF friction properties.
+     * @param[out] dstTensor Destination tensor that receives the requested values.
+     * @return True on success; false otherwise.
+     */
+    bool getDofFrictionProperties(const TensorDesc* dstTensor) const override;
 
     /**
      * @brief Applies the forces and torques at position.
@@ -302,6 +327,12 @@ public:
                                          const TensorDesc* indexTensor,
                                          bool isGlobal) override;
 
+protected:
+    int* _getDeviceIndexScratch() const override
+    {
+        return m_deviceIndexScratch;
+    }
+
 private:
     int m_deviceOrdinal;
 
@@ -309,7 +340,9 @@ private:
     int* m_deviceDofPositionIndices = nullptr;
     int* m_deviceDofVelocityIndices = nullptr;
     int* m_deviceDofAxisIndices = nullptr;
+    int* m_deviceDofBodyIndices = nullptr;
     int* m_deviceLinkFlatIndices = nullptr;
+    int* m_deviceLinkJointFlatIndices = nullptr;
     int* m_deviceRootIndices = nullptr;
     int* m_deviceRootJointQStartIndices = nullptr;
     int* m_deviceFixedRootJointMapping = nullptr; ///< [count] artiIdx → rootJointIdx for fixed roots, -1 for free.

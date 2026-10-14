@@ -21,7 +21,6 @@ pyproject.optional-dependencies.all = [
         "isaacsim-benchmark==${version}",
         "isaacsim-code-editor==${version}",
         "isaacsim-core==${version}",
-        "isaacsim-cortex==${version}",
         "isaacsim-example==${version}",
         "isaacsim-gui==${version}",
         "isaacsim-replicator==${version}",
@@ -58,14 +57,14 @@ pyproject.keywords = ["nvidia", "omniverse", "isaacsim", "kernel"]
 pyproject.dependencies.all = [
     # archives (omni.kit.pip_archive)
     # 1.
-    "aiohttp==3.14.1",
+    "aiohttp==3.14.3",
     # 2.
     "pycares==5.0.1",
     "aiodns==3.1.1",
     "Pillow>=12.1.1,<13",
     "toml==0.10.2",
     "numpy==2.3.1",
-    "click==8.1.7",
+    "click==8.3.3",
     "websockets>=12.0,<15",
     "fastapi==0.139.2",
     "anyio==4.14.2",
@@ -93,8 +92,8 @@ pyproject.dependencies.all = [
     "qrcode==7.4.2",
     "Jinja2==3.1.6",
     "aiohappyeyeballs==2.6.1",
-    "aiobotocore==2.25.1",
-    "boto3==1.40.61",
+    "aiobotocore==2.26.0",
+    "boto3==1.41.5",
     "propcache==0.2.1",
     "urllib3==2.7.0",
     # 3.
@@ -286,7 +285,7 @@ pyproject.dependencies.all = [
     "pyparsing==3.3.2",
     "cycler==0.12.1",
     "kiwisolver==1.4.9",
-    "packaging==26.0",
+    "packaging>=23.2,<=26.0",
     "osqp==1.0.5",
     "qdldl==0.1.7.post5",
     "pyperclip==1.11.0",
@@ -296,15 +295,14 @@ pyproject.dependencies.all = [
     "imageio==2.37.2",
     "scipy==1.17.0",
     "pyyaml==6.0.3",
-    "opencv-python-headless-noffmpeg==4.14.0.94rc1",
+    "opencv-python-headless-noffmpeg==4.14.0.94rc3",
     "trimesh==4.11.1",
     "rtree==1.4.1",
     # archives (omni.pip.cloud)
-    "aioboto3==15.5.0",
-    "boto3==1.40.61",
-    "botocore==1.40.61",
+    "boto3==1.41.5",
+    "botocore==1.41.5",
     "awscrt==0.23.8",
-    "s3transfer==0.14.0",
+    "s3transfer==0.15.0",
     "azure-storage-blob==12.17.0",
     "azure-identity==1.13.0",
     "oauthlib==3.2.2",
@@ -319,11 +317,11 @@ pyproject.dependencies.all = [
     "python-dateutil==2.9.0.post0",
     "six==1.17.0",
     # archives (isaacsim.pip.newton)
-    "mujoco==3.11.0",
-    "mujoco-warp==3.11.0",
-    "newton[sim]==1.5.0",
-    "newton-usd-schemas==0.4.1",
-    "mujoco-usd-converter==0.5.0",
+    "mujoco==3.12.0",
+    "mujoco-warp==3.12.0",
+    "newton[sim]==1.6.1",
+    "newton-usd-schemas==0.5.0",
+    "mujoco-usd-converter==0.6.1",
     "cbor2==5.9.0",
     "imgui-bundle==1.92.601",
     "PyOpenGL-accelerate==3.1.10",
@@ -411,30 +409,13 @@ inventory.includes.all = [
     "VERSION",
 ]
 
-[isaacsim-cortex]
-# pyproject.toml
-pyproject.description = "Isaac Sim components to enable the Cortex decision framework for intelligent robot behavior"
-pyproject.keywords = ["nvidia", "omniverse", "isaacsim", "cortex"]
-pyproject.dependencies.all = [
-    "isaacsim-robot==${version}",
-    "isaacsim-ros1==${version}",
-]
-# inventory (relative to the build config)
-inventory.includes.all = [
-    # license
-    "LICENSE.txt",
-    # extensions
-    "extsDeprecated/isaacsim.cortex.behaviors",
-    "extsDeprecated/isaacsim.cortex.framework",
-    "extsDeprecated/isaacsim.cortex.examples",
-]
-
 [isaacsim-example]
 # pyproject.toml
 pyproject.description = "Isaac Sim examples"
 pyproject.keywords = ["nvidia", "omniverse", "isaacsim", "example"]
 pyproject.dependencies.all = [
-    "isaacsim-cortex==${version}",
+    "isaacsim-robot==${version}",
+    "isaacsim-ros1==${version}",
 ]
 # inventory (relative to the build config)
 inventory.includes.all = [

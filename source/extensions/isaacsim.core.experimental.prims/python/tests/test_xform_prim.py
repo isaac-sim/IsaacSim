@@ -227,6 +227,79 @@ class TestXformPrim(omni.kit.test.AsyncTestCase):
                 check_array(output[1], shape=(expected_count, 4), dtype=wp.float32, device=device)
                 check_allclose((expected_v0, expected_v1), output, given=(v0, v1))
 
+    async def test_usdrt_pose_orientation_preserves_scale(self) -> None:
+        """Verify batched USDRT local and world orientation updates preserve non-unit scale."""
+        paths = ["/World/ScaledA", "/World/ScaledB"]
+        expected_scales = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float32)
+        expected_translations = np.array([[7.0, 8.0, 9.0], [-4.0, 5.0, -6.0]], dtype=np.float32)
+        initial_orientations = np.array(
+            [[0.9659258, 0.258819, 0.0, 0.0], [0.9848078, 0.0, 0.0, 0.1736482]], dtype=np.float32
+        )
+        orientations = np.array([[0.9238795, 0.0, 0.3826834, 0.0], [0.9659258, 0.258819, 0.0, 0.0]], dtype=np.float32)
+
+        for pose_space in ("local", "world"):
+            await stage_utils.create_new_stage_async()
+            stage = stage_utils.get_current_stage(backend="usd")
+            for path, scale, translation, orientation in zip(
+                paths, expected_scales, expected_translations, initial_orientations
+            ):
+                prim = stage.DefinePrim(path, "Xform")
+                xformable = UsdGeom.Xformable(prim)
+                xformable.AddTranslateOp().Set(Gf.Vec3d(*(float(value) for value in translation)))
+                xformable.AddOrientOp().Set(Gf.Quatf(*(float(value) for value in orientation)))
+                xformable.AddScaleOp().Set(Gf.Vec3f(*(float(value) for value in scale)))
+            await omni.kit.app.get_app().next_update_async()
+
+            wrapped = XformPrim(paths)
+            with use_backend("usdrt", raise_on_unsupported=True, raise_on_fallback=True):
+                if pose_space == "local":
+                    wrapped.set_local_poses(orientations=orientations)
+                    scales = wrapped.get_local_scales()
+                    translations, returned_orientations = wrapped.get_local_poses()
+                else:
+                    wrapped.set_world_poses(orientations=orientations)
+                    scales = wrapped.get_world_scales()
+                    translations, returned_orientations = wrapped.get_world_poses()
+
+            np.testing.assert_allclose(scales.numpy(), expected_scales, atol=1e-5)
+            np.testing.assert_allclose(translations.numpy(), expected_translations, atol=1e-5)
+            np.testing.assert_allclose(returned_orientations.numpy(), orientations, atol=1e-5)
+
+    @parametrize(
+        devices=["cpu"],
+        backends=["fabric"],
+        instances=["one"],
+        operations=["wrap"],
+        prim_class=XformPrim,
+        populate_stage_func=populate_stage,
+        max_num_prims=1,
+    )
+    async def test_fabric_local_pose_partial_updates(
+        self, prim: Any, num_prims: Any, device: Any, backend: Any
+    ) -> None:
+        """Test one-sided local pose updates on Fabric.
+
+        Args:
+            prim: Prim wrapper under test.
+            num_prims: Number of prims under test.
+            device: Device under test.
+            backend: Backend name under test.
+        """
+        await omni.kit.app.get_app().next_update_async()
+        initial_translation = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+        updated_translation = np.array([[4.0, 5.0, 6.0]], dtype=np.float32)
+        initial_orientation = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+        updated_orientation = np.array([[0.70710677, 0.0, 0.0, 0.70710677]], dtype=np.float32)
+        with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+            prim.set_local_poses(initial_translation, initial_orientation)
+            prim.set_local_poses(translations=updated_translation)
+            output = prim.get_local_poses()
+            check_allclose((updated_translation, initial_orientation), output)
+
+            prim.set_local_poses(orientations=updated_orientation)
+            output = prim.get_local_poses()
+            check_allclose((updated_translation, updated_orientation), output)
+
     @parametrize(
         backends=["usd", "usdrt", "fabric"],
         operations=["wrap"],

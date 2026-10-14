@@ -96,6 +96,16 @@ class StructuredLightCamera(RtxCamera):
             cam = StructuredLightCamera(...)
             sensor = CameraSensor(cam, resolution=(720, 1280), annotators=["rgb"])
 
+    .. note::
+
+        The default anti-aliasing mode, DLSS ``Performance``, renders below the
+        render product resolution and upscales. At low resolutions this
+        undersamples the projected pattern and washes it out, most visibly while
+        the camera or projector is moving. Set ``/rtx/post/aa/op`` to ``4``
+        (DLAA, native resolution) or ``/rtx/post/dlss/execMode`` to ``3``
+        (``Auto``) before creating the render product when the capture must
+        preserve the pattern.
+
     **Timestamps**
 
     ``projector_timestamps`` is a list of ``(numerator, denominator)`` rational
@@ -158,6 +168,7 @@ class StructuredLightCamera(RtxCamera):
             See :class:`RtxCamera`.
 
     Raises:
+        ValueError: If the input argument refers to more than one Camera prim.
         ValueError: If ``projector_light_patterns`` is empty.
         ValueError: If ``projector_direction_texture`` is ``None``.
         ValueError: If ``projector_timestamps`` is invalid (wrong length, first
@@ -245,7 +256,14 @@ class StructuredLightCamera(RtxCamera):
 
         # Resolve whether the Camera prim at ``path`` is being created fresh or wrapped
         # around an existing prim. Only fresh prims are safe to remove on rollback.
-        existent_paths, _ = self.resolve_paths(path)
+        existent_paths, nonexistent_paths = self.resolve_paths(path)
+        resolved_count = len(existent_paths) + len(nonexistent_paths)
+        if resolved_count > 1:
+            raise ValueError(
+                "Only one Camera prim is supported, "
+                f"but the provided argument refers to {resolved_count} prims: "
+                f"{existent_paths + nonexistent_paths}"
+            )
         self._created_camera_prim = len(existent_paths) == 0
 
         # Initialize the RtxCamera base — this creates or wraps the Camera prim.

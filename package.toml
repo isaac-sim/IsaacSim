@@ -109,6 +109,7 @@ files_strip_exclude = [
     ["exts/isaacsim.ucx.core/bin/librmm.so*"],
     ["exts/isaacsim.ucx.core/bin/librapids_logger.so*"],
     ["exts/isaacsim.ucx.core/bin/ucx/**"],
+    ["exts/isaacsim.replicator.teleop/pip_prebundle/isaacteleop/cloudxr/native/**"],
     ["exts/omni.isaac.core_archive/pip_prebundle/**"],
     ["exts/omni.pip.cloud/pip_prebundle/**"],
     ["exts/omni.pip.compute/pip_prebundle/**"],
@@ -137,6 +138,7 @@ files_strip_exclude = [
     ["exts/isaacsim.ucx.core/bin/librmm.so*"],
     ["exts/isaacsim.ucx.core/bin/librapids_logger.so*"],
     ["exts/isaacsim.ucx.core/bin/ucx/**"],
+    ["exts/isaacsim.replicator.teleop/pip_prebundle/isaacteleop/cloudxr/native/**"],
     ["exts/omni.isaac.core_archive/pip_prebundle/**"],
     ["exts/omni.pip.cloud/pip_prebundle/**"],
     ["exts/omni.pip.compute/pip_prebundle/**"],
@@ -150,7 +152,6 @@ files = [
     # ["../../docs/isaac-sim/latest/py/**", "docs/py/"] # windows ext api docs
 ]
 files_exclude = [
-    ["standalone_examples/cortex/**"], # Cortex not shipped on windows
     ["exts/isaacsim.asset.exporter.urdf/pip_prebundle/bin/**"], # ISIM-2584 remove because of malware
 ]
 

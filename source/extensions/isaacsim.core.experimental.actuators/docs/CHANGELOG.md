@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1] - 2026-10-01
+### Fixed
+- Support Newton 1.6 drive classes throughout the actuator API, examples, and documentation.
+
+## [0.2.0] - 2026-09-29
+### Added
+- `ArticulationActuators.from_actuators`: optionally accept a list of DOF names per `ActuatorConfig` to build one grouped actuator.
+
+### Changed
+- `_discover_and_build_actuators` batches compatible USD-authored actuators across DOFs and robot instances using Newton's `ModelBuilder`.
+- `from_actuators` stores actuators in the supplied group order instead of DOF order
+
 ## [0.1.6] - 2026-08-05
 ### Changed
 - Use `joint_target_q` / `joint_target_qd` on Newton actuator control adapters

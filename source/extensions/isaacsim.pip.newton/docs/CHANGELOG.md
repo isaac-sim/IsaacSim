@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.1] - 2026-10-05
+### Changed
+- Updated Newton from 1.6.1rc1 to the 1.6.1 release.
+
+## [0.12.0] - 2026-09-24
+### Changed
+- Updated Newton to 1.6.1rc1, MuJoCo and MuJoCo Warp to 3.12.0, mujoco-usd-converter to 0.6.1, newton-usd-schemas to 0.5.0, and Warp to 1.17.0.
+
 ## [0.11.0] - 2026-08-11
 ### Changed
 - Updated Newton to 1.5.0.

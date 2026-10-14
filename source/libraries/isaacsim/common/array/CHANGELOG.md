@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- `broadcastView()` and `transposeView()` expose explicit shared strided views while `broadcastTo()` and
+  `transpose()` retain their original copy semantics.
+- The contiguous `fromBuffer()` overload accepts the original shape/dtype call form alongside bounded strided buffers.
+- `sqrt()` and `power()` compute in floating point regardless of the operand dtype.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

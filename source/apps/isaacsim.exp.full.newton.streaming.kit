@@ -1,0 +1,51 @@
+[package]
+title = "Isaac Sim Full Streaming (Newton Physics)"
+description = "Headless Isaac Sim with Newton Physics and WebRTC livestreaming"
+version = "6.2.0"
+execFile = "isaac-sim.newton.streaming"
+keywords = ["experience", "app", "usd", "isaacsim", "newton"]
+
+[dependencies]
+"isaacsim.exp.full.newton" = {}
+"omni.kit.livestream.app" = {}
+"omni.kit.widget.cache_indicator" = { optional = true }
+
+[settings.app]
+name = "Isaac-Sim Streaming (Newton)"
+version = "6.2.0"
+vulkan = true
+enableDeveloperWarnings = false
+
+[settings.app.exts.folders]
+'++' = [
+    "${app}",
+    "${app}/../exts",
+    "${app}/../extscache",
+    "${app}/../extsUser",
+    "${app}/../extsDeprecated",
+]
+
+[settings.app.window]
+hideUi = false
+title = "Isaac Sim Streaming (Newton Physics)"
+drawMouse = false
+
+[settings.app.livestream]
+allowResize = true
+outDirectory = "${data}"
+
+[settings.app.extensions]
+excluded = ["omni.kit.widget.cache_indicator"]
+
+[settings.exts."omni.kit.livestream.app"]
+primaryStream.signalPort = 49100
+primaryStream.streamPort = 47998
+primaryStream.allowDynamicResize = true
+primaryStream.enableEventTracing = true
+primaryStream.enableOpenTelemetry = false
+primaryStream.streamType = "webrtc"
+
+[settings.exts."omni.services.livestream.session"]
+quitOnSessionEnded = true
+resumeTimeoutSeconds = 30
+waitForSessionReadyEvent = false

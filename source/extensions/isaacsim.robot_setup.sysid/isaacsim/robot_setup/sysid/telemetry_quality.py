@@ -213,13 +213,7 @@ def _estimate_joint_lag(
     if core_norm <= 0.0:
         return no_estimate
     lags = np.arange(-lag_cap, lag_cap + 1)
-    corr = np.zeros(lags.shape[0], dtype=np.float64)
-    for i, lag in enumerate(lags):
-        window = x[lag_cap - lag : n - lag_cap - lag]
-        window = window - np.mean(window)
-        window_norm = float(np.linalg.norm(window))
-        if window_norm > 0.0:
-            corr[i] = float(np.dot(core, window)) / (core_norm * window_norm)
+    corr = _normalized_lag_correlation(x, core, core_norm)
     peak = int(np.argmax(corr))
     peak_value = float(corr[peak])
     if peak_value < COMMAND_LAG_MIN_CORRELATION:
@@ -231,6 +225,129 @@ def _estimate_joint_lag(
             offset = float(np.clip(0.5 * (corr[peak - 1] - corr[peak + 1]) / denom, -0.5, 0.5))
     lag_samples = float(lags[peak]) + offset
     return CommandLagJointEstimate(joint_index, lag_samples, lag_samples * dt, peak_value)
+
+
+def _normalized_lag_correlation(x: np.ndarray, core: np.ndarray, core_norm: float) -> np.ndarray:
+    """Correlate ``core`` against every window of ``x`` it fits in, in one pass.
+
+    Scoring lags one at a time costs O(len(x) * lag count) and issues two small
+    BLAS calls per lag, which dominates telemetry quality on high-rate recordings.
+    Two properties collapse it to a single transform:
+
+    * ``core`` is already mean-removed, so the per-window mean subtraction
+      reduces to the window mean times the (rounding-level) sum of ``core``. The
+      numerator is then a plain cross-correlation, which one FFT pair evaluates
+      for every lag at once, minus that term.
+    * Every window's mean and centered energy come from
+      :func:`_window_means_and_energies` in O(n log m).
+
+    ``x`` is shifted by its median first. Nothing here changes under a constant
+    shift, but it keeps the FFT's rounding, which scales with the magnitude of
+    ``x``, small when the command has a steady rate.
+
+    Results are indexed by ascending lag, matching ``arange(-lag_cap, lag_cap + 1)``.
+
+    Args:
+        x: Command-derivative series covering the excited window.
+        core: Mean-removed measured-velocity core the lags are scored against.
+        core_norm: Euclidean norm of ``core``, which the caller has verified is positive.
+
+    Returns:
+        Normalized correlation for each candidate lag.
+    """
+    x = x - np.median(x)
+    n = int(x.shape[0])
+    m = int(core.shape[0])
+    # Linear (not circular) correlation needs room for n + m - 1 points.
+    size = 1 << (n + m - 2).bit_length()
+    spectrum = np.fft.rfft(x, size) * np.conj(np.fft.rfft(core, size))
+    numerator = np.fft.irfft(spectrum, size)[: n - m + 1]
+
+    window_mean, window_energy = _window_means_and_energies(x, m)
+    # A window far from zero would amplify the residual sum of ``core``.
+    numerator -= window_mean * float(np.sum(core))
+    window_norm = np.sqrt(window_energy)
+
+    # Window index and lag run in opposite directions: lag L reads x at lag_cap - L.
+    numerator = numerator[::-1]
+    window_norm = window_norm[::-1]
+    corr = np.zeros(numerator.shape[0], dtype=np.float64)
+    usable = window_norm > 0.0
+    corr[usable] = numerator[usable] / (core_norm * window_norm[usable])
+    return corr
+
+
+def _window_means_and_energies(values: np.ndarray, width: int) -> tuple[np.ndarray, np.ndarray]:
+    """Mean and centered energy of every contiguous ``width``-sample window, in O(n log width).
+
+    Sliding sums of ``x`` and ``x**2`` give the energy as the difference of two
+    nearly equal totals whenever a window's mean is large next to its spread, and
+    cancellation then destroys it. Instead, the statistics of every span of 1, 2,
+    4, ... samples are built by merging adjacent halves, and each window is
+    assembled from the spans matching the set bits of ``width``. A merge only adds
+    non-negative terms, so no window loses its energy to cancellation, and only
+    samples inside a window contribute to it.
+
+    Args:
+        values: Series to summarize.
+        width: Window length, at least one and at most ``len(values)``.
+
+    Returns:
+        ``len(values) - width + 1`` window means and centered energies, ordered by window start.
+    """
+    count = int(values.shape[0]) - width + 1
+    # span_mean[i] and span_energy[i] describe values[i : i + span].
+    span_mean = np.asarray(values, dtype=np.float64)
+    span_energy = np.zeros_like(span_mean)
+    span = 1
+    covered = 0
+    window_mean = np.empty(0, dtype=np.float64)
+    window_energy = np.empty(0, dtype=np.float64)
+    while True:
+        if width & span:
+            piece_mean = span_mean[covered : covered + count]
+            piece_energy = span_energy[covered : covered + count]
+            if covered == 0:
+                window_mean, window_energy = piece_mean.copy(), piece_energy.copy()
+            else:
+                window_mean, window_energy = _merge_adjacent(
+                    window_mean, window_energy, covered, piece_mean, piece_energy, span
+                )
+            covered += span
+        if 2 * span > width:
+            return window_mean, window_energy
+        span_mean, span_energy = _merge_adjacent(
+            span_mean[:-span], span_energy[:-span], span, span_mean[span:], span_energy[span:], span
+        )
+        span *= 2
+
+
+def _merge_adjacent(
+    left_mean: np.ndarray,
+    left_energy: np.ndarray,
+    left_count: int,
+    right_mean: np.ndarray,
+    right_energy: np.ndarray,
+    right_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Combine the statistics of adjacent sample runs with the pairwise mean/variance update.
+
+    Args:
+        left_mean: Mean of each left run.
+        left_energy: Centered energy of each left run.
+        left_count: Samples in every left run.
+        right_mean: Mean of each right run, which directly follows its left run.
+        right_energy: Centered energy of each right run.
+        right_count: Samples in every right run.
+
+    Returns:
+        Mean and centered energy of each combined run.
+    """
+    total = left_count + right_count
+    delta = right_mean - left_mean
+    mean = left_mean + delta * (right_count / total)
+    energy = left_energy + right_energy + delta * delta * (left_count * right_count / total)
+    return mean, energy
 
 
 @dataclass(frozen=True)

@@ -698,6 +698,9 @@ class UIBuilder:
                     robot_poser.apply_joint_state_anchored(stage, self._robot_prim, pose.joints, anchor)
                 else:
                     robot_poser.apply_joint_state(stage, self._robot_prim, pose.joints)
+        except ValueError as exc:
+            carb.log_warn(f"Robot Poser: {exc}")
+            return
         finally:
             self._updating_transform = False
         force_manipulator_refresh()
@@ -1009,6 +1012,9 @@ class UIBuilder:
                 jv_attr = pose_prim.GetAttribute(robot_schema.Attributes.POSE_JOINT_VALUES.name)
                 if jv_attr:
                     jv_attr.Set(joint_values_native)
+        except ValueError as exc:
+            carb.log_warn(f"Robot Poser: {exc}")
+            return
         finally:
             self._updating_transform = False
 

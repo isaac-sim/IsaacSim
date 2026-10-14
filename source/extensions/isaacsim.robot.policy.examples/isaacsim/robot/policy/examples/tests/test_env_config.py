@@ -424,7 +424,7 @@ class TestActuatorModelSpecs(omni.kit.test.AsyncTestCase):
     def test_delayed_dc_motor_resolves_dc_clamping_and_delay(self) -> None:
         """Compose an exported delayed DC motor from PD control, DC clamping, and delay."""
         from isaacsim.robot.policy.examples.utils.newton_actuators import build_newton_actuator_configs
-        from newton.actuators import ClampingDCMotor, ControllerPD, Delay
+        from newton.actuators import ClampingDCMotor, Delay, DrivePD
 
         data = _make_config()
         data["scene"]["robot"]["actuators"] = {
@@ -455,12 +455,13 @@ class TestActuatorModelSpecs(omni.kit.test.AsyncTestCase):
         self.assertEqual(spec.max_delay, 4)
 
         actuator_pairs = build_newton_actuator_configs(spec, num_robots=1, device="cpu")
-        self.assertEqual([joint_name for _, joint_name in actuator_pairs], _JOINT_NAMES)
-        for actuator, _ in actuator_pairs:
-            self.assertIsInstance(actuator.controller, ControllerPD)
-            self.assertEqual(len(actuator.clamping), 1)
-            self.assertIsInstance(actuator.clamping[0], ClampingDCMotor)
-            self.assertIsInstance(actuator.delay, Delay)
+        self.assertEqual([joint_names for _, joint_names in actuator_pairs], [_JOINT_NAMES])
+        self.assertEqual(len(actuator_pairs), 1)
+        actuator, _ = actuator_pairs[0]
+        self.assertIsInstance(actuator.controller, DrivePD)
+        self.assertEqual(len(actuator.clamping), 1)
+        self.assertIsInstance(actuator.clamping[0], ClampingDCMotor)
+        self.assertIsInstance(actuator.delay, Delay)
 
     def test_actuator_specs_ignore_groups_outside_policy_joint_subset(self) -> None:
         """Ignore explicit actuator groups that own none of the requested joints."""
@@ -564,7 +565,9 @@ class TestNewtonRobotDefaults(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(d6_joint.GetAttribute("newton:armature").Get(), 0.0)
         self.assertFalse(d6_joint.GetAttribute("newton:limitStiffness").HasAuthoredValueOpinion())
         self.assertFalse(authored_joint.GetAttribute("newton:armature").HasAuthoredValueOpinion())
+        self.assertEqual(list(authored_joint.GetAttribute("mjc:solreflimit").Get()), [0.02, 1.0])
         self.assertFalse(authored_joint.GetAttribute("newton:limitStiffness").HasAuthoredValueOpinion())
+        self.assertFalse(authored_joint.GetAttribute("newton:limitDamping").HasAuthoredValueOpinion())
         self.assertFalse(environment_collision.HasAPI("NewtonCollisionAPI"))
 
 

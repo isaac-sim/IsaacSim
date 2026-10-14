@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 
 from isaacsim.asset.transformer import RuleConfigurationParam, RuleInterface
+from isaacsim.asset.transformer.utils import make_explicit_relative
 from pxr import Sdf, Usd
 
 # Default configuration values
@@ -168,6 +169,10 @@ class FlattenRule(RuleInterface):
             self.log_operation("Failed to flatten input stage")
             return None
 
+        # Resolve output path before repairing metadata so relative asset paths
+        # are anchored from the layer that will author them.
+        output_abs_path = os.path.join(self.package_root, os.path.join(self.destination_path, output_path))
+
         # ``Usd.Stage.Flatten`` stamps the pseudo-root ``documentation`` field
         # with "Generated from Composed Stage of root layer <path>", embedding the
         # absolute/remote source path (e.g. ``omniverse://...``). Clear it so the
@@ -176,8 +181,19 @@ class FlattenRule(RuleInterface):
         # ``TransferContent`` path also picks up the empty value.
         flattened_layer.documentation = ""
 
-        # Resolve output path
-        output_abs_path = os.path.join(self.package_root, os.path.join(self.destination_path, output_path))
+        # Flatten resolves the source model identifier to an absolute path. The
+        # transformed model is represented publicly by the generated interface
+        # layer, so point the default prim at that package-local asset instead.
+        interface_asset_name = self.args.get("interface_asset_name")
+        if not interface_asset_name:
+            interface_asset_name = os.path.splitext(os.path.basename(input_stage_path))[0] + ".usda"
+        interface_asset_path = os.path.join(self.package_root, interface_asset_name)
+        self._retarget_default_asset_identifier(
+            flattened_layer,
+            output_abs_path,
+            interface_asset_path,
+        )
+
         os.makedirs(os.path.dirname(output_abs_path), exist_ok=True)
 
         # Check if the layer is already cached by USD (e.g., opened by manager.py)
@@ -204,6 +220,34 @@ class FlattenRule(RuleInterface):
 
         # Return the path so manager can switch to the flattened stage
         return output_abs_path
+
+    @staticmethod
+    def _retarget_default_asset_identifier(
+        layer: Sdf.Layer,
+        output_path: str,
+        interface_asset_path: str,
+    ) -> None:
+        """Point the flattened default prim at the package's public interface layer.
+
+        Args:
+            layer: Flattened layer whose default prim metadata is updated.
+            output_path: Destination path anchoring the flattened layer.
+            interface_asset_path: Path to the package's public interface layer.
+        """
+        if not layer.defaultPrim:
+            return
+        default_prim = layer.GetPrimAtPath(Sdf.Path.absoluteRootPath.AppendChild(layer.defaultPrim))
+        if default_prim is None or not default_prim.HasInfo("assetInfo"):
+            return
+
+        asset_info = dict(default_prim.GetInfo("assetInfo"))
+        if "identifier" not in asset_info:
+            return
+
+        output_dir = os.path.dirname(os.path.abspath(output_path))
+        relative_path = make_explicit_relative(os.path.relpath(os.path.abspath(interface_asset_path), output_dir))
+        asset_info["identifier"] = Sdf.AssetPath(relative_path)
+        default_prim.SetInfo("assetInfo", asset_info)
 
     def _apply_variant_selections(
         self, stage: Usd.Stage, selected_variants: dict[str, str], case_insensitive: bool = True

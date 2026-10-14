@@ -14,9 +14,9 @@ Author sim-ready USD with layered payloads (base, instances, materials, physics,
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- OpenUSD plus the matching foundation distribution for standalone composition.
+- Built Isaac Sim only for Asset Transformer UI or wheel staging, live Kit-stage, MDL,
+  or renderer validation.
 
 ## Limitations
 
@@ -27,9 +27,18 @@ Author sim-ready USD with layered payloads (base, instances, materials, physics,
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Composition execution routes
+
+The `isaacsim.foundation.usd.openusd` backend runs in a normal library
+environment, with tested reference and variant operations. The standalone
+`isaacsim.foundation.usd.ovstage` backend does not currently support adding
+references or getting or setting variants; confirm parity in the module tests.
+
+Asset Transformer UI, live `omni.usd` context, Kit commands, MDL, rendering,
+and extension lifecycle remain Kit-specific.
 
 ## When to use
 

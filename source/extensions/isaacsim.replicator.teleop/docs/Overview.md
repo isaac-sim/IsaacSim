@@ -20,6 +20,16 @@ when its optional backend is installed. Use
 {func}`get_teleop_capabilities <isaacsim.replicator.teleop.get_teleop_capabilities>`
 to query these features without importing native modules.
 
+## Floating-gripper scenes
+
+The xArm, Robotiq 2F-85, and Robotiq Hand-E scenario stages pair with the
+matching `floating_<name>.yaml` profiles. Their reusable asset layers live under
+`<assets_root>/Isaac/Samples/Replicator/Teleop/` and reference vendor assets
+under `Isaac/Robots`; keep those dependencies reachable when moving a stage.
+The scenarios use right-side floating and grasp control with VR-origin
+locomotion. See the Teleop tutorial's **Scenario stages** section for paths,
+stage composition, object sizes, and setup steps.
+
 ## Key Components
 
 ### {class}`TeleopManager <isaacsim.replicator.teleop.TeleopManager>`
@@ -158,7 +168,7 @@ Live VR teleop expects the Isaac Teleop CloudXR runtime to be started **external
 Live input requires the Isaac Teleop CloudXR runtime to be installed from PyPI and running with the headset client connected before {meth}`TeleopManager.connect <isaacsim.replicator.teleop.TeleopManager.connect>` is called with ``input_mode="live"``. MCAP replay requires the Isaac Teleop package but is headless; debug input requires neither the package nor CloudXR. Install the live/replay runtime with:
 
 ```bash
-python -m pip install "isaacteleop[cloudxr,retargeters]~=1.3.131"
+python -m pip install "isaacteleop[cloudxr,retargeters]==1.4.145"
 ```
 
 Start CloudXR in a **separate terminal** before connecting live teleop:
@@ -173,7 +183,7 @@ When launching Isaac Sim from a terminal, you can optionally source the env file
 source ~/.cloudxr/run/cloudxr.env
 ```
 
-Open the [Isaac Teleop Web Client](https://nvidia.github.io/IsaacTeleop/client/) from the headset browser, connect, then click **Connect** in the Isaac Sim Teleop window **Session** panel.
+Open the [Isaac Teleop Web Client](https://nvidia.github.io/IsaacTeleop/client/) in the headset browser, connect, then click **Connect** in the Isaac Sim Teleop window **Session** panel. If the latest client has connection issues, use the matching URL printed by the CloudXR launcher.
 
 ## Functionality
 
@@ -210,6 +220,38 @@ Use `omni.replicator.core` render products and annotators directly to capture an
 RGB PNG, raw floating-point depth NPY, and normalized depth-preview PNG for each
 named camera and phase. Detach annotators and destroy render products during
 cleanup.
+
+### Portable gripper definition paths
+
+`resolve_floating_gripper_asset_path_async(asset_path, *, assets_root=None,
+base_dir=None, verify=True)` supports four forms, in this precedence order:
+
+1. A URI such as `omniverse://server/gripper.usda`, `https://host/gripper.usda`,
+   or `file:///data/gripper.usda`, used as authored.
+2. An existing absolute local file, including native Windows drive and UNC paths.
+3. An existing file relative to the definition's directory, such as
+   `overlays/gripper.usda`. Scripted calls supply that directory as `base_dir`;
+   the YAML loader and curated scene builder resolve siblings automatically.
+4. An asset-root fragment such as `/Isaac/Robots/Ufactory/xarm_gripper/xarm_gripper.usd`,
+   appended to the configured root using the public storage API.
+
+Only the last form requires asset-root discovery. `verify=True` checks whether
+the resulting location is accessible; it does not validate the USD's transitive
+dependencies. `verify=False` skips that accessibility probe, but still checks
+local file existence to distinguish local files from asset-root fragments.
+
+Missing local files fall back to the assets root because `/Isaac/...` also looks
+like an absolute POSIX path. Use a `file://` URI when you require an explicit local
+location with no fallback. Without `base_dir`, relative values are asset-root
+fragments, not paths relative to the process working directory.
+
+A gripper definition's `grasp_controller.config_path` can likewise name a local
+YAML map relative to its own directory. Existing `builtin://` and absolute map
+paths retain their meaning. Keep the definition, overlay, and map together when
+moving the directory, and keep the overlay's own USD references portable.
+This support does not add a custom-directory registry, hardware wizard, or
+automatic profile-stage loading. It also does not change controller prim paths
+in existing teleop profiles.
 
 ### Teleop Profiles
 

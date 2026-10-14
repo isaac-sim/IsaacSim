@@ -35,17 +35,22 @@ class HolonomicController:
         wheel_radius: Radius of each wheel (scalar broadcast to all wheels, or per-wheel array).
         wheel_positions: Positions of each wheel relative to the robot center, shape (N, 3).
         wheel_orientations: Quaternion orientations of each wheel, shape (N, 4) as [w, x, y, z].
-        mecanum_angles: Mecanum roller angles in degrees for each wheel.
+        mecanum_angles: Mecanum roller-axis angles in degrees for each wheel, interpreted modulo 180 degrees in the
+            range [0, 180).
         wheel_axis: Local rotation axis of the wheel joint.
         up_axis: Up direction of the robot frame.
-        max_linear_speed: Maximum linear speed in m/s.
-        max_angular_speed: Maximum angular speed in rad/s.
-        max_wheel_speed: Maximum individual wheel speed in rad/s.
+        max_linear_speed: Maximum linear speed in m/s, or None for no limit.
+            If provided, must be finite and non-negative.
+        max_angular_speed: Maximum angular speed in rad/s, or None for no limit.
+            If provided, must be finite and non-negative.
+        max_wheel_speed: Maximum individual wheel speed in rad/s, or None for no limit.
+            If provided, must be finite and non-negative.
         linear_gain: Gain applied to the linear velocity command.
         angular_gain: Gain applied to the angular velocity command.
 
     Raises:
         ValueError: If `wheel_radius`, `wheel_positions`, `wheel_orientations`, or `mecanum_angles` is None.
+        ValueError: If `max_wheel_speed`, `max_angular_speed` or `max_linear_speed` are negative or non-finite.
     """
 
     def __init__(
@@ -57,12 +62,18 @@ class HolonomicController:
         mecanum_angles: list | np.ndarray | None = None,
         wheel_axis: list | np.ndarray | None = None,
         up_axis: list | np.ndarray | None = None,
-        max_linear_speed: float = 1.0e20,
-        max_angular_speed: float = 1.0e20,
-        max_wheel_speed: float = 1.0e20,
+        max_linear_speed: float | None = None,
+        max_angular_speed: float | None = None,
+        max_wheel_speed: float | None = None,
         linear_gain: float = 1.0,
         angular_gain: float = 1.0,
     ) -> None:
+        for maximum_limit in (max_linear_speed, max_angular_speed, max_wheel_speed):
+            if maximum_limit is not None and (not np.isfinite(maximum_limit) or maximum_limit < 0.0):
+                raise ValueError(
+                    "If provided, max_linear_speed, max_angular_speed and max_wheel_speed "
+                    "must be finite and non-negative"
+                )
         if wheel_axis is None:
             wheel_axis = np.array([1.0, 0.0, 0.0])
         if up_axis is None:
@@ -86,7 +97,8 @@ class HolonomicController:
             self.wheel_radius = list(wheel_radius)
         self.wheel_positions = np.asarray(wheel_positions)
         self.wheel_orientations = np.asarray(wheel_orientations)
-        mecanum_angles = np.asarray(mecanum_angles)
+        # A free-spinning roller axis is unchanged by a 180-degree rotation.
+        mecanum_angles = np.mod(np.asarray(mecanum_angles), 180.0)
         if mecanum_angles.size == 1:
             self.mecanum_angles = [float(mecanum_angles)] * self.num_wheels
         else:
@@ -114,7 +126,7 @@ class HolonomicController:
             joint_pose[3, 3] = 1
             mecanum_angle = self.mecanum_angles[i]
             mecanum_radius = self.wheel_radius[i]
-            euler_vec = np.array(self.up_axis * mecanum_angle, dtype=np.float64)
+            euler_vec = np.array(self.up_axis * (mecanum_angle - 180.0), dtype=np.float64)
             quat = transform_utils.euler_angles_to_quaternion(euler_vec, degrees=True, extrinsic=True).numpy()
             m_rot = Gf.Rotation(Gf.Quatf(*quat.tolist()))
             j_axis = Gf.Vec3f(
@@ -135,7 +147,7 @@ class HolonomicController:
         P = sparse.diags(diag_P, format="csc")
         q = np.zeros(self.num_wheels)
         V = self.base_dir
-        W = np.cross(V, self.wheel_dists_inv, axis=0)
+        W = np.cross(self.wheel_dists_inv, V, axis=0)
         concat_vw = np.asarray(np.concatenate((V, W), axis=0), dtype=np.float64).copy()
         A = sparse.csc_matrix(concat_vw)
         l = np.array([0.0, 0.0, -np.inf, -np.inf, -np.inf, 0.0])
@@ -166,16 +178,26 @@ class HolonomicController:
             return np.zeros(self.num_wheels, dtype=np.float64)
         v = np.array([command[0], command[1], 0.0], dtype=np.float64) * self.linear_gain
         w = np.array([command[2]], dtype=np.float64) * self.angular_gain
-        if np.linalg.norm(v) > 0:
-            v_norm = v / np.linalg.norm(v)
-        else:
-            v_norm = v
-        if np.linalg.norm(v) > self.max_linear_speed:
-            v = v_norm * self.max_linear_speed
-        if np.linalg.norm(w) > self.max_angular_speed:
-            w = w / np.abs(w) * np.array([self.max_angular_speed])
-        self._l[0:2] = self._u[0:2] = v[0:2] / self.max_linear_speed
-        self._l[-1] = self._u[-1] = w[0] / self.max_linear_speed
+
+        v_speed = float(np.linalg.norm(v))
+        if self.max_linear_speed is not None and v_speed > self.max_linear_speed:
+            v = v / v_speed * self.max_linear_speed
+            v_speed = self.max_linear_speed
+
+        w_speed = float(np.abs(w[0]))
+        if self.max_angular_speed is not None and w_speed > self.max_angular_speed:
+            w = w / w_speed * self.max_angular_speed
+            w_speed = self.max_angular_speed
+
+        # Conditioning scale for the solver, independent of whether/what limits are set:
+        # bounds are normalized by the actual command magnitude, not by a (possibly huge
+        # or absent) saturation limit, so the QP always sees near-unit-scale inputs. The
+        # 1e-9 floor avoids a 0/0 scale when `linear_gain`/`angular_gain` zero out an
+        # otherwise nonzero command (the `np.allclose` check above only catches an
+        # all-zero raw command).
+        scale = max(v_speed, w_speed, 1e-9)
+        self._l[0:2] = self._u[0:2] = v[0:2] / scale
+        self._l[-1] = self._u[-1] = w[0] / scale
         self.prob.update(l=self._l, u=self._u)
         res = None
         try:
@@ -183,9 +205,8 @@ class HolonomicController:
         except Exception as e:
             carb.log_error(f"HolonomicController error: {e}")
         if res is not None:
-            values = res.x.reshape(-1) * self.max_linear_speed
-            if np.max(np.abs(values)) > self.max_wheel_speed:
-                scale = self.max_wheel_speed / np.max(np.abs(values))
-                values = values * scale
+            values = res.x.reshape(-1) * scale
+            if self.max_wheel_speed is not None and np.max(np.abs(values)) > self.max_wheel_speed:
+                values = values * (self.max_wheel_speed / np.max(np.abs(values)))
             self.joint_commands = values.astype(np.float64)
         return self.joint_commands.copy()

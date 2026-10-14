@@ -20,6 +20,7 @@
 #include <isaacsim/physics/registration/Physics.hpp>
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -34,6 +35,7 @@ struct MockBackend
 {
     bool initializeResult{ true };
     bool closeResult{ true };
+    float timeStep{ 0.0f };
 };
 
 registration::Simulation makeSimulation(MockBackend& backend)
@@ -42,6 +44,8 @@ registration::Simulation makeSimulation(MockBackend& backend)
     simulation.simulationFunctions.initialize = [&backend](void*, const char*) { return backend.initializeResult; };
     simulation.simulationFunctions.close = [&backend]() { return backend.closeResult; };
     simulation.simulationFunctions.hasAttachedStage = []() { return false; };
+    simulation.simulationFunctions.simulate = [&backend](float timeStep, float) { backend.timeStep = timeStep; };
+    simulation.simulationFunctions.fetchResults = []() {};
     return simulation;
 }
 
@@ -53,6 +57,32 @@ TEST_SUITE("Authoring")
 
 TEST_SUITE("Simulation")
 {
+    TEST_CASE("rejects time steps that cannot reach the float physics backend")
+    {
+        const double originalTimeStep = std::get<double>(simulation::getParameter("physics", "time-step"));
+        for (const double timeStep : { 1e-100, 1e100, std::numeric_limits<double>::max() })
+        {
+            CHECK_THROWS_AS(simulation::setParameter("physics", "time-step", timeStep), std::invalid_argument);
+            CHECK_EQ(std::get<double>(simulation::getParameter("physics", "time-step")), originalTimeStep);
+        }
+    }
+
+    TEST_CASE("forwards the configured time step to the physics backend")
+    {
+        MockBackend backend;
+        const auto simulationId = registration::registerSimulation(makeSimulation(backend), "ovsim-time-step");
+        simulation::setParameter("physics", "ovstage-stage-ptr", static_cast<uintptr_t>(1));
+        simulation::setParameter("physics", "time-step", 0.005);
+        REQUIRE_NOTHROW(simulation::initialize());
+        REQUIRE_NOTHROW(simulation::step());
+        CHECK_EQ(backend.timeStep, doctest::Approx(0.005));
+        CHECK_EQ(std::get<double>(simulation::getParameter("physics", "time-step")), 0.005);
+        CHECK_NOTHROW(simulation::invalidate());
+        registration::unregisterSimulation(simulationId);
+        simulation::setParameter("physics", "ovstage-stage-ptr", static_cast<uintptr_t>(0));
+        simulation::setParameter("physics", "time-step", 1.0 / 60.0);
+    }
+
     TEST_CASE("surfaces a false PhysicsManager initialization result")
     {
         MockBackend backend;

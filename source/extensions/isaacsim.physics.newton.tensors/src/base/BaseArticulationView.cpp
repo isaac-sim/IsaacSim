@@ -77,31 +77,30 @@ BaseArticulationView::BaseArticulationView(py::object newtonStage, const std::ve
         auto jointTypes = jointType.unchecked<int, 1>();
         auto jointChildren = jointChild.unchecked<int, 1>();
 
-        py::array_t<bool> mask(articulationCount);
-        bool* maskPtr = static_cast<bool*>(mask.request().ptr);
+        py::list mask;
         std::vector<int> matchedArticulationIndices;
         for (int artiIdx = 0; artiIdx < articulationCount; ++artiIdx)
         {
             std::string artiPath = py::str(articulationLabel[artiIdx]);
-            maskPtr[artiIdx] = false;
+            bool selected = false;
             for (size_t pi = 0; pi < articulationPaths.size(); ++pi)
             {
                 if (articulationPaths[pi].GetString() == artiPath)
                 {
                     matchedArticulationIndices.push_back(artiIdx);
                     m_articulationPrimPaths.push_back(artiPath);
-                    maskPtr[artiIdx] = true;
+                    selected = true;
                     break;
                 }
             }
+            mask.append(selected);
         }
 
-        // Now convert the mask to wp.array
+        // Keep the selection mask typed and owned by Warp.
         py::module_ wpMod = py::module_::import("warp");
         py::object device = m_model.attr("device");
         m_modelDeviceString = py::str(device);
-        m_articulationMask =
-            wpMod.attr("from_numpy")(mask, /*dtype=*/py::none(), /*shape=*/py::none(), /*device*/ device);
+        m_articulationMask = wpMod.attr("array")(mask, py::arg("dtype") = wpMod.attr("bool"), py::arg("device") = device);
 
         m_count = matchedArticulationIndices.size();
         struct ArtiInfo
@@ -114,9 +113,8 @@ BaseArticulationView::BaseArticulationView(py::object newtonStage, const std::ve
             int totalDofs;
         };
         std::vector<ArtiInfo> artiInfos(m_count);
-        // numpy buffer to be converted to warp
-        py::array_t<int> articulationIndices(m_count);
-        int* articulationIdxPtr = static_cast<int*>(articulationIndices.request().ptr);
+        // Construct typed Warp indices without writing through a temporary NumPy buffer.
+        py::list articulationIndices;
         for (uint32_t a = 0; a < m_count; ++a)
         {
             int artiIdx = matchedArticulationIndices[a];
@@ -133,7 +131,7 @@ BaseArticulationView::BaseArticulationView(py::object newtonStage, const std::ve
             m_rootJointQStartIndices.push_back(rootType == kJointFree ? jointQStarts(info.jointStart) : -1);
             m_fixedRootJointMapping.push_back(rootType != kJointFree ? info.jointStart : -1);
             m_articulationIndices.push_back(artiIdx);
-            articulationIdxPtr[a] = artiIdx;
+            articulationIndices.append(artiIdx);
 
             info.totalDofs = 0;
 
@@ -169,14 +167,15 @@ BaseArticulationView::BaseArticulationView(py::object newtonStage, const std::ve
             m_maxLinks = std::max(m_maxLinks, (uint32_t)info.linkIndices.size());
         }
 
-        // Cast articulationIndices to warp
         m_articulationIndicesWarp =
-            wpMod.attr("from_numpy")(articulationIndices, /*dtype=*/py::none(), /*shape=*/py::none(), /*device*/ device);
+            wpMod.attr("array")(articulationIndices, py::arg("dtype") = wpMod.attr("int32"), py::arg("device") = device);
 
         m_dofPosIndices.resize(m_count * m_maxDofs, -1);
         m_dofVelIndices.resize(m_count * m_maxDofs, -1);
         m_dofAxisIndices.resize(m_count * m_maxDofs, -1);
+        m_dofBodyIndices.resize(m_count * m_maxDofs, -1);
         m_linkFlatIndices.resize(m_count * m_maxLinks, -1);
+        m_linkJointFlatIndices.resize(m_count * m_maxLinks, -1);
 
         for (uint32_t a = 0; a < m_count; ++a)
         {
@@ -185,6 +184,8 @@ BaseArticulationView::BaseArticulationView(py::object newtonStage, const std::ve
             for (uint32_t j = 0; j < info.linkIndices.size(); ++j)
             {
                 m_linkFlatIndices[a * m_maxLinks + j] = info.linkIndices[j];
+                if (j > 0)
+                    m_linkJointFlatIndices[a * m_maxLinks + j] = info.jointStart + static_cast<int>(j);
             }
             m_linkIndicesPerArticulation.push_back(info.linkIndices);
 
@@ -224,6 +225,7 @@ BaseArticulationView::BaseArticulationView(py::object newtonStage, const std::ve
                     {
                         m_dofVelIndices[a * m_maxDofs + dofOff] = qdStart + c;
                         m_dofAxisIndices[a * m_maxDofs + dofOff] = qdStart + c;
+                        m_dofBodyIndices[a * m_maxDofs + dofOff] = jointChildren(gj);
                     }
                     dofOff++;
                 }
@@ -279,12 +281,15 @@ void BaseArticulationView::_cacheWarpPointers()
     auto ptr = [](py::object arr) -> float* { return warpArrayFromPython<float>(arr).data; };
     py::object state0 = m_newtonStage.attr("state_0");
     py::object control = m_newtonStage.attr("control");
+    m_boundState = state0;
 
     m_cachedJointQ = ptr(state0.attr("joint_q"));
     m_cachedJointQd = ptr(state0.attr("joint_qd"));
     m_cachedBodyQ = ptr(state0.attr("body_q"));
     m_cachedBodyQd = ptr(state0.attr("body_qd"));
     m_cachedBodyF = ptr(state0.attr("body_f"));
+    py::object bodyParentForce = state0.attr("body_parent_f");
+    m_cachedBodyParentForce = bodyParentForce.is_none() ? nullptr : ptr(bodyParentForce);
 
     m_cachedJointTargetKe = ptr(m_model.attr("joint_target_ke"));
     m_cachedJointTargetKd = ptr(m_model.attr("joint_target_kd"));
@@ -299,6 +304,8 @@ void BaseArticulationView::_cacheWarpPointers()
     m_cachedBodyInverseInertia = ptr(m_model.attr("body_inv_inertia"));
     m_cachedBodyCenterOfMass = ptr(m_model.attr("body_com"));
     m_cachedJointXp = ptr(m_model.attr("joint_X_p"));
+    m_cachedJointXc = ptr(m_model.attr("joint_X_c"));
+    m_cachedJointFriction = ptr(m_model.attr("joint_friction"));
 
     m_cachedCtrlTargetPos = ptr(control.attr("joint_target_q"));
     m_cachedCtrlTargetVel = ptr(control.attr("joint_target_qd"));
@@ -312,6 +319,7 @@ void BaseArticulationView::_cacheWarpPointers()
     py::module_ wp_mod = py::module_::import("warp");
     m_jacobianBuffer = helper_mod.attr("allocate_buffer")(
         m_jacobianBuffer, m_model.attr("joint_dof_count"), wp_mod.attr("spatial_vector"), m_modelDeviceString);
+    m_cachedMotionSubspaces = warpArrayFromPython<float>(m_jacobianBuffer).data;
     m_massMatricesBuffer = helper_mod.attr("allocate_buffer")(
         m_massMatricesBuffer, m_model.attr("body_count"), wp_mod.attr("spatial_matrix"), m_modelDeviceString);
 }
@@ -532,6 +540,34 @@ void BaseArticulationView::_updateInverseInertias()
         CARB_LOG_WARN("Failed to update inverse inertias");
 }
 
+bool BaseArticulationView::_hasJointForceOutput() const
+{
+    if (m_cachedBodyParentForce)
+        return true;
+    CARB_LOG_WARN_ONCE(
+        "Newton joint force reporting is unavailable. Set "
+        "NewtonConfig.solver_outputs.link_incoming_joint_force=True before initializing physics, use a supported "
+        "solver, and recreate the simulation and tensor views.");
+    return false;
+}
+
+bool BaseArticulationView::_evaluateMotionSubspaces() const
+{
+    py::gil_scoped_acquire gil;
+    try
+    {
+        py::module_ newtonMod = py::module_::import("newton");
+        m_jacobianWarp = newtonMod.attr("eval_jacobian")(
+            m_model, m_newtonStage.attr("state_0"), m_jacobianWarp, m_jacobianBuffer, m_articulationMask);
+        return true;
+    }
+    catch (py::error_already_set& e)
+    {
+        CARB_LOG_ERROR("Failed to evaluate Newton joint motion subspaces: %s", e.what());
+        return false;
+    }
+}
+
 // ---- Stubs ----
 
 bool BaseArticulationView::getLinkAccelerations(const TensorDesc*) const
@@ -540,7 +576,7 @@ bool BaseArticulationView::getLinkAccelerations(const TensorDesc*) const
 }
 bool BaseArticulationView::getDofProjectedJointForces(const TensorDesc*) const
 {
-    CARB_LOG_WARN_ONCE("getDofProjectedJointForces is not implemented for the Newton backend");
+    _hasJointForceOutput();
     return false;
 }
 bool BaseArticulationView::getDofMotions(const TensorDesc*) const
@@ -601,6 +637,8 @@ bool BaseArticulationView::getJacobianShape(uint32_t* numRows, uint32_t* numCols
 }
 bool BaseArticulationView::getJacobians(const TensorDesc* dstTensor) const
 {
+    if (!_checkBinding())
+        return false;
     uint32_t numRows, numCols;
     size_t numArti = m_articulationIndices.size();
     if (!numArti)
@@ -652,6 +690,8 @@ bool BaseArticulationView::getGeneralizedMassMatrixShape(uint32_t* numRows, uint
 }
 bool BaseArticulationView::getGeneralizedMassMatrices(const TensorDesc* dstTensor) const
 {
+    if (!_checkBinding())
+        return false;
     uint32_t numRows, numCols;
     size_t numArti = m_articulationIndices.size();
     if (!numArti)
@@ -689,16 +729,48 @@ bool BaseArticulationView::getGeneralizedMassMatrices(const TensorDesc* dstTenso
     }
     return false;
 }
-bool BaseArticulationView::getCoriolisAndCentrifugalCompensationForces(const TensorDesc*) const
+bool BaseArticulationView::_getCompensationForces(const TensorDesc* dstTensor, bool gravity) const
 {
+    if (!_checkBinding())
+        return false;
+    uint32_t numRows, numCols;
+    if (!getGeneralizedMassMatrixShape(&numRows, &numCols))
+        return false;
+    const size_t elementCount = size_t(m_count) * numCols;
+    if (!validateFloat32TensorAnyDevice(dstTensor, elementCount, "compensation forces", __FUNCTION__))
+        return false;
+    if (!elementCount)
+        return true;
+    py::gil_scoped_acquire gil;
+    try
+    {
+        py::module_ helper = py::module_::import("isaacsim.physics.newton.tensors.impl.articulation_helper");
+        m_compensationBuffer = helper.attr("compute_compensation_forces")(m_model, m_newtonStage.attr("state_0"),
+                                                                          m_articulationIndicesWarp, m_articulationMask,
+                                                                          numCols, gravity, m_compensationBuffer);
+        py::object tensor = m_compensationBuffer.attr("tensor");
+        return warpArrayToTensor(dstTensor, reinterpret_cast<void*>(tensor.attr("ptr").cast<uintptr_t>()),
+                                 m_modelDeviceOrdinal, elementCount * sizeof(float));
+    }
+    catch (py::error_already_set& e)
+    {
+        CARB_LOG_ERROR("Failed to compute Newton compensation forces: %s", e.what());
+    }
     return false;
 }
-bool BaseArticulationView::getGravityCompensationForces(const TensorDesc*) const
+
+bool BaseArticulationView::getCoriolisAndCentrifugalCompensationForces(const TensorDesc* dstTensor) const
 {
-    return false;
+    return _getCompensationForces(dstTensor, false);
+}
+
+bool BaseArticulationView::getGravityCompensationForces(const TensorDesc* dstTensor) const
+{
+    return _getCompensationForces(dstTensor, true);
 }
 bool BaseArticulationView::getLinkIncomingJointForce(const TensorDesc*) const
 {
+    _hasJointForceOutput();
     return false;
 }
 bool BaseArticulationView::setDofDriveModelProperties(const TensorDesc*, const TensorDesc*)
@@ -716,21 +788,26 @@ bool BaseArticulationView::setDofFrictionProperties(const TensorDesc*, const Ten
 
 // ---- Masked variants ----
 
-bool BaseArticulationView::setDofLimitsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofLimitsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofLimits(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setDofLimits(s, indices); });
 }
-bool BaseArticulationView::setDofStiffnessesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofStiffnessesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofStiffnesses(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setDofStiffnesses(s, indices); });
 }
-bool BaseArticulationView::setDofDampingsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofDampingsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofDampings(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setDofDampings(s, indices); });
 }
-bool BaseArticulationView::setDofMaxForcesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofMaxForcesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofMaxForces(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setDofMaxForces(s, indices); });
 }
 bool BaseArticulationView::setDofDriveModelPropertiesMasked(const TensorDesc*, const TensorDesc*)
 {
@@ -740,62 +817,84 @@ bool BaseArticulationView::setDofFrictionCoefficientsMasked(const TensorDesc*, c
 {
     return false;
 }
-bool BaseArticulationView::setDofFrictionPropertiesMasked(const TensorDesc*, const TensorDesc*)
+bool BaseArticulationView::setDofFrictionPropertiesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return false;
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setDofFrictionProperties(s, indices); });
 }
-bool BaseArticulationView::setDofMaxVelocitiesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofMaxVelocitiesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofMaxVelocities(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setDofMaxVelocities(s, indices); });
 }
-bool BaseArticulationView::setDofArmaturesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofArmaturesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofArmatures(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setDofArmatures(s, indices); });
 }
-bool BaseArticulationView::setDofPositionsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofPositionsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofPositions(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setDofPositions(s, indices); });
 }
-bool BaseArticulationView::setDofVelocitiesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofVelocitiesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofVelocities(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setDofVelocities(s, indices); });
 }
-bool BaseArticulationView::setDofActuationForcesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofActuationForcesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofActuationForces(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setDofActuationForces(s, indices); });
 }
-bool BaseArticulationView::setDofPositionTargetsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofPositionTargetsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofPositionTargets(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setDofPositionTargets(s, indices); });
 }
-bool BaseArticulationView::setDofVelocityTargetsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setDofVelocityTargetsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setDofVelocityTargets(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setDofVelocityTargets(s, indices); });
 }
-bool BaseArticulationView::setMassesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setMassesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setMasses(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setMasses(s, indices); });
 }
-bool BaseArticulationView::setCOMsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setCOMsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setCOMs(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setCOMs(s, indices); });
 }
-bool BaseArticulationView::setInertiasMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setInertiasMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setInertias(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, s](const TensorDesc* indices) { return setInertias(s, indices); });
 }
-bool BaseArticulationView::setRootTransformsMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setRootTransformsMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setRootTransforms(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setRootTransforms(s, indices); });
 }
-bool BaseArticulationView::setRootVelocitiesMasked(const TensorDesc* s, const TensorDesc*)
+bool BaseArticulationView::setRootVelocitiesMasked(const TensorDesc* s, const TensorDesc* mask)
 {
-    return setRootVelocities(s, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, s](const TensorDesc* indices) { return setRootVelocities(s, indices); });
 }
 bool BaseArticulationView::applyForcesAndTorquesAtPositionMasked(
-    const TensorDesc* f, const TensorDesc* t, const TensorDesc* p, const TensorDesc* /*mask*/, bool g)
+    const TensorDesc* f, const TensorDesc* t, const TensorDesc* p, const TensorDesc* mask, bool g)
 {
-    return applyForcesAndTorquesAtPosition(f, t, p, nullptr, g);
+    return applyMaskToSetter(
+        mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(), __FUNCTION__,
+        [this, f, t, p, g](const TensorDesc* indices) { return applyForcesAndTorquesAtPosition(f, t, p, indices, g); });
 }
 
 // ---- Material/shape stubs ----
@@ -924,10 +1023,38 @@ bool BaseArticulationView::setSpatialTendonPropertiesMasked(
 
 bool BaseArticulationView::check() const
 {
-    return m_count > 0;
+    return m_count > 0 && _checkBinding();
+}
+
+bool BaseArticulationView::_checkBinding() const
+{
+    if (!m_cacheValid)
+        return false;
+
+    py::gil_scoped_acquire gil;
+    try
+    {
+        py::object model = m_newtonStage.attr("model");
+        py::object state0 = m_newtonStage.attr("state_0");
+        if (model.is(m_model) && state0.is(m_boundState))
+            return true;
+    }
+    catch (py::error_already_set& e)
+    {
+        CARB_LOG_ERROR("Articulation view: failed to read the Newton stage: %s", e.what());
+    }
+
+    // The Newton stage rebuilt or released its model and state: the cached pointers address released buffers.
+    m_cacheValid = false;
+    m_model = py::none();
+    m_boundState = py::none();
+    CARB_LOG_WARN("Articulation view: the Newton model was rebuilt or released; recreate the view");
+    return false;
 }
 void BaseArticulationView::release()
 {
+    // Native callers may not hold the GIL; keep it through destruction of the Python members.
+    py::gil_scoped_acquire gil;
     delete this;
 }
 

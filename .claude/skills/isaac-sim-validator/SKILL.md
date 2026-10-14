@@ -1,6 +1,6 @@
 ---
 name: isaac-sim-validator
-description: "Pre-delivery QA gate for Isaac Sim scripts (imports, lights, paths, frames). Level 3 executes untrusted Python unsandboxed and needs --confirm-execute. Use before handing off simulation work."
+description: "Pre-delivery QA gate for standalone Isaac Sim libraries and Kit scripts. Level 3 executes untrusted Python unsandboxed and needs --confirm-execute."
 license: Apache-2.0
 metadata:
   author: Renato Gasoto <info@nvidia.com>
@@ -12,15 +12,14 @@ metadata:
 
 ## Purpose
 
-Reject common delivery defects: black frames, deprecated imports, hardcoded user paths, missing lights, wrong render modes, and undersized `SimulationApp` configurations.
+Reject common delivery defects at the owning boundary: standalone library or Kit application/extension.
 
 Levels 1–2 are **static** checks only. **Level 3 runs the target Python script** under `timeout` with the calling user's privileges. Level 3 requires an explicit `--confirm-execute` (or `CONFIRM_EXECUTE=1`) opt-in; it is not a sandbox.
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- Standalone libraries need their configured build or installed test environment.
+- Kit checks need a built Isaac Sim tree; a GPU is required only for GPU-backed checks.
 
 ## Limitations
 
@@ -32,13 +31,18 @@ Levels 1–2 are **static** checks only. **Level 3 runs the target Python script
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
+| Kit extension not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
 
 Final gate before delivery. Reject outputs that fail the checks below; do not soften results.
 
-## Available Scripts
+For a standalone library, validate a normal-process public import, declared
+package/native closure, relocation, SDK consumer when applicable, and
+`isaacsim.common.logging.Logger` diagnostics. Do not require `SimulationApp`,
+rendering, or a GPU.
+
+## Kit-only validation helper
 
 | Script | Purpose | Arguments |
 |---|---|---|
@@ -54,7 +58,7 @@ run_script("scripts/validate_sim.sh", args=[])
 
 From a built Isaac Sim tree, run the same file with `./python.sh` (Linux) or `python.bat` (Windows) from `_build/*/release`, or execute shell helpers directly when they do not require the simulator.
 
-## Universal checklist (apply to every output)
+## Kit simulation checklist
 
 | Check | Pass | On fail |
 |---|---|---|
@@ -128,7 +132,7 @@ when a shorter presentation cut is made.
 | Scene complexity | renders within 10 settle steps | reject: `Scene too complex; simplify assets` |
 | Ghost artifacts | cleanup of `/dev/shm/carb-*` | reject: `Use workspace_cleanup.py to clear /dev/shm/carb-*` |
 
-## Decision tree
+## Kit decision tree
 
 ```mermaid
 graph TD

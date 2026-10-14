@@ -16,7 +16,6 @@
 #pragma once
 
 #include <isaacsim/common/array/Array.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
 
 #include <cstddef>
 #include <vector>
@@ -31,10 +30,6 @@ namespace details
 {
 
 namespace array = isaacsim::common::array;
-namespace tensors = isaacsim::physics::tensors;
-
-array::Array convertTensorDescriptionToArray(const tensors::TensorDescription& description);
-tensors::TensorDescription convertArrayToTensorDescription(const array::Array& array);
 
 std::vector<array::Array> splitArray(const array::Array& array, size_t index);
 array::Array joinArrays(const std::vector<array::Array>& arrays);

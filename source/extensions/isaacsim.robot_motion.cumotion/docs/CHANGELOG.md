@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5.0] - 2026-08-27
+### Changed
+- Deliver the cuMotion integration, native runtime, and robot configurations through the
+  `isaacsim-robot-motion` wheel while retaining the existing extension tests and public import path.
+
 ## [1.4.0] - 2026-08-21
 ### Changed
 - Route cuMotion warnings through `isaacsim.common.logging`.

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.14] - 2026-09-29
+### Fixed
+- `DifferentialController`: warn only once per reset for zero-delta updates while retaining invalid-step skipping and negative-delta warnings.
+
+## [0.1.13] - 2026-09-29
+### Changed
+- `OgnHolonomicController`'s `mecanumAngles` input is now correctly documented as degrees.
+
 ## [0.1.12] - 2026-08-28
 ### Fixed
 - `QuinticPathPlanner`: extract signed yaw from `targetPrim` instead of the unsigned rotation angle, which mirrored negative or off-axis goal headings.

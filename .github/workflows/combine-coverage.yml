@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 name: Combine Coverage
 
@@ -105,41 +117,10 @@ jobs:
           fi
 
           echo ""
-          echo "=== Merging Python coverage (.pycov) ==="
-
-          PYCOV_COUNT=$(find _coverage_all -name "*.pycov" 2>/dev/null | wc -l)
-          echo "Found $PYCOV_COUNT .pycov files"
-
-          if [ "$PYCOV_COUNT" -gt 0 ]; then
-            # Use packman python for coverage tooling
-            touch .eula_accepted
-            ./tools/packman/python.sh -m pip install coverage==7.4.4 --quiet 2>/dev/null || true
-
-            # Generate path mappings from .pycov files
-            ./tools/packman/python.sh tools/github/ci/coverage/read_pycov_paths.py \
-              "_coverage_all/**/*.pycov" \
-              --exclude-prefix extscache --exclude-prefix kit -o .coveragemergerc || true
-
-            RCFILE=".coveragerc"
-            if [ -f .coveragemergerc ]; then
-              RCFILE=".coveragemergerc"
-              echo "Using generated .coveragemergerc with path mappings"
-            fi
-
-            # Combine Python coverage data
-            find _coverage_all -name "*.pycov" -print0 | xargs -0 ./tools/packman/python.sh -m coverage combine --rcfile="$RCFILE" --keep
-            ./tools/packman/python.sh -m coverage xml --rcfile="$RCFILE" --ignore-errors -o coverage.xml
-
-            echo "Python coverage.xml generated"
-            ./tools/packman/python.sh -m coverage report --rcfile="$RCFILE" --ignore-errors 2>/dev/null | tail -5 || true
-          else
-            echo "::warning::No .pycov files found — Python coverage will be empty"
-          fi
-
-          echo ""
           echo "=== Generating C++ Cobertura XML ==="
 
           if [ -f _build/coverage.filtered.info ] || [ -f _build/coverage.info ]; then
+            touch .eula_accepted
             ./tools/packman/python.sh -m pip install lcov_cobertura==2.1.1 --quiet 2>/dev/null || true
             INFO_FILE="_build/coverage.filtered.info"
             [ -f "$INFO_FILE" ] || INFO_FILE="_build/coverage.info"
@@ -151,21 +132,11 @@ jobs:
 
           echo ""
           echo "=== Coverage Summary ==="
-          if [ -f coverage.xml ]; then
-            echo "Python: $(grep -o 'line-rate="[^"]*"' coverage.xml | head -1 || echo 'unknown')"
-          fi
           if [ -f cpp_coverage.xml ]; then
             echo "C++: $(grep -o 'line-rate="[^"]*"' cpp_coverage.xml | head -1 || echo 'unknown')"
-          fi
-
-          if [ -f cpp_coverage.xml ] && [ -f coverage.xml ]; then
-            ./tools/packman/python.sh tools/github/ci/coverage/combine_line_counts.py cpp_coverage.xml coverage.xml
-          elif [ -f coverage.xml ]; then
-            echo "Only Python coverage available"
-          elif [ -f cpp_coverage.xml ]; then
-            echo "Only C++ coverage available"
+            ./tools/packman/python.sh tools/github/ci/coverage/combine_line_counts.py cpp_coverage.xml
           else
-            echo "::warning::No coverage data available to combine"
+            echo "::warning::No coverage data available"
           fi
 
       - name: Upload combined coverage report
@@ -173,7 +144,6 @@ jobs:
         with:
           name: coverage-report-combined
           path: |
-            coverage.xml
             cpp_coverage.xml
             _build/coverage.info
             _build/coverage.filtered.info
@@ -183,13 +153,6 @@ jobs:
       - name: Coverage summary annotation
         if: always()
         run: |
-          if [ -f coverage.xml ]; then
-            PY_RATE=$(grep -o 'line-rate="[^"]*"' coverage.xml | head -1 | grep -o '[0-9.]*' || true)
-            if [ -n "$PY_RATE" ]; then
-              PY_PCT=$(python3 -c "print(f'{float($PY_RATE) * 100:.2f}')" 2>/dev/null || echo "$PY_RATE")
-              echo "::notice::Python coverage: ${PY_PCT}%"
-            fi
-          fi
           if [ -f cpp_coverage.xml ]; then
             CPP_RATE=$(grep -o 'line-rate="[^"]*"' cpp_coverage.xml | head -1 | grep -o '[0-9.]*' || true)
             if [ -n "$CPP_RATE" ]; then

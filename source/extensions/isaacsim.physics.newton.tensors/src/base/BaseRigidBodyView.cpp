@@ -111,6 +111,7 @@ void BaseRigidBodyView::_cacheWarpPointers()
 {
     auto ptr = [](py::object arr) -> float* { return warpArrayFromPython<float>(arr).data; };
     py::object state0 = m_newtonStage.attr("state_0");
+    m_boundState = state0;
 
     m_cachedJointQ = ptr(state0.attr("joint_q"));
     m_cachedBodyQ = ptr(state0.attr("body_q"));
@@ -243,32 +244,42 @@ bool BaseRigidBodyView::wakeUp(const TensorDesc* indexTensor)
 
 bool BaseRigidBodyView::setTransformsMasked(const TensorDesc* src, const TensorDesc* mask)
 {
-    return setTransforms(src, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, src](const TensorDesc* indices) { return setTransforms(src, indices); });
 }
 bool BaseRigidBodyView::setVelocitiesMasked(const TensorDesc* src, const TensorDesc* mask)
 {
-    return setVelocities(src, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__,
+                             [this, src](const TensorDesc* indices) { return setVelocities(src, indices); });
 }
 bool BaseRigidBodyView::applyForcesMasked(const TensorDesc* src, const TensorDesc* mask)
 {
-    return applyForces(src, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, src](const TensorDesc* indices) { return applyForces(src, indices); });
 }
 bool BaseRigidBodyView::applyForcesAndTorquesAtPositionMasked(
-    const TensorDesc* f, const TensorDesc* t, const TensorDesc* p, const TensorDesc* /*mask*/, bool g)
+    const TensorDesc* f, const TensorDesc* t, const TensorDesc* p, const TensorDesc* mask, bool g)
 {
-    return applyForcesAndTorquesAtPosition(f, t, p, nullptr, g);
+    return applyMaskToSetter(
+        mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(), __FUNCTION__,
+        [this, f, t, p, g](const TensorDesc* indices) { return applyForcesAndTorquesAtPosition(f, t, p, indices, g); });
 }
 bool BaseRigidBodyView::setMassesMasked(const TensorDesc* src, const TensorDesc* mask)
 {
-    return setMasses(src, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, src](const TensorDesc* indices) { return setMasses(src, indices); });
 }
 bool BaseRigidBodyView::setCOMsMasked(const TensorDesc* src, const TensorDesc* mask)
 {
-    return setCOMs(src, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, src](const TensorDesc* indices) { return setCOMs(src, indices); });
 }
 bool BaseRigidBodyView::setInertiasMasked(const TensorDesc* src, const TensorDesc* mask)
 {
-    return setInertias(src, nullptr);
+    return applyMaskToSetter(mask, m_count, m_scratchMaskIndices, m_modelDeviceOrdinal, _getDeviceIndexScratch(),
+                             __FUNCTION__, [this, src](const TensorDesc* indices) { return setInertias(src, indices); });
 }
 
 bool BaseRigidBodyView::getMaterialProperties(const TensorDesc*) const
@@ -322,10 +333,38 @@ bool BaseRigidBodyView::setContactOffsetsMasked(const TensorDesc*, const TensorD
 
 bool BaseRigidBodyView::check() const
 {
-    return m_count > 0;
+    return m_count > 0 && _checkBinding();
+}
+
+bool BaseRigidBodyView::_checkBinding() const
+{
+    if (!m_cacheValid)
+        return false;
+
+    py::gil_scoped_acquire gil;
+    try
+    {
+        py::object model = m_newtonStage.attr("model");
+        py::object state0 = m_newtonStage.attr("state_0");
+        if (model.is(m_model) && state0.is(m_boundState))
+            return true;
+    }
+    catch (py::error_already_set& e)
+    {
+        CARB_LOG_ERROR("Rigid body view: failed to read the Newton stage: %s", e.what());
+    }
+
+    // The Newton stage rebuilt or released its model and state: the cached pointers address released buffers.
+    m_cacheValid = false;
+    m_model = py::none();
+    m_boundState = py::none();
+    CARB_LOG_WARN("Rigid body view: the Newton model was rebuilt or released; recreate the view");
+    return false;
 }
 void BaseRigidBodyView::release()
 {
+    // Native callers may not hold the GIL; keep it through destruction of the Python members.
+    py::gil_scoped_acquire gil;
     delete this;
 }
 

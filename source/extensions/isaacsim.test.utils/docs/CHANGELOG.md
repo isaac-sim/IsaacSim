@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.15.0] - 2026-09-22
+### Added
+- Add `trigger_menu_item` and `MenuUITestCase.trigger_menu_item` for headless-safe menu action testing.
+
 ## [0.14.8] - 2026-06-29
 ### Added
 - Add `fail_on_empty_extensions` to `validate_folder_contents` to reject zero-byte files for selected extensions only.

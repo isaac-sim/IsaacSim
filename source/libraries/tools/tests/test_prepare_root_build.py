@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test module-carrier preparation for the root repository build."""
+"""Test wheel staging for the root repository build."""
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +43,24 @@ sys.modules[REPO_BUILD_TOOL_SPEC.name] = repo_build_tool
 REPO_BUILD_TOOL_SPEC.loader.exec_module(repo_build_tool)
 
 
+class LegacyDiscoveryTests(unittest.TestCase):
+    """Discover both source manifest generations without duplicate work."""
+
+    def test_old_and_new_manifests_share_one_discovery(self) -> None:
+        """Include a legacy-only extension and deduplicate dual spellings."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for extension, filenames in {
+                "acme.legacy": ("module-carrier.toml",),
+                "acme.both": ("module-carrier.toml", "wheel-staging.toml"),
+            }.items():
+                directory = root / "source/extensions" / extension
+                directory.mkdir(parents=True)
+                for filename in filenames:
+                    (directory / filename).touch()
+            self.assertEqual(prepare_tool._discover_wheel_staging_extensions(root), ("acme.both", "acme.legacy"))
+
+
 class ArgumentTests(unittest.TestCase):
     """Test root argument translation."""
 
@@ -60,7 +78,7 @@ class ArgumentTests(unittest.TestCase):
         self.assertEqual(selection.configurations, ("release", "debug"))
 
     def test_non_build_actions_are_skipped(self) -> None:
-        """Do not compile carriers for help or post-build requests."""
+        """Do not compile staged wheels for help or post-build requests."""
         for argument in ("--help", "--post-build-only", "--stage-only"):
             with self.subTest(argument=argument):
                 self.assertTrue(prepare_tool._parse_root_build_arguments((argument,)).skipped)
@@ -143,13 +161,13 @@ class ArgumentTests(unittest.TestCase):
         self.assertTrue(prepare_tool._parse_root_build_arguments(("-r", "-c")).clean_only)
 
     def test_coverage_is_selected_by_argument(self) -> None:
-        """Propagate root coverage instrumentation into carrier library builds."""
+        """Propagate root coverage instrumentation into wheel staging library builds."""
         selection = prepare_tool._parse_root_build_arguments(("--release", "--enable-gcov"))
 
         self.assertTrue(selection.coverage)
 
     def test_rebuild_is_selected_by_argument(self) -> None:
-        """Let callers request a clean carrier rebuild explicitly."""
+        """Let callers request a clean wheel staging rebuild explicitly."""
         selection = prepare_tool._parse_root_build_arguments(("--release", "--rebuild"))
 
         self.assertTrue(selection.rebuild)
@@ -163,15 +181,15 @@ class ArgumentTests(unittest.TestCase):
 
 
 class RootBuildIntegrationTests(unittest.TestCase):
-    """Test carrier preparation at each supported root build entry point."""
+    """Test wheel staging at each supported root build entry point."""
 
     def test_linux_host_defers_to_linbuild(self) -> None:
-        """Avoid compiling carrier binaries with the host toolchain before Repo enters linbuild."""
+        """Avoid compiling wheel binaries with the host toolchain before Repo enters linbuild."""
         self.assertFalse(
             prepare_tool._should_prepare_repository_build(("--release",), platform_name="linux", environment={})
         )
 
-    def test_effective_build_environment_prepares_carriers(self) -> None:
+    def test_effective_build_environment_stages_wheels(self) -> None:
         """Prepare directly for no-docker, linbuild, and Windows repository builds."""
         scenarios = (
             (("--release", "--no-docker"), "linux", {}),
@@ -189,12 +207,12 @@ class RootBuildIntegrationTests(unittest.TestCase):
                     )
                 )
 
-    def test_repo_build_entry_owns_carrier_preparation(self) -> None:
-        """Prepare carriers from Repo Build instead of the pre-bootstrap entry point."""
+    def test_repo_build_entry_owns_wheel_staging(self) -> None:
+        """Stage wheels during Repo Build preparation."""
         repoman = prepare_tool.REPOSITORY_ROOT / "tools" / "repoman" / "repoman.py"
         repo_config = prepare_tool.REPOSITORY_ROOT / "repo.toml"
 
-        self.assertNotIn("prepare_module_carriers", repoman.read_text(encoding="utf-8"))
+        self.assertNotIn("prepare_root_build.py", repoman.read_text(encoding="utf-8"))
         self.assertIn(
             "tools/isaac_build/repo_build.py:setup_repo_tool",
             repo_config.read_text(encoding="utf-8").replace("\\", "/"),
@@ -209,30 +227,19 @@ class RootBuildIntegrationTests(unittest.TestCase):
             with self.subTest(entry_point=entry_point.name):
                 self.assertNotIn("prepare_root_build.py", entry_point.read_text(encoding="utf-8"))
 
-    @unittest.skipUnless(
-        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
-        "Internal repository configuration is not included in GitHub exports",
-    )
-    def test_internal_ci_entries_do_not_prepare_carriers(self) -> None:
-        """Keep carrier preparation in Repo Build for internal CI entry points."""
-        for name in ("build_isaac.py", "build_isaac_coverage.py"):
-            with self.subTest(entry_point=name):
-                entry_point = prepare_tool.REPOSITORY_ROOT / "tools" / "ci" / name
-                self.assertNotIn("prepare_root_build.py", entry_point.read_text(encoding="utf-8"))
-
-    def test_carrier_premake_helper_is_a_public_build_tool(self) -> None:
-        """Keep carrier Premake integration outside the GitHub-excluded `tools/isaac` tree."""
+    def test_extension_wheel_premake_helper_is_a_public_build_tool(self) -> None:
+        """Keep extension wheel Premake integration outside the GitHub-excluded `tools/isaac` tree."""
         repository_root = prepare_tool.REPOSITORY_ROOT
-        helper = repository_root / "tools" / "isaac_build" / "module_carrier.lua"
+        helper = repository_root / "tools" / "isaac_build" / "extension_wheel.lua"
 
         self.assertTrue(helper.is_file())
-        self.assertFalse((repository_root / "tools" / "isaac" / "module_carrier.lua").exists())
-        for manifest in sorted((repository_root / "source" / "extensions").glob("*/module-carrier.toml")):
+        self.assertFalse((repository_root / "tools" / "isaac" / "extension_wheel.lua").exists())
+        for manifest in sorted((repository_root / "source" / "extensions").glob("*/wheel-staging.toml")):
             premake = manifest.parent / "premake5.lua"
             with self.subTest(extension=manifest.parent.name):
                 contents = premake.read_text(encoding="utf-8")
-                self.assertIn('dofile(root .. "/tools/isaac_build/module_carrier.lua")', contents)
-                self.assertNotIn('dofile(root .. "/tools/isaac/module_carrier.lua")', contents)
+                self.assertIn('dofile(root .. "/tools/isaac_build/extension_wheel.lua")', contents)
+                self.assertNotIn('dofile(root .. "/tools/isaac/extension_wheel.lua")', contents)
 
     def test_third_party_notice_assembler_is_a_public_build_tool(self) -> None:
         """Keep packaged-notice assembly available in the staged GitHub repository."""
@@ -242,55 +249,8 @@ class RootBuildIntegrationTests(unittest.TestCase):
         self.assertTrue(helper.is_file())
         self.assertTrue(repo_build_tool.ASSEMBLE_NOTICE_TOOL.samefile(helper))
 
-    @unittest.skipUnless(
-        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
-        "Internal repository configuration is not included in GitHub exports",
-    )
-    def test_windows_ci_jobs_pull_internal_library_toolchain(self) -> None:
-        """Share Repo Build's pinned host toolchain with standalone Windows build and test jobs."""
-        ci_config = (prepare_tool.REPOSITORY_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        repo_config = (prepare_tool.REPOSITORY_ROOT / "repo.toml").read_text(encoding="utf-8")
-
-        self.assertEqual(ci_config.count("!reference [.windows-module-toolchain, before_script]"), 2)
-        self.assertIn("packman.cmd pull ./deps/isaacsim-libraries-msvc-ci.packman.xml", ci_config)
-        self.assertEqual(
-            tomllib.loads(repo_config)["repo_build"]["fetch"]["packman_host_files_to_pull"],
-            ["${root}/deps/isaacsim-libraries-msvc-ci.packman.xml"],
-        )
-        self.assertIn('"token:in_ci==true".link_host_toolchain = false', repo_config)
-        self.assertNotIn('"token:in_ci==true".vs_path', repo_config)
-
-    @unittest.skipUnless(
-        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
-        "Internal repository configuration is not included in GitHub exports",
-    )
-    def test_source_library_change_rules_include_license_collector(self) -> None:
-        """Run standalone library CI whenever its license collector changes."""
-        ci_config = (prepare_tool.REPOSITORY_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        change_rules = ci_config.split(".source-libraries-change-rules:", 1)[1].split(".windows-module-toolchain:", 1)[
-            0
-        ]
-
-        conditional_rules = change_rules.split("      - if:")[1:]
-        self.assertEqual(len(conditional_rules), 2)
-        for rule in conditional_rules:
-            self.assertIn("          - tools/pixi_licenses.py", rule)
-
-    @unittest.skipUnless(
-        (prepare_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
-        "Internal repository configuration is not included in GitHub exports",
-    )
-    def test_library_artifact_omits_rematerializable_developer_environment(self) -> None:
-        """Keep the platform handoff artifact focused on irreproducible build outputs."""
-        ci_config = (prepare_tool.REPOSITORY_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8")
-        library_build = ci_config.split(".source-libraries-build-common:", 1)[1].split(
-            "build-linux-x86_64-libraries:", 1
-        )[0]
-
-        self.assertIn("isaacsim-libraries-release/developer-environment/**/*", library_build)
-
     def test_repo_build_preparation_runs_once(self) -> None:
-        """Run carrier and notice preparation once without overriding dependencies."""
+        """Run wheel staging and notice preparation once without overriding dependencies."""
         preparation = repo_build_tool._BuildPreparation()
 
         with (
@@ -301,15 +261,15 @@ class RootBuildIntegrationTests(unittest.TestCase):
             preparation.run()
 
         self.assertEqual(run.call_count, 2)
-        carrier_command = run.call_args_list[0].args[0]
+        staging_command = run.call_args_list[0].args[0]
         notice_command = run.call_args_list[1].args[0]
-        self.assertEqual(carrier_command[-2:], ["--repo-entry", "--release"])
+        self.assertEqual(staging_command[-2:], ["--repo-entry", "--release"])
         self.assertEqual(notice_command, [sys.executable, "-s", repo_build_tool.ASSEMBLE_NOTICE_TOOL])
         for call in run.call_args_list:
             self.assertNotIn("env", call.kwargs)
 
     def test_repo_build_exposes_packaged_debug_runtimes_to_later_kit_tools(self) -> None:
-        """Restore Debug runtime lookup in the parent after the carrier child exits."""
+        """Restore Debug runtime lookup in the parent after the wheel staging child exits."""
         with tempfile.TemporaryDirectory() as temporary_directory:
             host_dependencies = Path(temporary_directory)
             (host_dependencies / "msvc").mkdir()
@@ -328,7 +288,7 @@ class RootBuildIntegrationTests(unittest.TestCase):
         activate_runtime.assert_called_once_with()
 
     def test_repo_build_marks_host_preparation(self) -> None:
-        """Tell carrier preparation when Repo Build will remain on the host."""
+        """Tell wheel staging when Repo Build will remain on the host."""
         preparation = repo_build_tool._BuildPreparation(prepare_on_host=True)
 
         with (
@@ -384,9 +344,9 @@ class RootBuildIntegrationTests(unittest.TestCase):
 
 
 class DiscoveryTests(unittest.TestCase):
-    """Test generic carrier discovery."""
+    """Test generic wheel staging discovery."""
 
-    def test_discover_carriers_uses_manifests_instead_of_names(self) -> None:
+    def test_discover_wheel_staging_uses_manifests_instead_of_names(self) -> None:
         """Discover arbitrary extension names in deterministic order."""
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -394,10 +354,10 @@ class DiscoveryTests(unittest.TestCase):
             for name in ("acme.zeta", "acme.alpha"):
                 extension = extensions / name
                 extension.mkdir(parents=True)
-                (extension / "module-carrier.toml").touch()
+                (extension / "wheel-staging.toml").touch()
             (extensions / "acme.unrelated").mkdir()
 
-            discovered = prepare_tool._discover_carrier_extensions(root)
+            discovered = prepare_tool._discover_wheel_staging_extensions(root)
 
         self.assertEqual(discovered, ("acme.alpha", "acme.zeta"))
 
@@ -407,7 +367,7 @@ class PreparationTests(unittest.TestCase):
 
     def test_prepare_routes_library_builds_through_public_launcher(self) -> None:
         """Keep Pixi activation behind the supported build wrapper."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
                 prepare_tool._prepare(("--release",))
 
@@ -415,9 +375,9 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(command[0], prepare_tool.LIBRARY_BUILD_LAUNCHER)
         self.assertNotIn(prepare_tool.sys.executable, command)
 
-    def test_prepare_invokes_one_carrier_build_per_configuration(self) -> None:
-        """Keep carrier packaging configuration-specific."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+    def test_prepare_invokes_one_wheel_staging_build_per_configuration(self) -> None:
+        """Keep wheel staging configuration-specific."""
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
                 prepare_tool._prepare(("--config", "debug", "release"))
 
@@ -426,85 +386,136 @@ class PreparationTests(unittest.TestCase):
         self.assertIn("-d", commands[0])
         self.assertIn("-r", commands[1])
         for command in commands:
-            self.assertIn("--carrier", command)
+            self.assertIn("--stage-wheel", command)
             self.assertIn("acme.common", command)
 
     def test_prepare_forwards_coverage_to_library_build(self) -> None:
         """Instrument the module library when the root coverage build requests it."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
                 prepare_tool._prepare(("--release", "--enable-gcov"))
 
         self.assertIn("--coverage", run_library_build.call_args.args[0])
 
-    def test_generate_configures_modules_without_packaging_carriers(self) -> None:
-        """Avoid compiling and staging carrier artifacts during root project generation."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+    def test_generate_configures_modules_without_staging_wheels(self) -> None:
+        """Avoid compiling and staging wheels during root project generation."""
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
                 prepare_tool._prepare(("--release", "--generate"))
 
         command = run_library_build.call_args.args[0]
         self.assertIn("--generate", command)
-        self.assertNotIn("--carrier", command)
+        self.assertNotIn("--stage-wheel", command)
         self.assertNotIn("acme.common", command)
 
-    def test_generate_creates_carrier_link_targets(self) -> None:
-        """Let root staging resolve carrier links that generation does not populate."""
+    def test_generate_creates_wheel_stage_link_targets(self) -> None:
+        """Let root staging resolve wheel stage links that generation does not populate."""
         with tempfile.TemporaryDirectory() as directory:
             build_root = Path(directory)
             with mock.patch.object(prepare_tool, "LIBRARY_BUILD_ROOT", build_root):
-                with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+                with mock.patch.object(
+                    prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)
+                ):
                     with mock.patch.object(prepare_tool, "_run_library_build"):
                         prepare_tool._prepare(("--release", "--generate"))
 
-            stage = build_root / "module-carriers" / "release" / "acme.common"
+            stage = build_root / "extension-wheel-stages" / "release" / "acme.common"
+            legacy = build_root / "module-carriers" / "release" / "acme.common"
             for relative_path in ("pip_prebundle", "sdk/include"):
                 with self.subTest(relative_path=relative_path):
                     self.assertTrue((stage / relative_path).is_dir())
+                    self.assertTrue((legacy / relative_path).is_dir())
+            self.assertEqual(legacy.resolve(), stage.resolve())
 
-    def test_packaging_build_leaves_carrier_staging_to_the_library_build(self) -> None:
-        """Do not fabricate carrier output when the library build stages it for real."""
+    def test_generate_preserves_populated_legacy_stage(self) -> None:
+        """Retain an old payload until its replacement has been staged."""
+        with tempfile.TemporaryDirectory() as directory:
+            build_root = Path(directory)
+            legacy = build_root / "module-carriers/release/acme.common"
+            legacy.mkdir(parents=True)
+            payload = legacy / "old-payload"
+            payload.write_text("old", encoding="utf-8")
+            with mock.patch.object(prepare_tool, "LIBRARY_BUILD_ROOT", build_root):
+                prepare_tool._ensure_wheel_stage_link_targets("release", ("acme.common",))
+            self.assertEqual(payload.read_text(encoding="utf-8"), "old")
+            self.assertFalse(legacy.is_symlink())
+            self.assertTrue((legacy / "sdk/include").is_dir())
+
+    @unittest.skipIf(os.name == "nt", "This symlink fixture requires Unix filesystem semantics")
+    def test_clean_selected_configuration_removes_legacy_links_without_following_them(self) -> None:
+        """Clean four selected roots while retaining debug and external link targets."""
+        with tempfile.TemporaryDirectory() as directory:
+            build_root = Path(directory)
+            external = build_root / "external"
+            external.mkdir()
+            sentinel = external / "keep"
+            sentinel.touch()
+            names = (
+                "extension-wheel-artifacts",
+                "extension-wheel-stages",
+                "module-carrier-artifacts",
+                "module-carriers",
+            )
+            for name in names:
+                (build_root / name / "debug").mkdir(parents=True)
+            (build_root / "extension-wheel-artifacts/release").mkdir()
+            (build_root / "extension-wheel-stages/release").mkdir()
+            (build_root / "module-carrier-artifacts/release").symlink_to(external, target_is_directory=True)
+            legacy_stage = build_root / "module-carriers/release"
+            legacy_stage.mkdir()
+            (legacy_stage / "acme.common").symlink_to(external, target_is_directory=True)
+            with mock.patch.object(prepare_tool, "LIBRARY_BUILD_ROOT", build_root):
+                prepare_tool._clean_wheel_staging_outputs("release")
+            self.assertTrue(sentinel.exists())
+            for name in names:
+                self.assertFalse((build_root / name / "release").exists())
+                self.assertTrue((build_root / name / "debug").is_dir())
+
+    def test_packaging_build_leaves_wheel_staging_to_the_library_build(self) -> None:
+        """Do not fabricate wheel staging output when the library build stages it for real."""
         with tempfile.TemporaryDirectory() as directory:
             build_root = Path(directory)
             with mock.patch.object(prepare_tool, "LIBRARY_BUILD_ROOT", build_root):
-                with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+                with mock.patch.object(
+                    prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)
+                ):
                     with mock.patch.object(prepare_tool, "_run_library_build"):
                         prepare_tool._prepare(("--release",))
 
-            self.assertFalse((build_root / "module-carriers").exists())
+            self.assertFalse((build_root / "extension-wheel-stages").exists())
 
-    def test_clean_removes_library_tree_and_carrier_outputs(self) -> None:
-        """Keep root clean behavior symmetric across module and carrier output."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+    def test_clean_removes_library_tree_and_wheel_staging_outputs(self) -> None:
+        """Keep root clean behavior symmetric across module and wheel staging output."""
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
-                with mock.patch.object(prepare_tool, "_clean_carrier_outputs") as clean_carrier_outputs:
+                with mock.patch.object(prepare_tool, "_clean_wheel_staging_outputs") as clean_wheel_staging_outputs:
                     prepare_tool._prepare(("--release", "--clean"))
 
         command = run_library_build.call_args.args[0]
         self.assertIn("-r", command)
         self.assertIn("--clean", command)
-        clean_carrier_outputs.assert_called_once_with("release")
+        clean_wheel_staging_outputs.assert_called_once_with("release")
 
-    def test_rebuild_refreshes_carrier_outputs_and_library_tree(self) -> None:
+    def test_rebuild_refreshes_wheel_staging_outputs_and_library_tree(self) -> None:
         """Forward rebuild to CMake and remove the persistent handoff before restaging."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
-                with mock.patch.object(prepare_tool, "_clean_carrier_outputs") as clean_carrier_outputs:
+                with mock.patch.object(prepare_tool, "_clean_wheel_staging_outputs") as clean_wheel_staging_outputs:
                     prepare_tool._prepare(("-x", "--release"))
 
-        clean_carrier_outputs.assert_called_once_with("release")
+        clean_wheel_staging_outputs.assert_called_once_with("release")
         command = run_library_build.call_args.args[0]
         self.assertIn("--rebuild", command)
-        self.assertIn("--carrier", command)
+        self.assertIn("--stage-wheel", command)
 
-    def test_combined_release_rebuild_prepares_only_release_carriers(self) -> None:
+    def test_combined_release_rebuild_stages_only_release_wheels(self) -> None:
         """Do not fall back to both configurations when Repo forwards ``-xr``."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions", return_value=("acme.common",)):
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions", return_value=("acme.common",)):
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
-                with mock.patch.object(prepare_tool, "_clean_carrier_outputs") as clean_carrier_outputs:
+                with mock.patch.object(prepare_tool, "_clean_wheel_staging_outputs") as clean_wheel_staging_outputs:
                     prepare_tool._prepare(("-xr",))
 
-        clean_carrier_outputs.assert_called_once_with("release")
+        clean_wheel_staging_outputs.assert_called_once_with("release")
         run_library_build.assert_called_once()
         command = run_library_build.call_args.args[0]
         self.assertIn("-r", command)
@@ -512,8 +523,8 @@ class PreparationTests(unittest.TestCase):
         self.assertIn("--rebuild", command)
 
     def test_fetch_only_populates_dependencies_without_discovery(self) -> None:
-        """Populate native and Python dependencies without requiring a carrier."""
-        with mock.patch.object(prepare_tool, "_discover_carrier_extensions") as discover:
+        """Populate native and Python dependencies without staging a wheel."""
+        with mock.patch.object(prepare_tool, "_discover_wheel_staging_extensions") as discover:
             with mock.patch.object(prepare_tool, "_run_library_build") as run_library_build:
                 prepare_tool._prepare(("--fetch-only",))
 

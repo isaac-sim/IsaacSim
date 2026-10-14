@@ -4,7 +4,7 @@
 #
 
 [package]
-version = "0.5.1"
+version = "0.5.2"
 category = "Simulation"
 title = "cuMotion Examples"
 description = "Examples for using the cuMotion planning library under motion generation."

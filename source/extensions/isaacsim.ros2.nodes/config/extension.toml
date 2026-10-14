@@ -1,5 +1,5 @@
 [package]
-version = "1.22.7"
+version = "1.22.9"
 category = "Simulation"
 title = "ROS 2 Nodes"
 description = "The ROS 2 Nodes extension provides OmniGraph nodes for ROS 2 communication. It contains publisher, subscriber, and service nodes that can be used in Action graphs to interface with ROS 2 systems. This extension depends on the isaacsim.ros2.core extension for underlying ROS 2 functionality."
@@ -88,6 +88,201 @@ stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
 ]
 
+# Run the rendering-heavy modules in separate Kit processes with their own timeout and renderer state.
+[[test]]
+name = "bbox"
+timeout = 1200
+enabled = true
+dependencies = [
+    "isaacsim.robot.wheeled_robots.nodes",
+    "isaacsim.sensors.rtx",
+    "isaacsim.test.utils",
+    "omni.isaac.ml_archive"
+]
+pythonTests.include = [
+    "isaacsim.ros2.nodes.tests.test_bbox.*",
+]
+
+stdoutFailPatterns.exclude = [
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_control_ROS2ControlManager: [/TestGraph] *ROS2ControlManager: targetPrim is required*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishJointState: [/TestGraph] Specify targetPrim or connect Isaac Read Joint State node outputs*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishImage: [/TestGraph] Width 0 or height 0 is not valid*",
+    "*[Error] [omni.physx.plugin] Setting rigidBodyEnabled to false is not supported if the rigid body is part of an articulation*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_nodes_*: [/TestGraph] Unable to create ROS2 node, please check that namespace is valid*",
+    '*[Error] [carb] [Plugin: omni.sensors.nv.lidar.ext.plugin] Dependency: [omni::sensors::lidar::IGenericModelOutputIOFactory v0.1] failed to be resolved.*', # feature not included in Windows
+    "*[Error] [isaacsim.sensors.physics.plugin] *** error, No valid parent for /Hawk/Imu_Sensor with a rigid body api was found, sensor will not be created*",
+    "*[Error] [isaacsim.sensors.physics.plugin] Failed to create imu sensor, parent prim is not found or invalid*",
+    "*[Error] [omni.graph.core.plugin] Failed to create ComputeGraph \"/Graph/ROS_Nav2_Waypoint_Follower\". A graph already exists at this path*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.physx.tensors.plugin] Failed to create simulation view: no active physics scene found*",
+    "*Failed to create simulation view - physics backend may not be initialized*",
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/ComputeOdometry: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid chassis prim*",
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/TFRobot: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_TF/PublisherTF: [/Graph/ROS_TF] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] The prim /NonExistentPrim is not valid*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Specify targetPrim or connect Isaac Read Joint State node outputs*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] The prim /NonExistentPrim* is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    '*The NumPy module was reloaded*',
+]
+
+args = [
+    "--enable",
+    "omni.kit.loop-isaac",
+    "--reset-user",
+    "--vulkan",
+    "--/app/asyncRendering=0",
+    "--/app/asyncRenderingLowLatency=0",
+    "--/app/fastShutdown=1",
+    "--/app/file/ignoreUnsavedStage=1",
+    "--/app/hydraEngine/waitIdle=0",
+    "--/app/player/useFixedTimeStepping=false",
+    "--/app/renderer/skipWhileMinimized=0",
+    "--/app/renderer/sleepMsOnFocus=0",
+    "--/app/renderer/sleepMsOutOfFocus=0",
+    "--/app/runLoops/main/manualModeEnabled=true",
+    "--/app/runLoops/main/rateLimitEnabled=false",
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+    "--/app/settings/persistent=0",
+    "--/app/useFabricSceneDelegate=true",
+    "--/app/viewport/createCameraModelRep=0",
+    "--/crashreporter/skipOldDumpUpload=1",
+    "--/exts/omni.usd/locking/onClose=0",
+    "--/omni/kit/plugin/syncUsdLoads=1",
+    "--/omni/replicator/asyncRendering=0",
+    "--/omnihydra/parallelHydraSprimSync=1",
+    '--/persistent/app/stage/upAxis="Z"',
+    "--/persistent/app/viewport/defaults/tickRate=120",
+    "--/persistent/app/viewport/displayOptions=31951",
+    "--/persistent/omni/replicator/captureOnPlay=1",
+    "--/persistent/omnigraph/updateToUsd=0",
+    "--/persistent/physics/visualizationDisplayJoints=0",
+    "--/persistent/renderer/startupMessageDisplayed=1",
+    "--/persistent/simulation/defaultMetersPerUnit=1.0",
+    "--/persistent/simulation/minFrameRate=15",
+    "--/renderer/multiGpu/autoEnable=0",
+    "--/renderer/multiGpu/enabled=0",
+    "--/rtx-transient/dlssg/enabled=0",
+    "--/rtx-transient/resourcemanager/enableTextureStreaming=1",
+    "--/rtx/descriptorSets=360000",
+    "--/rtx/hydra/enableSemanticSchema=1",
+    "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
+    "--/rtx/materialDb/syncLoads=1",
+    "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
+    "--/rtx/reservedDescriptors=900000",
+    ### Extension specific args
+    '--/exts/isaacsim.ros2.bridge/# ROS distro and settings centrally managed',
+    "--/exts/isaacsim.ros2.bridge/publish_without_verification=1",
+    "--/renderer/raytracingMotion/enabled=true",
+    "--/renderer/raytracingMotion/enableHydraEngineMasking=true",
+    "--/renderer/raytracingMotion/enabledForHydraEngines=0,1,2,3",
+    "--/rtx-transient/stableIds/enabled=true",
+]
+
+[[test]]
+name = "camera_render"
+timeout = 1200
+enabled = true
+dependencies = [
+    "isaacsim.robot.wheeled_robots.nodes",
+    "isaacsim.sensors.rtx",
+    "isaacsim.test.utils",
+    "omni.isaac.ml_archive"
+]
+pythonTests.include = [
+    "isaacsim.ros2.nodes.tests.test_camera.*",
+    "isaacsim.ros2.nodes.tests.test_camera_info.*",
+    "isaacsim.ros2.nodes.tests.test_rtx_sensor.*",
+]
+pythonTests.exclude = [
+    "isaacsim.ros2.nodes.tests.test_camera*test_rgb_golden_image_comparison*",
+    "isaacsim.ros2.nodes.tests.test_camera.TestRos2Camera.test_tick_rate_reduces_publish_frequency",
+]
+
+stdoutFailPatterns.exclude = [
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_control_ROS2ControlManager: [/TestGraph] *ROS2ControlManager: targetPrim is required*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishJointState: [/TestGraph] Specify targetPrim or connect Isaac Read Joint State node outputs*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishImage: [/TestGraph] Width 0 or height 0 is not valid*",
+    "*[Error] [omni.physx.plugin] Setting rigidBodyEnabled to false is not supported if the rigid body is part of an articulation*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_nodes_*: [/TestGraph] Unable to create ROS2 node, please check that namespace is valid*",
+    '*[Error] [carb] [Plugin: omni.sensors.nv.lidar.ext.plugin] Dependency: [omni::sensors::lidar::IGenericModelOutputIOFactory v0.1] failed to be resolved.*', # feature not included in Windows
+    "*[Error] [isaacsim.sensors.physics.plugin] *** error, No valid parent for /Hawk/Imu_Sensor with a rigid body api was found, sensor will not be created*",
+    "*[Error] [isaacsim.sensors.physics.plugin] Failed to create imu sensor, parent prim is not found or invalid*",
+    "*[Error] [omni.graph.core.plugin] Failed to create ComputeGraph \"/Graph/ROS_Nav2_Waypoint_Follower\". A graph already exists at this path*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/Template_isaacsim_ros2_bridge_ROS2PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.physx.tensors.plugin] Failed to create simulation view: no active physics scene found*",
+    "*Failed to create simulation view - physics backend may not be initialized*",
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/ComputeOdometry: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid chassis prim*",
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_Odometry/TFRobot: [/Graph/ROS_Odometry] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /Graph/ROS_TF/PublisherTF: [/Graph/ROS_TF] The prim  is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] The prim /NonExistentPrim is not valid*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Could not find target prim*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishJointState: [/TestGraph] Specify targetPrim or connect Isaac Read Joint State node outputs*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] Please specify at least one valid target prim for the ROS pose tree component*",
+    "*[Error] [omni.graph.core.plugin] /TestGraph/PublishTransformTree: [/TestGraph] The prim /NonExistentPrim* is not valid. Please specify at least one valid target prim for the ROS pose tree component*",
+    '*The NumPy module was reloaded*',
+]
+
+args = [
+    "--enable",
+    "omni.kit.loop-isaac",
+    "--reset-user",
+    "--vulkan",
+    "--/app/asyncRendering=0",
+    "--/app/asyncRenderingLowLatency=0",
+    "--/app/fastShutdown=1",
+    "--/app/file/ignoreUnsavedStage=1",
+    "--/app/hydraEngine/waitIdle=0",
+    "--/app/player/useFixedTimeStepping=false",
+    "--/app/renderer/skipWhileMinimized=0",
+    "--/app/renderer/sleepMsOnFocus=0",
+    "--/app/renderer/sleepMsOutOfFocus=0",
+    "--/app/runLoops/main/manualModeEnabled=true",
+    "--/app/runLoops/main/rateLimitEnabled=false",
+    "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+    "--/app/settings/persistent=0",
+    "--/app/useFabricSceneDelegate=true",
+    "--/app/viewport/createCameraModelRep=0",
+    "--/crashreporter/skipOldDumpUpload=1",
+    "--/exts/omni.usd/locking/onClose=0",
+    "--/omni/kit/plugin/syncUsdLoads=1",
+    "--/omni/replicator/asyncRendering=0",
+    "--/omnihydra/parallelHydraSprimSync=1",
+    '--/persistent/app/stage/upAxis="Z"',
+    "--/persistent/app/viewport/defaults/tickRate=120",
+    "--/persistent/app/viewport/displayOptions=31951",
+    "--/persistent/omni/replicator/captureOnPlay=1",
+    "--/persistent/omnigraph/updateToUsd=0",
+    "--/persistent/physics/visualizationDisplayJoints=0",
+    "--/persistent/renderer/startupMessageDisplayed=1",
+    "--/persistent/simulation/defaultMetersPerUnit=1.0",
+    "--/persistent/simulation/minFrameRate=15",
+    "--/renderer/multiGpu/autoEnable=0",
+    "--/renderer/multiGpu/enabled=0",
+    "--/rtx-transient/dlssg/enabled=0",
+    "--/rtx-transient/resourcemanager/enableTextureStreaming=1",
+    "--/rtx/descriptorSets=360000",
+    "--/rtx/hydra/enableSemanticSchema=1",
+    "--/rtx/hydra/materialSyncLoads=1",
+    "--/rtx/hydra/supportMultiTickRate=true",
+    "--/rtx/materialDb/syncLoads=1",
+    "--/rtx/newDenoiser/enabled=1",
+    "--/rtx/rendering/perSensorTickTlas=true",
+    "--/rtx/reservedDescriptors=900000",
+    ### Extension specific args
+    '--/exts/isaacsim.ros2.bridge/# ROS distro and settings centrally managed',
+    "--/exts/isaacsim.ros2.bridge/publish_without_verification=1",
+    "--/renderer/raytracingMotion/enabled=true",
+    "--/renderer/raytracingMotion/enableHydraEngineMasking=true",
+    "--/renderer/raytracingMotion/enabledForHydraEngines=0,1,2,3",
+    "--/rtx-transient/stableIds/enabled=true",
+]
+
 [[test]]
 timeout = 1200
 enabled = true
@@ -98,8 +293,10 @@ dependencies = [
     "omni.isaac.ml_archive"
 ]
 pythonTests.exclude = [
-    "isaacsim.ros2.nodes.tests.test_camera*test_rgb_golden_image_comparison*",
-    "isaacsim.ros2.nodes.tests.test_camera.TestRos2Camera.test_tick_rate_reduces_publish_frequency",
+    "isaacsim.ros2.nodes.tests.test_bbox.*",
+    "isaacsim.ros2.nodes.tests.test_camera.*",
+    "isaacsim.ros2.nodes.tests.test_camera_info.*",
+    "isaacsim.ros2.nodes.tests.test_rtx_sensor.*",
 ]
 
 # TestConfiguredSrtxSensorSets is unsupported on Windows

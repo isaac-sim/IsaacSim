@@ -13,135 +13,96 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Configure the private OVStage runtime for the current process.
+"""Configure the pip-owned OVStage and OvPhysX runtimes for this process.
 
-The runtime root contains the curated, ctypes-based ``ovstage`` package under
-``ovstage_py/`` and the physics-owned native SDK under ``ovphysx/``.
-:func:`setup` makes those two components discoverable without importing or
-modifying the process-wide ``pxr`` package. OVStage's namespaced OpenUSD
-runtime remains private to its native library.
+:func:`setup` loads the native libraries supplied by the declared ``ovstage``
+and ``ovphysx`` package dependencies before an Isaac Sim binding is imported.
+It also registers OVNewton's required USD schemas before anything can populate
+the stage. This keeps OVStage's namespaced OpenUSD runtime private and does not
+import or modify the process-wide ``pxr`` package.
 """
 
 from __future__ import annotations
 
 import ctypes
 import functools
+import importlib.util
 import os
 import sys
 import weakref
+from importlib.metadata import distribution
 from pathlib import Path
 
 _OVSTAGE_LIBRARY_NAME = "ovstage.dll" if sys.platform == "win32" else "libovstage.so"
+_OVSTAGE_LOADER_NAME = "ovstage-dynamic.dll" if sys.platform == "win32" else "libovstage-dynamic.so"
+_OVPHYSX_LIBRARY_NAME = "ovphysx.dll" if sys.platform == "win32" else "libovphysx.so"
 
 _done = False
 _dll_directory_handles: list[object] = []
-_windows_native_root: Path | None = None
+_native_library_handles: list[ctypes.CDLL] = []
 # Map native ovstage_instance_t addresses to the owning Python Stage. Physics
 # backends receive only the integer handle from physics_manager.initialize; Python
 # consumers such as PyPI ovnewton.attach_ovstage need the Stage object.
 _stages_by_handle: weakref.WeakValueDictionary[int, object] = weakref.WeakValueDictionary()
 
 
-class _DlInfo(ctypes.Structure):
-    """Linux ``Dl_info`` result used to locate an already-loaded library."""
+def _package_root(package: str) -> Path:
+    """Get an installed dependency package's root without importing it.
 
-    _fields_ = [
-        ("dli_fname", ctypes.c_char_p),
-        ("dli_fbase", ctypes.c_void_p),
-        ("dli_sname", ctypes.c_char_p),
-        ("dli_saddr", ctypes.c_void_p),
+    Returns:
+        Installed package directory.
+
+    Raises:
+        RuntimeError: If the required dependency is not installed as a package.
+
+    """
+    spec = importlib.util.find_spec(package)
+    if spec is None or not spec.submodule_search_locations:
+        raise RuntimeError(f"Required Python package '{package}' is not installed.")
+    return Path(next(iter(spec.submodule_search_locations))).resolve()
+
+
+def _require_library(path: Path) -> Path:
+    """Validate and return a dependency-owned native library path."""
+    if not path.is_file():
+        raise RuntimeError(f"Required native dependency was not found: {path}")
+    return path
+
+
+def _load_library(path: Path) -> None:
+    """Load a dependency-owned native library and retain its handle."""
+    mode = None if sys.platform == "win32" else ctypes.RTLD_GLOBAL
+    if mode is None:
+        library = ctypes.CDLL(str(_require_library(path)))
+    else:
+        library = ctypes.CDLL(str(_require_library(path)), mode=mode)
+    _native_library_handles.append(library)
+
+
+def _configure_windows_runtime(ovphysx_root: Path, ovstage_root: Path) -> None:
+    """Register every directory needed by the dependency wheels' DLL closures."""
+    directories = [
+        ovphysx_root / "lib",
+        ovphysx_root / "plugins",
+        ovstage_root / "bin",
+        ovstage_root / "bin" / "plugins",
     ]
-
-
-def _runtime_roots() -> list[Path]:
-    """Get the installed Isaac Sim runtime roots.
-
-    Returns:
-        Runtime roots from every entry in the ``isaacsim`` namespace package.
-
-    """
-    import isaacsim
-
-    return [Path(entry) / "lib" for entry in isaacsim.__path__]
-
-
-def _find_runtime_root() -> Path:
-    """Find the runtime containing the curated OVStage Python package.
-
-    Returns:
-        Runtime root containing ``ovstage_py``.
-
-    Raises:
-        RuntimeError: If the packaged OVStage runtime is missing.
-
-    """
-    for root in _runtime_roots():
-        if (root / "ovstage_py" / "ovstage" / "__init__.py").is_file():
-            return root
-    raise RuntimeError("Bundled OVStage Python runtime was not found under the isaacsim namespace package.")
-
-
-def _loaded_ovstage_root() -> Path | None:
-    """Get the directory of an already-loaded Linux OVStage library.
-
-    Returns:
-        Library directory, or None when OVStage has not been loaded.
-
-    """
-    if sys.platform != "linux":
-        return None
-    try:
-        library = ctypes.CDLL(_OVSTAGE_LIBRARY_NAME, mode=os.RTLD_NOLOAD | ctypes.RTLD_LOCAL)
-    except OSError:
-        return None
-
-    dladdr = ctypes.CDLL(None).dladdr
-    dladdr.argtypes = [ctypes.c_void_p, ctypes.POINTER(_DlInfo)]
-    dladdr.restype = ctypes.c_int
-    info = _DlInfo()
-    symbol = ctypes.cast(library.ovstage_initialize, ctypes.c_void_p)
-    if not dladdr(symbol, ctypes.byref(info)) or not info.dli_fname:
-        return None
-    return Path(os.fsdecode(info.dli_fname)).resolve().parent
-
-
-def _configure_windows_runtime() -> Path:
-    """Configure the Windows loader for the packaged OvPhysX runtime.
-
-    Returns:
-        Directory containing the OVStage library loaded by OvPhysX.
-
-    Raises:
-        RuntimeError: If the packaged OvPhysX bindings are missing.
-
-    """
-    import isaacsim
-
-    for entry in isaacsim.__path__:
-        binding_root = Path(entry) / "physics_engines" / "ovphysx" / "bindings"
-        if not (binding_root / "ovphysx.dll").is_file():
-            continue
-        for runtime_directory in (
-            binding_root,
-            binding_root / "plugins",
-            binding_root.parent / "plugins",
-            binding_root.parent / "plugins" / "bin" / "deps",
-        ):
-            if runtime_directory.is_dir():
-                _dll_directory_handles.append(os.add_dll_directory(runtime_directory))
-        return binding_root
-    raise RuntimeError("Bundled OvPhysX Windows runtime was not found under the isaacsim namespace package.")
+    plugins = ovstage_root / "bin" / "plugins"
+    if plugins.is_dir():
+        directories.extend(path for path in plugins.iterdir() if path.is_dir())
+    for directory in directories:
+        if directory.is_dir():
+            _dll_directory_handles.append(os.add_dll_directory(directory))
 
 
 def setup() -> None:
-    """Make the private OVStage runtime discoverable.
+    """Load the declared native runtimes and register their USD schemas.
 
-    Repeated calls are safe. On Linux, each call refreshes the loader hint to
-    select an OVStage library that an engine binding has loaded since the prior
-    call. This function does not import or modify ``pxr``.
+    Repeated calls are safe. Schema registration occurs before the OvPhysX
+    runtime is loaded. This function does not import or modify ``pxr``.
 
     Raises:
-        RuntimeError: If the bundled runtime is missing.
+        RuntimeError: If a dependency wheel or its native runtime is missing.
 
     Example:
 
@@ -152,32 +113,36 @@ def setup() -> None:
         >>> setup()
 
     """
-    global _done, _windows_native_root
-    runtime_root = _find_runtime_root()
-    ovstage_python = runtime_root / "ovstage_py"
-    if str(ovstage_python) not in sys.path:
-        sys.path.insert(0, str(ovstage_python))
+    global _done
+    if _done:
+        return
+
+    ovstage_root = _package_root("ovstage")
+    ovphysx_root = _package_root("ovphysx")
+    ovstage_bin = ovstage_root / "bin"
+    ovphysx_lib = ovphysx_root / "lib"
+    os.environ["OVSTAGE_LIBRARY_PATH_HINT"] = str(ovstage_bin)
 
     if sys.platform == "win32":
-        if not _done:
-            _windows_native_root = _configure_windows_runtime()
-        if _windows_native_root is None:
-            raise RuntimeError("Bundled OvPhysX Windows runtime was not configured.")
-        native_root = _windows_native_root
-    else:
-        native_root = _loaded_ovstage_root() or runtime_root / "ovphysx" / "bin"
-        native_library = native_root / _OVSTAGE_LIBRARY_NAME
-        if not native_library.is_file():
-            raise RuntimeError(f"Bundled OVStage runtime not found at {native_library}")
-        # Load it globally so the backend's NEEDED entry binds to this copy by SONAME.
-        # An installed layout puts the library beside libovphysx and $ORIGIN finds it,
-        # but the SDK package the build tree links against has no such sibling.
-        ctypes.CDLL(str(native_library), mode=ctypes.RTLD_GLOBAL)
+        _configure_windows_runtime(ovphysx_root, ovstage_root)
 
-    # The curated Python package intentionally excludes its duplicate native
-    # payload. Point its documented loader hint at the OVStage library already
-    # packaged with the OvPhysX backend.
-    os.environ["OVSTAGE_LIBRARY_PATH_HINT"] = str(native_root)
+    # The Isaac adapter links the OVStage loader and OvPhysX directly. Preload
+    # all three SONAMEs/DLLs before importing its nanobind module so the dynamic
+    # loader reuses the dependency wheels' copies.
+    _load_library(ovstage_bin / _OVSTAGE_LOADER_NAME)
+    _load_library(ovstage_bin / _OVSTAGE_LIBRARY_NAME)
+
+    # Register through OVStage: public OVNewton 0.1.1 has no registration helper.
+    # Locate plugin data without importing schemas into the process-wide USD.
+    from ovstage import population  # noqa: PLC0415
+
+    population.register_usd_schemas(
+        [
+            distribution("newton-usd-schemas").locate_file("newton_usd_schemas/plugInfo.json"),
+            distribution("physx-usd-schemas").locate_file("physx_usd_schemas/PhysxSchema/resources/plugInfo.json"),
+        ]
+    )
+    _load_library(ovphysx_lib / _OVPHYSX_LIBRARY_NAME)
     _done = True
 
 

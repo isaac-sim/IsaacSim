@@ -27,6 +27,9 @@ namespace isaacsim::ucx::core
 
 /**
  * @brief Special timeout value for infinite wait.
+ * @details
+ * This is the only value that requests an unbounded wait. A timeout of 0 means
+ * "do not wait" - see waitForRequestWithTimeout().
  */
 constexpr uint32_t g_kUcxInfiniteTimeout = UINT32_MAX;
 
@@ -69,15 +72,18 @@ enum class UcxReceiveResult
  * @brief Wait for a UCX request to complete with timeout.
  * @details
  * Polls the request status until it completes, fails, or the timeout expires.
- * If timeoutMs is 0 or g_kUcxInfiniteTimeout (UINT32_MAX), waits indefinitely until
- * completion or failure.
+ * Only g_kUcxInfiniteTimeout (UINT32_MAX) waits indefinitely. A timeout of 0 means
+ * "do not wait": the request is polled exactly once and cancelled if it has not
+ * already completed. An unbounded wait can never be interrupted from another thread,
+ * so callers that run on an application update thread must not request one.
  *
  * The function uses a configurable polling interval which provides a balance
  * between responsiveness and CPU usage. The default interval (1ms) is suitable
  * for most real-time simulation scenarios.
  *
  * @param[in] request UCX request to wait for (must not be null)
- * @param[in] timeoutMs Timeout in milliseconds (0 or g_kUcxInfiniteTimeout = infinite wait)
+ * @param[in] timeoutMs Timeout in milliseconds (0 = poll once without waiting,
+ *                      g_kUcxInfiniteTimeout = infinite wait)
  * @param[out] errorMessage String for storing error messages from checkError()
  * @param[in] pollIntervalUs Polling interval in microseconds (default: 1000)
  * @return UcxRequestWaitResult indicating the outcome:

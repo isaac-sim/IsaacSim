@@ -1,6 +1,6 @@
 ---
 name: meta-skills
-description: "Patterns for authoring/composing skills (MSF). May propose skill-file edits (confirm before write) and optional localhost $IMAGE_SERVER_URL review uploads."
+description: "Use when asked to structure, create, compose, or improve agent skills, including new-skill proposals and Meta-Skilling Framework (MSF) authoring plans."
 license: Apache-2.0
 metadata:
   author: Renato Gasoto <info@nvidia.com>
@@ -12,14 +12,27 @@ metadata:
 
 Structure, compose, and improve agent skills using composition patterns and the Meta-Skilling Framework (Discovery → Practice → Capture → Validation → Iteration).
 
-**Side effects (disclosed):** following this skill may (1) propose updates to skill files on disk — apply only after user confirmation; (2) optionally upload review images to `$IMAGE_SERVER_URL`, which must be localhost-bound (default `http://localhost:8092`), never an external host, and only after user confirmation.
+**Side effects (disclosed):** following this skill may (1) propose updates to skill files on disk — apply when the user has authorized the scoped edits; (2) optionally upload review images to `$IMAGE_SERVER_URL`, which must be localhost-bound (default `http://localhost:8092`), never an external host, and only after user confirmation.
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
-- User confirmation before skill-library writes or `$IMAGE_SERVER_URL` uploads.
+- Access to the skill library to inspect existing boundaries and templates. Structuring a skill does not require launching Isaac Sim or checking a GPU.
+- For runtime validation of a simulation skill, use its own environment prerequisites and the `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR` contract.
+- User authorization for skill-library writes or `$IMAGE_SERVER_URL` uploads; an explicit request to create or update the skill already authorizes the scoped file edits.
+
+## Structuring a new skill
+
+When asked how to structure a new skill, return a proposal using the [SKILL.md template](#skillmd-template). Write files when the user asks to create or update them; a structure question alone does not request file creation.
+
+Include these authoring decisions in the proposal or implementation handoff:
+
+1. **Scope and placement:** compare existing siblings and choose a new directory only for a distinct capability. For example, a tendon-driven-gripper specialist can reuse `manipulation-ik` for task-space control, `physics-simulation` for dynamics, and `usd-articulation` for asset structure without duplicating those skills.
+2. **Draft template:** include `metadata.status: draft` in the YAML frontmatter until validated. Keep custom lifecycle fields under `metadata` for portable SKILL.md parsing; the draft marker is not a claim of successful validation.
+3. **MSF development plan:** name **Discovery, Practice, Capture, Validation, Iteration** and explain what each will establish for this skill. These are its authoring phases, distinct from an orchestrator's runtime phase plan; they need not become five headings in every resulting skill.
+4. **Size and paths:** state the limits of **500 body lines** and **1024 description characters**. Keep detailed material in linked references and use environment variables rather than user-specific paths.
+5. **Discovery and integration:** identify the `skills/SKILLS.md` registration and sibling cross-links. For a proposal, show the intended entries; for an authorized creation, update them and report what was actually validated.
+
+Apply this checklist to new-skill authoring, not to unrelated simulation requests or every edit of an existing skill.
 
 ## Limitations
 
@@ -41,9 +54,9 @@ Two parts:
 2. Meta-Skilling Framework (MSF): building new skills from zero.
 
 
-## Core Operating Principle: Distillation Is Not Optional
+## Capturing authoring lessons
 
-Every user request follows a six-step loop: ORIENT → PLAN → EXECUTE → VALIDATE → **DISTILL** → DELIVER. The DISTILL step is mandatory as a *proposal*, not a silent write. If a task produced a new insight, workaround, correction, or procedure, draft the skill update (or new skill) and obtain **explicit user confirmation** before modifying skill files on disk. Skill files ARE persistent memory — what isn't written down doesn't exist next session; what is written without review can poison future sessions.
+For skill-authoring work, use ORIENT → PLAN → EXECUTE → VALIDATE → DISTILL → DELIVER as a development loop. Capture reusable lessons in the skill the user asked to create or update, using the authorization already given. A planning-only request ends with a proposal; it does not require a file write. If an unrelated task reveals a useful skill change outside its authorized scope, propose that change separately and obtain authorization before applying it. This section does not require distillation for every user request.
 
 See:
 - [`AGENTS.md`](../../AGENTS.md) — the universal request handling loop and skill index
@@ -83,13 +96,13 @@ Rules:
 
 ## 3. Quality Gates (from Collaboration / LLM Review)
 
-**Pattern:** Mandatory external review before publishing any output.
+**Pattern:** An optional review gate for workflows whose author has explicitly chosen it. This is an illustrative composition pattern, not a prerequisite for answering a skill-structure question or delivering unrelated work.
 
 Steps:
-1. Generate output (render, code, asset)
+1. Agree on the review criteria and generate the relevant output (render, code, asset)
 2. With user confirmation, upload for review only to a localhost `$IMAGE_SERVER_URL` (typically `http://localhost:8092`) for vision LLM ingestion — refuse non-localhost URLs
-3. Flood context — include full setup, known issues, what was tried
-4. Require minimum score (e.g., 7/10) before sharing
+3. Include the setup, known issues, and previous attempts relevant to the review
+4. Apply the chosen acceptance criteria; a numeric threshold such as 7/10 is only an example
 5. Iterate based on prioritized improvement list
 
 **Source:** `llm-review-protocol`, `collaboration` — Grok vision review before posting renders
@@ -236,7 +249,7 @@ Three structural concerns, none optional:
 |---|---|---|
 | **Routing** | Parent SKILL.md routing table | Signal → target → handoff contract |
 | **Quality gates** | Parent or dedicated validator sub-skill | Standing checklist + decision tree + feedback loop |
-| **Distill-before-deliver** | Phase 4 of the phase plan | Proposed skill update confirmed by user before write |
+| **Distill-before-deliver** | Phase 4 of the phase plan | Scoped skill update authorized by the user before write |
 
 **When to use:** Any hierarchy with 3+ sub-skills, pipeline stages with intermediate outputs, or domains where delivery defects have been recurring.
 
@@ -245,7 +258,7 @@ Three structural concerns, none optional:
 **Existing implementations:**
 - `isaac-sim-orchestrator` — routing table + four-phase plan
 - `isaac-sim-validator` — quality gate with evolving criteria
-- `skill-distillation` — the distill-before-deliver procedure (confirm before write)
+- `skill-distillation` — the distillation procedure (honor existing scoped authorization)
 
 ## 14. Environment Variables, Not User Paths
 
@@ -336,6 +349,8 @@ Rules: parent has the full skill tree with status indicators; sub-skills link ba
 name: skill-name
 description: >
   [1-3 sentences: what, when to use, triggers]
+metadata:
+  status: draft
 ---
 
 # [Skill Name]

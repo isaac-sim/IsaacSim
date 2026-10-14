@@ -22,29 +22,29 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from math import inf
 from pathlib import Path
 from typing import Any, Optional
 
 import carb
 import omni.kit.app
 import omni.ui as ui
-from isaacsim.gui.components.element_wrappers import FloatField, StringField, TextBlock
+from isaacsim.gui.components.element_wrappers import StringField, TextBlock
 from isaacsim.gui.components.ui_utils import dropdown_builder
-
-from ..ingest import load_trajectory
-from ..ingest.config_types import (
+from isaacsim.robot_setup.sysid.ingest import load_trajectory
+from isaacsim.robot_setup.sysid.ingest.config_types import (
     TrajectoryIngestError,
     TrajectoryLoadConfig,
     TrajectorySourceType,
 )
-from ..telemetry_quality import build_telemetry_quality_report
-from ..training_logs import (
+from isaacsim.robot_setup.sysid.telemetry_quality import build_telemetry_quality_report
+from isaacsim.robot_setup.sysid.training_logs import (
     attach_companion_training_details,
     find_companion_mcap_path,
     phase_chunks_from_metadata,
 )
-from ..trajectory_csv import TrajectoryCsvError, TrajectoryDataset
-from ..trajectory_segments import (
+from isaacsim.robot_setup.sysid.trajectory_csv import TrajectoryCsvError, TrajectoryDataset
+from isaacsim.robot_setup.sysid.trajectory_segments import (
     DEFAULT_AUTO_MIN_CHUNK_SECONDS,
     DEFAULT_AUTO_TRAIN_FRACTION,
     DEFAULT_EXCITATION_TAGS,
@@ -55,6 +55,8 @@ from ..trajectory_segments import (
     build_trajectory_chunks,
     resolve_chunk_specs,
 )
+from isaacsim.robot_setup.sysid.ui.numeric_inputs import ExactFloatField
+from isaacsim.robot_setup.sysid.ui.styles import MUTED_LABEL_STYLE
 
 _TELEMETRY_SOURCE_LABELS = ("CSV", "ROS 2 Bag", "MCAP", "LeRobot")
 _TELEMETRY_SOURCE_TYPES = {
@@ -69,8 +71,10 @@ _CHUNK_ROLE_TYPES = {
     "Validation": TELEMETRY_CHUNK_ROLE_VALIDATION,
 }
 _CHUNK_EXCITATION_LABELS = tuple(DEFAULT_EXCITATION_TAGS)
-_CHUNK_TABLE_EMPTY_HEIGHT = 50
-_CHUNK_TABLE_HEADER_HEIGHT = 22
+_AUTO_SPLIT_MIN_PERCENT = 5.0
+_AUTO_SPLIT_MAX_PERCENT = 95.0
+_CHUNK_TABLE_EMPTY_HEIGHT = 72
+_CHUNK_TABLE_HEADER_HEIGHT = 44
 _CHUNK_TABLE_ROW_HEIGHT = 26
 _CHUNK_TABLE_PADDING = 8
 # Cap the visible rows so a heavy chunk set scrolls inside the panel instead of
@@ -276,17 +280,18 @@ class TelemetryPanel:
         self._source_path_field: Optional[StringField] = None
         self._mapping_path_field: Optional[StringField] = None
         self._chunk_manifest_path_field: Optional[StringField] = None
-        self._command_alignment_field: Optional[FloatField] = None
+        self._command_alignment_field: Optional[ExactFloatField] = None
         self._load_button: Optional[ui.Button] = None
         self._preview_button: Optional[ui.Button] = None
-        self._start_time_field: Optional[FloatField] = None
-        self._end_time_field: Optional[FloatField] = None
+        self._start_time_field: Optional[ExactFloatField] = None
+        self._end_time_field: Optional[ExactFloatField] = None
         self._source_summary_label: Optional[TextBlock] = None
         self._chunk_name_field: Optional[StringField] = None
-        self._chunk_weight_field: Optional[FloatField] = None
+        self._chunk_weight_field: Optional[ExactFloatField] = None
         self._chunk_custom_excitation_field: Optional[StringField] = None
         self._chunk_name_model: Optional[ui.SimpleStringModel] = None
         self._chunk_weight_model = None
+        self._chunk_weight_widget: Optional[ui.FloatField] = None
         self._chunk_custom_excitation_model: Optional[ui.SimpleStringModel] = None
         self._auto_split_model = None
         self._auto_split_fraction_model = None
@@ -345,7 +350,7 @@ class TelemetryPanel:
                 folder_button_title="Select",
             )
             self._chunk_manifest_path_field.file_picker_frame.width = ui.Length(28)
-            self._command_alignment_field = FloatField(
+            self._command_alignment_field = ExactFloatField(
                 "Command alignment (s)",
                 default_value=0.0,
                 step=0.001,
@@ -366,18 +371,19 @@ class TelemetryPanel:
                     clicked_fn=self._on_load_trajectory_clicked,
                     tooltip="Load the selected telemetry source, mapping config, and chunk manifest.",
                 )
+            ui.Label("Analysis window", style={"font_size": 13})
             with ui.HStack(spacing=8):
-                self._start_time_field = FloatField(
+                self._start_time_field = ExactFloatField(
                     "Start time (s)",
                     default_value=0.0,
                     tooltip="Optimization window start (seconds)",
-                    on_value_changed_fn=lambda _val: self._refresh_chunk_timeline(),
+                    on_value_changed_fn=self._on_analysis_window_changed,
                 )
-                self._end_time_field = FloatField(
+                self._end_time_field = ExactFloatField(
                     "End time (s)",
                     default_value=1.0,
                     tooltip="Optimization window end (seconds)",
-                    on_value_changed_fn=lambda _val: self._refresh_chunk_timeline(),
+                    on_value_changed_fn=self._on_analysis_window_changed,
                 )
                 self.wrapped_ui_elements.extend([self._start_time_field, self._end_time_field])
             self._source_summary_label = TextBlock(
@@ -387,11 +393,17 @@ class TelemetryPanel:
                 num_lines=3,
             )
 
-            ui.Label("Chunks", style={"font_size": 14})
+            ui.Label("Dataset partitioning", style={"font_size": 14})
+            ui.Label(
+                "Choose an automatic validation holdout or define non-overlapping manual chunks.",
+                word_wrap=True,
+                style=MUTED_LABEL_STYLE,
+            )
+            ui.Label("Automatic validation holdout", style={"font_size": 13})
             with ui.HStack(spacing=6, height=24):
                 ui.Label(
-                    "Auto split",
-                    width=70,
+                    "Enabled",
+                    width=92,
                     tooltip="Automatically hold out the trailing part of the window for validation.",
                 )
                 auto_split_cb = ui.CheckBox(width=22, height=22)
@@ -399,31 +411,35 @@ class TelemetryPanel:
                 self._auto_split_model.set_value(False)
                 self._auto_split_model.add_value_changed_fn(lambda _m: self._on_auto_split_changed())
                 ui.Label(
-                    "Hold out the trailing part of the window for validation.",
-                    tooltip="Explicit chunks take precedence over Auto split.",
+                    "Reserve the trailing part of the analysis window for validation.",
+                    tooltip="Manual chunks take precedence over automatic holdout.",
                 )
                 ui.Spacer()
             with ui.HStack(spacing=6, height=24):
                 ui.Label(
-                    "Train fraction",
-                    width=92,
+                    "Training share (%)",
+                    width=112,
                     alignment=ui.Alignment.LEFT_CENTER,
-                    tooltip="Share of the window used for training.",
+                    tooltip="Percentage of the analysis window used for training.",
                 )
                 fraction_field = ui.FloatField(
                     width=72,
                     height=22,
-                    tooltip="Share of the window used for training; the rest is held out for validation.",
+                    tooltip="Enter 5-95; the remaining percentage is held out for validation.",
                 )
-                fraction_field.model.set_value(DEFAULT_AUTO_TRAIN_FRACTION)
+                fraction_field.model.set_min(_AUTO_SPLIT_MIN_PERCENT)
+                fraction_field.model.set_max(_AUTO_SPLIT_MAX_PERCENT)
+                fraction_field.model.set_value(DEFAULT_AUTO_TRAIN_FRACTION * 100.0)
                 fraction_field.model.add_value_changed_fn(lambda _m: self._on_auto_split_changed())
                 self._auto_split_fraction_model = fraction_field.model
-                ui.Label("Min chunk (s)", width=92, tooltip="Shortest chunk the split may produce.")
+                ui.Label("Minimum duration (s)", width=126, tooltip="Shortest partition the split may produce.")
                 min_seconds_field = ui.FloatField(
                     width=72,
                     height=22,
-                    tooltip="Shortest chunk the split may produce; shorter windows fall back to one train chunk.",
+                    tooltip="Shorter windows fall back to one training chunk.",
                 )
+                min_seconds_field.model.set_min(0.0)
+                min_seconds_field.model.set_max(inf)
                 min_seconds_field.model.set_value(DEFAULT_AUTO_MIN_CHUNK_SECONDS)
                 min_seconds_field.model.add_value_changed_fn(lambda _m: self._on_auto_split_changed())
                 self._auto_split_min_seconds_model = min_seconds_field.model
@@ -434,8 +450,10 @@ class TelemetryPanel:
                 "",
                 height=0,
                 visible=False,
+                word_wrap=True,
                 style={"font_size": 12, "color": 0xFF9AA0A6},
             )
+            ui.Label("Manual chunk editor", style={"font_size": 13})
             with ui.HStack(spacing=6, height=24):
                 ui.Label("Name", width=42, tooltip="Optional chunk display name")
                 self._chunk_name_model = ui.SimpleStringModel("")
@@ -456,57 +474,63 @@ class TelemetryPanel:
                 role_box.model.add_item_changed_fn(
                     lambda m, _v: self._on_chunk_role_changed(_CHUNK_ROLE_LABELS[m.get_item_value_model().as_int])
                 )
-                ui.Label("Weight", width=48, tooltip="Relative training weight")
-                weight_drag = ui.FloatDrag(
+                ui.Label("Train weight", width=76, tooltip="Relative weight used only for training chunks.")
+                self._chunk_weight_widget = ui.FloatField(
                     width=64,
                     height=22,
-                    min=1e-6,
-                    step=0.1,
-                    format="%.3g",
-                    tooltip="Relative training weight. Validation chunks ignore this during optimization.",
+                    tooltip="Relative optimization weight; validation chunks do not use a weight.",
                 )
-                weight_drag.model.set_value(1.0)
-                self._chunk_weight_model = weight_drag.model
+                self._chunk_weight_widget.model.set_min(1e-6)
+                self._chunk_weight_widget.model.set_max(inf)
+                self._chunk_weight_widget.model.set_value(1.0)
+                self._chunk_weight_model = self._chunk_weight_widget.model
 
             with ui.HStack(spacing=6, height=24):
-                ui.Label("Excitation", width=70, tooltip="Manual tag used for grouped validation metrics.")
+                ui.Label("Excitation", width=70, tooltip="Tag used for grouped validation metrics.")
                 excitation_box = ui.ComboBox(
                     _CHUNK_EXCITATION_LABELS.index("custom"),
                     *_CHUNK_EXCITATION_LABELS,
                     width=108,
                     height=22,
-                    tooltip="Manual tag used for grouped validation metrics.",
+                    tooltip="Tag used for grouped validation metrics.",
                 )
                 excitation_box.model.add_item_changed_fn(
                     lambda m, _v: self._on_chunk_excitation_changed(
                         _CHUNK_EXCITATION_LABELS[m.get_item_value_model().as_int]
                     )
                 )
-                ui.Label("Tag", width=30, tooltip="Custom excitation tag")
+                ui.Label("Custom tag", width=68, tooltip="Optional domain-specific excitation tag")
                 self._chunk_custom_excitation_model = ui.SimpleStringModel("custom")
                 ui.StringField(
                     model=self._chunk_custom_excitation_model,
                     width=110,
                     height=22,
-                    tooltip="Used when Excitation is 'custom', or to override with a domain-specific tag.",
+                    tooltip="Used for custom excitation, or to override a predefined tag.",
                 )
                 ui.Button(
-                    "Add", width=58, height=22, clicked_fn=self._on_add_chunk, tooltip="Add current window as a chunk."
+                    "Add Chunk",
+                    width=86,
+                    height=22,
+                    clicked_fn=self._on_add_chunk,
+                    tooltip="Add the current analysis window as a manual chunk.",
                 )
                 ui.Button(
-                    "Clear",
-                    width=58,
+                    "Remove All",
+                    width=86,
                     height=22,
                     clicked_fn=self._on_clear_chunks,
-                    tooltip="Remove all explicit chunks.",
+                    tooltip="Remove all manual chunks.",
                 )
+
+            with ui.HStack(spacing=6, height=24):
+                ui.Label("Viewport preview", width=104, tooltip="Inspect chunk ground-truth poses in the viewport.")
                 ui.Spacer()
                 ui.Button(
-                    "<",
-                    width=24,
+                    "Previous",
+                    width=66,
                     height=22,
                     clicked_fn=lambda: self._on_step_preview_chunk(-1),
-                    tooltip="Preview previous chunk.",
+                    tooltip="Preview the previous chunk.",
                 )
                 self._preview_button = ui.Button(
                     "Preview",
@@ -517,29 +541,29 @@ class TelemetryPanel:
                 )
                 ui.Button(
                     "Play",
-                    width=42,
+                    width=52,
                     height=22,
                     clicked_fn=self._on_play_preview_chunk_clicked,
                     tooltip=f"Animate the selected chunk preview at {_CHUNK_PREVIEW_PLAYBACK_SPEED:g}x.",
                 )
                 ui.Button(
-                    ">",
-                    width=24,
+                    "Next",
+                    width=48,
                     height=22,
                     clicked_fn=lambda: self._on_step_preview_chunk(1),
-                    tooltip="Preview next chunk.",
+                    tooltip="Preview the next chunk.",
                 )
 
             self._chunk_timeline_frame = ui.Frame(height=_CHUNK_TIMELINE_HEIGHT, build_fn=self._build_chunk_timeline)
             self._chunk_table_frame = ui.ScrollingFrame(
                 height=ui.Length(self._chunk_table_height()),
                 vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
-                horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
+                horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
                 build_fn=self._build_chunk_table,
             )
             self._chunk_status_label = TextBlock(
-                "Chunk status",
-                "No explicit chunks. The start/end window will run as one train chunk.",
+                "Partition status",
+                "No manual chunks. The analysis window will run as one training chunk.",
                 include_copy_button=False,
                 num_lines=3,
             )
@@ -666,7 +690,7 @@ class TelemetryPanel:
         """
         enabled = bool(self._auto_split_model.get_value_as_bool()) if self._auto_split_model else False
         fraction = (
-            float(self._auto_split_fraction_model.get_value_as_float())
+            float(self._auto_split_fraction_model.get_value_as_float()) / 100.0
             if self._auto_split_fraction_model
             else DEFAULT_AUTO_TRAIN_FRACTION
         )
@@ -676,9 +700,9 @@ class TelemetryPanel:
             else DEFAULT_AUTO_MIN_CHUNK_SECONDS
         )
         if enabled and not 0.05 <= fraction <= 0.95:
-            raise ValueError("Train fraction must be between 0.05 and 0.95.")
+            raise ValueError("Training share must be between 5% and 95%.")
         if enabled and min_seconds < 0.0:
-            raise ValueError("Min chunk (s) must be non-negative.")
+            raise ValueError("Minimum duration must be non-negative.")
         return enabled, fraction, min_seconds
 
     def chunk_validation_error(self, *, require_train: bool) -> str:
@@ -733,17 +757,20 @@ class TelemetryPanel:
         train_fraction: float | None = None,
         min_chunk_seconds: float | None = None,
     ) -> None:
-        """Set the auto-split controls (recipe application).
+        """Set the automatic-holdout controls (recipe application).
 
         Args:
             enabled: Whether the option is enabled.
-            train_fraction: Train fraction value.
-            min_chunk_seconds: Min chunk seconds value.
+            train_fraction: Training fraction in the range 0-1.
+            min_chunk_seconds: Minimum partition duration in seconds.
         """
+        # A programmatic `set_value` bypasses the field's own min/max, so a recipe
+        # could otherwise install a share the user cannot type.
         if self._auto_split_fraction_model is not None and train_fraction is not None:
-            self._auto_split_fraction_model.set_value(float(train_fraction))
+            percent = min(max(float(train_fraction) * 100.0, _AUTO_SPLIT_MIN_PERCENT), _AUTO_SPLIT_MAX_PERCENT)
+            self._auto_split_fraction_model.set_value(percent)
         if self._auto_split_min_seconds_model is not None and min_chunk_seconds is not None:
-            self._auto_split_min_seconds_model.set_value(float(min_chunk_seconds))
+            self._auto_split_min_seconds_model.set_value(max(float(min_chunk_seconds), 0.0))
         if self._auto_split_model is not None:
             # Fires the value-changed callback (chunk refresh + run-state update).
             self._auto_split_model.set_value(bool(enabled))
@@ -799,6 +826,7 @@ class TelemetryPanel:
         self._chunk_custom_excitation_field = None
         self._chunk_name_model = None
         self._chunk_weight_model = None
+        self._chunk_weight_widget = None
         self._chunk_custom_excitation_model = None
         self._preview_chunk_index = 0
         self._auto_split_model = None
@@ -859,7 +887,7 @@ class TelemetryPanel:
             self._preview_chunk_index = 0
             self._loaded_source_signature = None
             self._set_source_summary("Choose a telemetry source path, then Load Trajectory.")
-            self._set_chunk_status("No explicit chunks. The start/end window will run as one train chunk.")
+            self._set_chunk_status("No manual chunks. The analysis window will run as one training chunk.")
             self._refresh_chunk_table()
             self.set_status("Select a telemetry source before loading.")
             self._notify_trajectory_changed()
@@ -994,7 +1022,7 @@ class TelemetryPanel:
                 f"({train_n} train, {len(companion) - train_n} validation)."
             )
         else:
-            self._set_chunk_status("No explicit chunks. The start/end window will run as one train chunk.")
+            self._set_chunk_status("No manual chunks. The analysis window will run as one training chunk.")
         self._refresh_chunk_table()
         n = int(trajectory.times.shape[0])
         self.set_status(f"Loaded {n} samples, {trajectory.num_joints} joints, t=[{t0:.3f}, {t1:.3f}] s")
@@ -1048,6 +1076,14 @@ class TelemetryPanel:
     # chunk helpers
     def _on_chunk_role_changed(self, label: str) -> None:
         self._chunk_role_label = label
+        if self._chunk_weight_widget is not None:
+            is_training = label == "Train"
+            self._chunk_weight_widget.enabled = is_training
+            self._chunk_weight_widget.tooltip = (
+                "Relative optimization weight applied to this training chunk."
+                if is_training
+                else "Validation chunks are held out and do not use an optimization weight."
+            )
 
     def _on_chunk_excitation_changed(self, label: str) -> None:
         self._chunk_excitation_label = label
@@ -1282,7 +1318,7 @@ class TelemetryPanel:
         self._set_preview_enabled(False, clear=True)
         self._telemetry_chunks.clear()
         self._preview_chunk_index = 0
-        self._set_chunk_status("No explicit chunks. The start/end window will run as one train chunk.")
+        self._set_chunk_status("No manual chunks. The analysis window will run as one training chunk.")
         self._refresh_chunk_table()
         if self._on_run_state_changed:
             self._on_run_state_changed()
@@ -1311,7 +1347,10 @@ class TelemetryPanel:
             self._telemetry_chunks[index] = replace(self._telemetry_chunks[index], **{field: value})
         except Exception as exc:
             self._set_chunk_status(f"Chunk edit error: {exc}")
-        self._refresh_chunk_timeline()
+        if field == "role":
+            self._refresh_chunk_table()
+        else:
+            self._refresh_chunk_timeline()
         if self._on_run_state_changed:
             self._on_run_state_changed()
 
@@ -1345,19 +1384,26 @@ class TelemetryPanel:
         if self._on_run_state_changed:
             self._on_run_state_changed()
 
+    def _on_analysis_window_changed(self, _value: float) -> None:
+        self._refresh_chunk_timeline()
+        if self._on_run_state_changed:
+            self._on_run_state_changed()
+
     def _refresh_auto_split_enabled(self) -> None:
-        """Explicit chunks win: grey out auto-split while any exist."""
+        """Manual chunks win: grey out automatic holdout while any exist."""
         enabled = self._controls_enabled and not self._telemetry_chunks
         for widget in self._auto_split_widgets:
             widget.enabled = enabled
-            widget.tooltip = "Explicit chunks take precedence; Clear chunks to use auto-split." if not enabled else ""
+            widget.tooltip = (
+                "Manual chunks take precedence; choose Remove All to use automatic holdout." if not enabled else ""
+            )
         disabled_by_chunks = self._controls_enabled and bool(self._telemetry_chunks)
         if self._auto_split_hint_label is not None:
             self._auto_split_hint_label.visible = disabled_by_chunks
             self._auto_split_hint_label.height = ui.Length(0) if not disabled_by_chunks else ui.Length(18)
             self._auto_split_hint_label.text = (
-                f"Auto split, Train fraction, and Min chunk are disabled while {len(self._telemetry_chunks)} "
-                "explicit chunk(s) exist. Remove chunks (x) or Clear to re-enable auto-split."
+                f"Automatic holdout settings are disabled while {len(self._telemetry_chunks)} "
+                "manual chunk(s) exist. Remove the chunks or choose Remove All to re-enable automatic holdout."
             )
 
     def _chunk_timeline_bounds(self) -> tuple[float, float] | None:
@@ -1477,21 +1523,26 @@ class TelemetryPanel:
 
     def _build_chunk_table(self) -> None:
         with ui.VStack(spacing=4):
+            ui.Label(
+                f"Configured manual chunks ({len(self._telemetry_chunks)})",
+                height=20,
+                style={"font_size": 12, "color": 0xFFB8B8B8},
+            )
             with ui.HStack(spacing=4, height=22):
                 for label, width in (
                     ("Name", 112),
                     ("Role", 78),
                     ("Tag", 88),
-                    ("Start", 62),
-                    ("End", 62),
+                    ("Start (s)", 68),
+                    ("End (s)", 68),
                     ("Samples", 58),
-                    ("Duration", 62),
+                    ("Duration (s)", 72),
                     ("Weight", 54),
                 ):
                     ui.Label(label, width=width)
-                ui.Spacer(width=28)
+                ui.Spacer(width=58)
             if not self._telemetry_chunks:
-                ui.Label("No chunks. Start/end window will be used.", height=20)
+                ui.Label("No manual chunks. The analysis window is used as one training chunk.", height=20)
                 return
             for idx, spec in enumerate(self._telemetry_chunks):
                 samples, duration, warning = self._chunk_row_stats(spec)
@@ -1535,25 +1586,41 @@ class TelemetryPanel:
             ui.StringField(model=excitation_model, width=88, height=22, tooltip="Excitation tag")
 
             for fname, fval in (("start", spec.start), ("end", spec.end)):
-                drag = ui.FloatDrag(width=62, height=22, step=0.001, format="%.3f", tooltip=f"{fname} time (s)")
-                drag.model.set_value(float(fval))
-                drag.model.add_value_changed_fn(
+                field = ui.FloatField(width=68, height=22, tooltip=f"Exact {fname} time in seconds")
+                field.model.set_value(float(fval))
+                field.model.add_value_changed_fn(
                     lambda m, i=index, f=fname: self._on_chunk_cell_changed(i, f, m.get_value_as_float())
                 )
 
             sample_text = samples if not warning else f"{samples} !"
             sample_tooltip = warning or f"{samples} samples"
             ui.Label(sample_text, width=58, tooltip=sample_tooltip)
-            ui.Label(duration, width=62, tooltip="Chunk duration in seconds")
+            ui.Label(duration, width=72, tooltip="Chunk duration in seconds")
 
-            weight_drag = ui.FloatDrag(
-                width=54, height=22, min=1e-6, step=0.1, format="%.3g", tooltip="Relative train weight"
+            is_training = spec.role == TELEMETRY_CHUNK_ROLE_TRAIN
+            weight_field = ui.FloatField(
+                width=54,
+                height=22,
+                enabled=is_training,
+                tooltip=(
+                    "Relative optimization weight"
+                    if is_training
+                    else "Validation chunks are held out and do not use an optimization weight"
+                ),
             )
-            weight_drag.model.set_value(float(spec.weight))
-            weight_drag.model.add_value_changed_fn(
+            weight_field.model.set_min(1e-6)
+            weight_field.model.set_max(inf)
+            weight_field.model.set_value(float(spec.weight))
+            weight_field.model.add_value_changed_fn(
                 lambda m, i=index: self._on_chunk_cell_changed(i, "weight", m.get_value_as_float())
             )
-            ui.Button("x", width=24, height=22, clicked_fn=lambda i=index: self._on_remove_chunk(i))
+            ui.Button(
+                "Remove",
+                width=58,
+                height=22,
+                tooltip=f"Remove chunk '{spec.display_name(index)}'",
+                clicked_fn=lambda i=index: self._on_remove_chunk(i),
+            )
 
     def _source_summary_text(self, trajectory: TrajectoryDataset) -> str:
         phase_count = 0

@@ -55,6 +55,36 @@ public:
     }
 };
 
+namespace
+{
+
+/**
+ * Polls a request until it completes or the bound expires. Never waits unbounded, so a
+ * request that never settles fails the assertion at the call site instead of wedging the
+ * test process.
+ */
+bool waitForCompletion(const std::shared_ptr<ucxx::Request>& request, int timeoutMs)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (request->isCompleted())
+        {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return request->isCompleted();
+}
+
+/** Milliseconds elapsed since the given start point. */
+int64_t elapsedMsSince(const std::chrono::steady_clock::time_point& start)
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+}
+
+} // namespace
+
 TEST_SUITE("UcxUtils")
 {
     TEST_CASE("waitForRequestWithTimeout - null request")
@@ -180,11 +210,11 @@ TEST_SUITE("UcxUtils")
         UCXListenerRegistry::removeListener(port);
     }
 
-    TEST_CASE("waitForRequestWithTimeout - literal zero is infinite wait")
+    TEST_CASE("waitForRequestWithTimeout - literal zero does not wait")
     {
-        // Verifies the user-facing OGN sentinel: timeoutMs == 0 must mean "wait indefinitely",
-        // matching the OGN docstrings (e.g. OgnUCXPublishJointState.ogn: "If 0, waits indefinitely").
-        // Without this guarantee, OGN nodes using the default value (0) would time out immediately.
+        // g_kUcxInfiniteTimeout is the only value that waits indefinitely. A timeout of 0
+        // means "do not wait": the caller gets control back immediately instead of spinning
+        // on a thread it may not be allowed to block, such as an application update thread.
         auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
         auto listener = UCXListenerRegistry::addListener(0);
         uint16_t port = listener->getPort();
@@ -193,30 +223,19 @@ TEST_SUITE("UcxUtils")
         TestClient client(listener->getWorker(), "127.0.0.1", port);
         REQUIRE(listener->waitForConnection(5000));
 
-        std::vector<uint8_t> sendData(1024, 99);
         std::vector<uint8_t> recvData(1024);
 
-        // Sender delays 200 ms; with timeoutMs=0 treated as "fail immediately" (the old bug),
-        // this receive would return eTimedOut before the data arrives. With the documented
-        // "0 = infinite" behavior, it must wait for the send to complete.
-        std::thread senderThread(
-            [&client, &sendData]()
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                auto sendRequest = client.tagSend(sendData.data(), sendData.size(), 300);
-                while (!sendRequest->isCompleted())
-                {
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-                }
-            });
-
+        // Nothing is ever sent on this tag, so the receive cannot complete.
         std::string errorMsg;
+        const auto start = std::chrono::steady_clock::now();
         auto result =
             listener->tagReceive(recvData.data(), recvData.size(), 300, 0xFFFFFFFFFFFFFFFF, errorMsg, /*timeout=*/0);
-        CHECK(result == UcxReceiveResult::eSuccess);
-        CHECK(recvData == sendData);
+        const auto elapsedMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 
-        senderThread.join();
+        CHECK(result == UcxReceiveResult::eTimedOut);
+        CHECK(elapsedMs < 1000);
+
         UCXListenerRegistry::removeListener(port);
     }
 
@@ -262,6 +281,173 @@ TEST_SUITE("UcxUtils")
         CHECK(clientRecvData == serverData);
 
         // Clean up
+        UCXListenerRegistry::removeListener(port);
+    }
+
+    TEST_CASE("tagReceiveWithRequest - posts without waiting and completes when the peer sends")
+    {
+        // The peer sends late, so a blocking implementation would be caught out here.
+        auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+        auto listener = UCXListenerRegistry::addListener(0);
+        uint16_t port = listener->getPort();
+        listener->startProgressThread();
+
+        TestClient client(listener->getWorker(), "127.0.0.1", port);
+        REQUIRE(listener->waitForConnection(5000));
+
+        // The peer sends only after this delay, so any implementation that waited for data
+        // could not possibly return before it elapses.
+        const int sendDelayMs = 500;
+        std::vector<uint8_t> sendData(1024, 77);
+        std::vector<uint8_t> recvData(1024, 0);
+
+        std::thread senderThread(
+            [&client, &sendData, sendDelayMs]()
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(sendDelayMs));
+                auto sendRequest = client.tagSend(sendData.data(), sendData.size(), 500);
+                waitForCompletion(sendRequest, 5000);
+            });
+
+        std::string errorMessage;
+        std::shared_ptr<ucxx::Request> request;
+        const auto start = std::chrono::steady_clock::now();
+        auto result = listener->tagReceiveWithRequest(
+            recvData.data(), recvData.size(), 500, 0xFFFFFFFFFFFFFFFF, errorMessage, request);
+        const auto postMs = elapsedMsSince(start);
+
+        CHECK(result == UcxReceiveResult::eSuccess);
+        REQUIRE(request.get() != nullptr);
+        CHECK(errorMessage.empty());
+        // Returned well before the peer sent anything, so it cannot have waited for data.
+        CHECK(postMs < sendDelayMs / 2);
+        CHECK_FALSE(request->isCompleted());
+
+        // Only now, outside the call under test, do we wait for the message to land.
+        CHECK(waitForCompletion(request, 5000));
+        CHECK(recvData == sendData);
+
+        senderThread.join();
+        request.reset();
+        UCXListenerRegistry::removeListener(port);
+    }
+
+    TEST_CASE("tagReceiveWithRequest - stays outstanding when no message is pending")
+    {
+        // Nothing is ever sent on the tag, so the request cannot complete.
+        auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+        auto listener = UCXListenerRegistry::addListener(0);
+        uint16_t port = listener->getPort();
+        listener->startProgressThread();
+
+        TestClient client(listener->getWorker(), "127.0.0.1", port);
+        REQUIRE(listener->waitForConnection(5000));
+
+        std::vector<uint8_t> recvData(1024, 0);
+        std::string errorMessage;
+        std::shared_ptr<ucxx::Request> request;
+
+        const auto start = std::chrono::steady_clock::now();
+        auto result = listener->tagReceiveWithRequest(
+            recvData.data(), recvData.size(), 600, 0xFFFFFFFFFFFFFFFF, errorMessage, request);
+        const auto postMs = elapsedMsSince(start);
+
+        CHECK(result == UcxReceiveResult::eSuccess);
+        REQUIRE(request.get() != nullptr);
+        CHECK(postMs < 1000);
+        CHECK_FALSE(request->isCompleted());
+
+        // Give the progress thread real time to run; with no matching send the request must
+        // still be outstanding afterwards.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        CHECK_FALSE(request->isCompleted());
+
+        // Retire the request before its destination buffer goes out of scope.
+        request->cancel();
+        CHECK(waitForCompletion(request, 5000));
+        request.reset();
+        UCXListenerRegistry::removeListener(port);
+    }
+
+    TEST_CASE("tagReceiveWithRequest - listener already shut down")
+    {
+        // A shut-down listener has no worker to progress the request.
+        auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+        auto listener = UCXListenerRegistry::addListener(0);
+        uint16_t port = listener->getPort();
+        listener->startProgressThread();
+
+        TestClient client(listener->getWorker(), "127.0.0.1", port);
+        REQUIRE(listener->waitForConnection(5000));
+
+        listener->shutdown();
+
+        std::vector<uint8_t> recvData(1024, 0);
+        std::string errorMessage;
+        std::shared_ptr<ucxx::Request> request;
+        auto result = listener->tagReceiveWithRequest(
+            recvData.data(), recvData.size(), 700, 0xFFFFFFFFFFFFFFFF, errorMessage, request);
+
+        CHECK(result == UcxReceiveResult::eFailed);
+        CHECK(request.get() == nullptr);
+        // The shutdown check runs before the endpoint check, so the message names the real cause.
+        CHECK(errorMessage == "Listener is shutting down or shut down");
+
+        UCXListenerRegistry::removeListener(port);
+    }
+
+    TEST_CASE("tagReceiveWithRequest - no endpoint connected")
+    {
+        // No client ever connects, so there is no endpoint to post the receive on.
+        auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+        auto listener = UCXListenerRegistry::addListener(0);
+        uint16_t port = listener->getPort();
+        listener->startProgressThread();
+
+        REQUIRE_FALSE(listener->isConnected());
+
+        std::vector<uint8_t> recvData(1024, 0);
+        std::string errorMessage;
+        std::shared_ptr<ucxx::Request> request;
+        auto result = listener->tagReceiveWithRequest(
+            recvData.data(), recvData.size(), 800, 0xFFFFFFFFFFFFFFFF, errorMessage, request);
+
+        CHECK(result == UcxReceiveResult::eFailed);
+        CHECK(request.get() == nullptr);
+        CHECK(errorMessage == "No client connected");
+
+        UCXListenerRegistry::removeListener(port);
+    }
+
+    TEST_CASE("tagReceiveWithRequest - cancelled request settles")
+    {
+        // Only once a cancelled request settles is UCX done with the buffer.
+        auto context = ucxx::createContext({}, ucxx::Context::defaultFeatureFlags);
+        auto listener = UCXListenerRegistry::addListener(0);
+        uint16_t port = listener->getPort();
+        listener->startProgressThread();
+
+        TestClient client(listener->getWorker(), "127.0.0.1", port);
+        REQUIRE(listener->waitForConnection(5000));
+
+        std::vector<uint8_t> recvData(1024, 0);
+        std::string errorMessage;
+        std::shared_ptr<ucxx::Request> request;
+        auto result = listener->tagReceiveWithRequest(
+            recvData.data(), recvData.size(), 900, 0xFFFFFFFFFFFFFFFF, errorMessage, request);
+
+        REQUIRE(result == UcxReceiveResult::eSuccess);
+        REQUIRE(request.get() != nullptr);
+        REQUIRE_FALSE(request->isCompleted());
+
+        request->cancel();
+
+        CHECK(waitForCompletion(request, 5000));
+        // A cancelled request settles with an error rather than as a successful receive.
+        CHECK(request->getStatus() != UCS_OK);
+        CHECK_THROWS(request->checkError());
+
+        request.reset();
         UCXListenerRegistry::removeListener(port);
     }
 }

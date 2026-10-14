@@ -230,6 +230,18 @@ public:
      * @return True on success; false otherwise.
      */
     bool getLinkVelocities(const TensorDesc* dstTensor) const override;
+    /**
+     * @brief Gets incoming joint forces in each child joint frame.
+     * @param[out] dstTensor Destination tensor that receives the requested values.
+     * @return True on success; false otherwise.
+     */
+    bool getLinkIncomingJointForce(const TensorDesc* dstTensor) const override;
+    /**
+     * @brief Gets incoming joint wrenches projected onto each DOF motion direction.
+     * @param[out] dstTensor Destination tensor that receives the requested values.
+     * @return True on success; false otherwise.
+     */
+    bool getDofProjectedJointForces(const TensorDesc* dstTensor) const override;
 
     /**
      * @brief Gets the masses.
@@ -282,6 +294,19 @@ public:
      * @return True on success; false otherwise.
      */
     bool setInertias(const TensorDesc* srcTensor, const TensorDesc* indexTensor) override;
+    /**
+     * @brief Sets the DOF friction properties.
+     * @param[in] srcTensor Source tensor providing the values to write.
+     * @param[in] indexTensor Tensor of view indices selecting which elements to write.
+     * @return True on success; false otherwise.
+     */
+    bool setDofFrictionProperties(const TensorDesc* srcTensor, const TensorDesc* indexTensor) override;
+    /**
+     * @brief Gets the DOF friction properties.
+     * @param[out] dstTensor Destination tensor that receives the requested values.
+     * @return True on success; false otherwise.
+     */
+    bool getDofFrictionProperties(const TensorDesc* dstTensor) const override;
 
     /**
      * @brief Applies the forces and torques at position.

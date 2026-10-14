@@ -78,6 +78,29 @@ def get_prim_data_reader() -> object | None:
     return _acquire_reader_interface()
 
 
+def get_initialized_prim_data_reader(stage_id: int, device_ordinal: int) -> object | None:
+    """Get the shared prim data reader after manager-coordinated initialization.
+
+    Args:
+        stage_id: Numeric USD stage identifier.
+        device_ordinal: CUDA device ordinal, or ``-1`` for CPU.
+
+    Returns:
+        The initialized reader, or None if the reader or manager is unavailable.
+    """
+    reader = _acquire_reader_interface()
+    if reader is None:
+        return None
+
+    manager = _prims_reader.acquire_prim_data_reader_manager_interface()
+    if manager is None:
+        return None
+    try:
+        return reader if manager.ensure_initialized(stage_id, device_ordinal) else None
+    finally:
+        _prims_reader.release_prim_data_reader_manager_interface(manager)
+
+
 class Extension(omni.ext.IExt):
     """Extension lifecycle handler for the C++ prim data reader plugin."""
 

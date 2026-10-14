@@ -108,6 +108,35 @@ class BuildAutoChunksTests(omni.kit.test.AsyncTestCase):
         specs = build_auto_chunks(trajectory, metadata_chunks=metadata)
         self.assertEqual([spec.role for spec in specs], ["train", "validation"])
 
+    async def test_metadata_split_honors_min_chunk_seconds(self) -> None:
+        """A trailing phase shorter than the floor must not become the holdout."""
+        trajectory = _trajectory()
+        metadata = [
+            TelemetryChunkRunSpec(name="chirp", role="train", excitation="chirp", start=0.0, end=3.0),
+            TelemetryChunkRunSpec(name="step", role="train", excitation="step", start=3.1, end=3.3),
+        ]
+
+        specs = build_auto_chunks(
+            trajectory,
+            train_fraction=0.8,
+            min_chunk_seconds=1.0,
+            metadata_chunks=metadata,
+        )
+
+        self.assertEqual([spec.role for spec in specs], ["train", "train"])
+
+    async def test_metadata_split_returns_sorted_specs_for_pre_tagged_input(self) -> None:
+        """Both metadata branches return one chunk ordering."""
+        trajectory = _trajectory()
+        metadata = [
+            TelemetryChunkRunSpec(name="b", role="validation", excitation="sine", start=2.1, end=3.9),
+            TelemetryChunkRunSpec(name="a", role="train", excitation="chirp", start=0.0, end=2.0),
+        ]
+
+        specs = build_auto_chunks(trajectory, metadata_chunks=metadata)
+
+        self.assertEqual([spec.name for spec in specs], ["a", "b"])
+
     async def test_first_phase_never_reassigned(self) -> None:
         trajectory = _trajectory()
         metadata = [

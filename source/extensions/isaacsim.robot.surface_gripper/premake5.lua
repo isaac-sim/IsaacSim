@@ -44,7 +44,7 @@ includedirs {
     "%{root}/source/extensions/isaacsim.core.includes/include",
     "%{root}/source/extensions/isaacsim.robot.surface_gripper/include",
     "%{root}/source/extensions/isaacsim.core.nodes/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     extsbuild_dir .. "/usdrt.scenegraph/include",
     target_deps .. "/omni_client_library/include",
     target_deps .. "/usd/%{cfg.buildcfg}/include",
@@ -105,7 +105,7 @@ includedirs {
     target_deps .. "/usd_ext_physics/%{cfg.buildcfg}/include",
     "%{kit_sdk_bin_dir}/dev/fabric/include/",
     "%{root}/source/deprecated/isaacsim.core.utils/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     "%{root}/source/extensions/isaacsim.robot.surface_gripper/include",
 }
 

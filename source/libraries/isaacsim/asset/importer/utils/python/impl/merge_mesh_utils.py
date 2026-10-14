@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-import logging
-
 from pxr import Usd, UsdGeom, UsdPhysics
 
 from . import importer_utils
@@ -29,8 +27,6 @@ __all__ = [
     "merge_meshes_operation",
     "merge_mesh",
 ]
-
-_logger = logging.getLogger(__name__)
 
 try:
     from usd_optimize.core import ExecutionContext, UsdOptimizeCore
@@ -64,17 +60,25 @@ def _create_optimizer_context(stage: Usd.Stage) -> tuple:
     return core, context
 
 
+def _execute_optimizer_operation(
+    core: UsdOptimizeCore, context: ExecutionContext, operation: str, config: dict[str, object]
+) -> None:
+    """Execute an optimizer operation and propagate its failure details."""
+    ok, message, _ = core.executeOperation(operation, context, config)
+    if not ok:
+        raise RuntimeError(f"USD Optimize operation '{operation}' failed: {message}")
+
+
 def clean_mesh_operation(stage: Usd.Stage) -> None:
     """Clean mesh prims.
 
     Args:
         stage: USD stage for executing clean operations.
+
+    Raises:
+        RuntimeError: If USD Optimize is unavailable or mesh cleanup fails.
     """
-    try:
-        core, context = _create_optimizer_context(stage)
-    except RuntimeError:
-        _logger.error("usd_optimize is not installed")
-        return
+    core, context = _create_optimizer_context(stage)
 
     clean_config = {
         "paths": [],
@@ -89,7 +93,7 @@ def clean_mesh_operation(stage: Usd.Stage) -> None:
         "makeManifold": True,
     }
 
-    core.executeOperation("meshCleanup", context, clean_config)
+    _execute_optimizer_operation(core, context, "meshCleanup", clean_config)
 
 
 def generate_mesh_uv_normals_operation(stage: Usd.Stage) -> None:
@@ -97,12 +101,11 @@ def generate_mesh_uv_normals_operation(stage: Usd.Stage) -> None:
 
     Args:
         stage: USD stage for executing generate operations.
+
+    Raises:
+        RuntimeError: If USD Optimize is unavailable or normal or UV generation fails.
     """
-    try:
-        core, context = _create_optimizer_context(stage)
-    except RuntimeError:
-        _logger.error("usd_optimize is not installed")
-        return
+    core, context = _create_optimizer_context(stage)
 
     generate_normal_config = {
         "paths": [],
@@ -119,8 +122,8 @@ def generate_mesh_uv_normals_operation(stage: Usd.Stage) -> None:
         "overwriteExisting": True,
     }
 
-    core.executeOperation("generateNormals", context, generate_normal_config)
-    core.executeOperation("generateProjectionUVs", context, generate_uv_config)
+    _execute_optimizer_operation(core, context, "generateNormals", generate_normal_config)
+    _execute_optimizer_operation(core, context, "generateProjectionUVs", generate_uv_config)
 
 
 def merge_meshes_operation(stage: Usd.Stage) -> int:
@@ -131,6 +134,9 @@ def merge_meshes_operation(stage: Usd.Stage) -> int:
 
     Returns:
         Number of mesh groups merged.
+
+    Raises:
+        RuntimeError: If USD Optimize is unavailable or merging a mesh group fails.
 
     Example:
 
@@ -185,6 +191,9 @@ def merge_mesh(stage: Usd.Stage, meshes: list[str]) -> None:
         stage: USD stage containing the mesh prims.
         meshes: List of mesh prim paths to merge.
 
+    Raises:
+        RuntimeError: If USD Optimize is unavailable or merging fails.
+
     Example:
 
     .. code-block:: python
@@ -200,11 +209,7 @@ def merge_mesh(stage: Usd.Stage, meshes: list[str]) -> None:
     if not meshes:
         return
 
-    try:
-        core, context = _create_optimizer_context(stage)
-    except RuntimeError:
-        _logger.error("usd_optimize is not installed")
-        return
+    core, context = _create_optimizer_context(stage)
 
     merge_config = {
         "meshPrimPaths": list(meshes),
@@ -222,5 +227,4 @@ def merge_mesh(stage: Usd.Stage, meshes: list[str]) -> None:
         "spatialDebug": False,
     }
 
-    result = core.executeOperation("merge", context, merge_config)
-    _logger.info(result)
+    _execute_optimizer_operation(core, context, "merge", merge_config)

@@ -36,6 +36,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -323,6 +324,7 @@ def _result_to_dict(
     *,
     validation_artifacts: dict[str, Any] | None = None,
     schema_issues: list[Any] | None = None,
+    telemetry_quality: Any | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build this tool's result payload through the shared run-report contract.
@@ -338,6 +340,8 @@ def _result_to_dict(
         result: Completed solve result.
         validation_artifacts: Written validation artifact paths.
         schema_issues: Run-spec schema issues already computed for this run.
+        telemetry_quality: Telemetry assessment already made for this run. When
+            omitted it falls back to the one the prepared run carries.
         extra: Tool-specific payload merged into the report's ``extra`` object.
 
     Returns:
@@ -351,14 +355,9 @@ def _result_to_dict(
         raise_for_schema_errors,
         validate_sysid_run_report_payload,
     )
-    from isaacsim.robot_setup.sysid.telemetry_quality import (
-        build_telemetry_quality_report,
-    )
 
-    telemetry_quality = build_telemetry_quality_report(
-        prepared.raw_trajectory,
-        [chunk.spec for chunk in list(prepared.train_chunks) + list(prepared.validation_chunks)],
-    )
+    if telemetry_quality is None:
+        telemetry_quality = getattr(prepared, "telemetry_quality", None)
     report = build_sysid_run_report(
         spec=spec,
         prepared=prepared,
@@ -767,6 +766,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         result,
         validation_artifacts=validation_artifacts,
         schema_issues=schema_issues,
+        telemetry_quality=telemetry_quality,
         extra=tool_extra,
     )
     confidence = getattr(result, "parameter_confidence", {}) or {}
@@ -829,6 +829,7 @@ def main() -> int:  # noqa: D103
             "disable_viewport_updates": True,
         }
     )
+    exit_code = 1
     try:
         loop = asyncio.get_event_loop()
         task = loop.create_task(_run(args))
@@ -838,12 +839,15 @@ def main() -> int:  # noqa: D103
         print("[sysid] Kit update pump stopped.", flush=True)
         summary = task.result()
         print(json.dumps(summary, indent=2), flush=True)
-        return 0
+        exit_code = 0
     except Exception as exc:
         print(f"[sysid] ERROR: {exc}", file=sys.stderr, flush=True)
-        return 1
+        traceback.print_exc()
+        exit_code = 1
     finally:
-        simulation_app.close()
+        # Fast shutdown terminates the process inside `close()`, so the status must be passed here.
+        simulation_app.close(exit_code=exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

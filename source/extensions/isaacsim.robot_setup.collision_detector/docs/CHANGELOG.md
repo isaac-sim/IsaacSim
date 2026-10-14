@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.3] - 2026-09-29
+### Fixed
+- Reuse viewport selection groups instead of registering new ones after each teardown, which drained the 255-group pool.
+- Skip highlighting a body when no selection group is available, instead of colouring the viewport's default group.
+- Use the group that already holds a body's colour when its focal icon is clicked, so the highlight no longer shows a stale colour or none.
+
 ## [0.2.2] - 2026-07-01
 ### Fixed
 - Halt subtree traversal at nested `RigidBodyAPI` prims so a body's collision list, viewport highlight, and stage selection no longer include the geometry of child rigid bodies.

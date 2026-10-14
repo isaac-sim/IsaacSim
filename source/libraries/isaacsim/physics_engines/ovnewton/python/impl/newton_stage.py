@@ -30,6 +30,8 @@ from typing import Any
 from isaacsim.common.logging import Logger
 
 from .newton_config import NewtonConfig
+from .solver_config import SolverType
+from .stage_metadata import build_model
 
 _log = Logger("isaacsim.physics_engines.ovnewton.impl")
 
@@ -421,7 +423,8 @@ class NewtonStage:
         with device_ctx:
             # Population payloads are conventionally sealed at ordinal 1 before attach.
             self._ensure_write_floor(ovstage_obj, ordinal=1)
-            self._binding = ovnewton.attach_ovstage(ovstage_obj, ordinal=1)
+            model = build_model(ovstage_obj, ordinal=1)
+            self._binding = ovnewton.attach_ovstage(ovstage_obj, model=model, ordinal=1)
             self._model = self._binding.model
 
             if self._model is None:
@@ -440,13 +443,22 @@ class NewtonStage:
             # State, control, contact buffers, and the solver allocate Warp arrays. Keep
             # them inside the scoped device so they land on `config.device` alongside the
             # model instead of on Warp's process default.
-            # Raw-contact tensor views consume Newton's optional force field.
-            self._model.request_contact_attributes("force")
+            if self.config.solver_outputs.contact_forces:
+                self._model.request_contact_attributes("force")
+            if self.config.solver_outputs.link_incoming_joint_force:
+                self._model.request_state_attributes("body_parent_f")
             self._state_0 = self._model.state()
             self._state_1 = self._model.state()
             self._control = self._model.control()
             self._contacts = self._model.contacts()
-            self._solver = solvers.SolverXPBD(self._model, iterations=2)
+            if self.config.solver.solver_type == SolverType.MUJOCO:
+                self._solver = solvers.SolverMuJoCo(self._model, use_mujoco_cpu=False)
+            elif self.config.solver.solver_type == SolverType.FEATHERSTONE:
+                from .featherstone_solver import FeatherstoneSolver
+
+                self._solver = FeatherstoneSolver(self._model)
+            else:
+                self._solver = solvers.SolverXPBD(self._model, iterations=2)
             self._solver_is_maximal = _is_maximal_solver(self._solver)
 
     def _sync_articulation_labels_from_usd(self) -> None:
@@ -642,12 +654,17 @@ class NewtonStage:
                 self._model.collide(self._state_0, self._contacts)
                 self._solver.step(self._state_0, self._state_1, self._control, self._contacts, float(elapsed_time))
                 self._state_0, self._state_1 = self._state_1, self._state_0
-                self._solver.update_contacts(self._contacts)
+                try:
+                    self._solver.update_contacts(self._contacts)
+                except NotImplementedError:
+                    pass
                 if self._solver_is_maximal:
                     self._sync_generalized_coordinates()
             except Exception as exc:
                 step_failed = True
-                _log.error(f"Newton simulation step raised; state frozen and step counter held: {exc}")
+                _log.error(
+                    f"Newton simulation step raised {type(exc).__name__}; state frozen and step counter held: {exc!r}"
+                )
             finally:
                 try:
                     # Consume forces submitted between steps. After a successful

@@ -26,6 +26,7 @@ Configuration Classes
     :nosignatures:
 
     NewtonConfig
+    NewtonSolverOutputConfig
     CollisionConfig
     HydroelasticConfig
     XPBDSolverConfig
@@ -59,6 +60,11 @@ Configuration Classes
 ^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: isaacsim.physics.newton.NewtonConfig
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+.. autoclass:: isaacsim.physics.newton.NewtonSolverOutputConfig
     :members:
     :undoc-members:
     :show-inheritance:

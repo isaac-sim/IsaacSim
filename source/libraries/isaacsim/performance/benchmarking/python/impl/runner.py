@@ -19,6 +19,7 @@ from isaacsim.performance.benchmarking.impl.authoring import (
     bind_parameters,
     measurement_context,
 )
+from isaacsim.performance.benchmarking.impl.collector import _ResourceCollector
 from isaacsim.performance.benchmarking.impl.environment import collect_environment
 from isaacsim.performance.benchmarking.impl.model import (
     _ActiveMeasurement,
@@ -27,12 +28,7 @@ from isaacsim.performance.benchmarking.impl.model import (
     _RegionObservation,
     _SampleResult,
 )
-from isaacsim.performance.benchmarking.impl.profiles import (
-    _NvmlMonitor,
-    gpu_metrics,
-    process_metrics,
-    process_snapshot,
-)
+from isaacsim.performance.benchmarking.impl.profiles import gpu_metrics, process_metrics
 
 _MINIMUM_OPERATION_BATCH_SECONDS = 0.05
 _MAXIMUM_OPERATION_BATCH_SIZE = 1 << 20
@@ -259,6 +255,8 @@ async def _measure_execution(
     result: _BenchmarkResult,
     simulated_time: float | None,
     clock_ns: Callable[[], int],
+    resource_backend: str,
+    capture_collector: bool,
 ) -> None:
     """Calibrate, warm up, and collect all measured samples.
 
@@ -267,28 +265,46 @@ async def _measure_execution(
         result: Result receiving measured samples.
         simulated_time: Simulated seconds per operation, if configured.
         clock_ns: Monotonic nanosecond clock.
+        resource_backend: Requested resource provider.
+        capture_collector: Whether to retain a native collector artifact.
 
     """
     definition = result.definition
-    gpu_monitor = None
+    collector = None
     try:
-        gpu_monitor = _NvmlMonitor() if "gpu" in definition.metric_profiles else None
+        collector = _ResourceCollector(
+            definition.metric_profiles,
+            result.run_id,
+            backend=resource_backend,
+            capture=capture_collector,
+        )
+        collector.start()
         batch_size = await _calibrate_batch_size(execution, clock_ns) if definition.calibrated_batching else 1
         for _ in range(definition.warmup_samples):
             await _call_hook(execution.hook("prepare_sample"))
             with measurement_context("warmup", None, retain=False):
                 await _run_batch(execution, batch_size)
 
+        collector.begin_measurement()
+        measure_cpu = "process" in definition.metric_profiles or capture_collector
         for sample_index in range(definition.measured_samples):
             await _call_hook(execution.hook("prepare_sample"))
-            before_process = process_snapshot() if "process" in definition.metric_profiles else None
-            before_gpu = gpu_monitor.snapshot() if gpu_monitor is not None else None
-            with measurement_context("measurement", sample_index, retain=True) as state:
+            before = collector.snapshot()
+            with (
+                collector.range(f"sample/{sample_index}"),
+                measurement_context(
+                    "measurement",
+                    sample_index,
+                    retain=True,
+                ) as state,
+            ):
+                cpu_before = time.process_time() if measure_cpu else 0.0
                 started_ns = clock_ns()
                 await _run_batch(execution, batch_size)
-                elapsed_seconds = (clock_ns() - started_ns) / 1_000_000_000.0
-            after_process = process_snapshot() if before_process is not None else None
-            after_gpu = gpu_monitor.snapshot() if before_gpu is not None and gpu_monitor is not None else None
+                stopped_ns = clock_ns()
+                cpu_after = time.process_time() if measure_cpu else 0.0
+                elapsed_seconds = (stopped_ns - started_ns) / 1_000_000_000.0
+            after = collector.snapshot()
             _retain_regions(result, state)
             elapsed_ms = elapsed_seconds * 1000.0
             metrics: dict[str, float] = {}
@@ -300,10 +316,12 @@ async def _measure_execution(
                     raise ValueError(f"Benchmark metric {name!r} is reserved by the runner")
                 result.metric_units[name] = unit
                 metrics[name] = statistics.fmean(values)
-            if before_process is not None and after_process is not None:
-                metrics.update(process_metrics(before_process, after_process, elapsed_seconds))
-            if before_gpu is not None and after_gpu is not None:
-                metrics.update(gpu_metrics(before_gpu, after_gpu))
+            if before.process is not None and after.process is not None:
+                metrics.update(
+                    process_metrics(before.process, after.process, elapsed_seconds, cpu_seconds=cpu_after - cpu_before)
+                )
+            if before.gpu is not None and after.gpu is not None:
+                metrics.update(gpu_metrics(before.gpu, after.gpu))
             if "simulation" in definition.metric_profiles and simulated_time is not None:
                 completed_simulated_time = simulated_time * batch_size
                 metrics.update(
@@ -326,14 +344,20 @@ async def _measure_execution(
                     metrics=metrics,
                 )
             )
+            collector.record_sample(
+                sample_index, batch_size, elapsed_seconds, before, after, cpu_before=cpu_before, cpu_after=cpu_after
+            )
     except Exception as error:
         result.errors.append(_error_message("measurement", error))
     finally:
-        if gpu_monitor is not None:
-            try:
-                gpu_monitor.close()
-            except Exception as error:
-                result.errors.append(_error_message("measurement", error))
+        if collector is not None:
+            for cleanup in (collector.end_measurement, collector.close):
+                try:
+                    cleanup()
+                except Exception as error:
+                    result.errors.append(_error_message("measurement", error))
+            result.environment["collector"] = collector.provenance
+            result.collector_capture = collector.capture_document
 
 
 async def _validate_execution(execution: _Execution, result: _BenchmarkResult, clock_ns: Callable[[], int]) -> None:
@@ -402,6 +426,8 @@ async def run_definition(
     seed: int | None = None,
     run_id: str | None = None,
     clock_ns: Callable[[], int] | None = None,
+    resource_backend: str = "auto",
+    capture_collector: bool = False,
 ) -> _BenchmarkResult:
     """Run a decorated benchmark using the fixed lifecycle and return raw results.
 
@@ -411,6 +437,8 @@ async def run_definition(
         seed: Random seed override.
         run_id: Stable identifier override for this run.
         clock_ns: Monotonic nanosecond clock override.
+        resource_backend: Requested resource provider.
+        capture_collector: Whether to retain a native collector artifact.
 
     Returns:
         Raw benchmark result.
@@ -439,7 +467,14 @@ async def run_definition(
     try:
         setup_succeeded = await _setup_execution(execution, result, selected_clock)
         if setup_succeeded:
-            await _measure_execution(execution, result, simulated_time, selected_clock)
+            await _measure_execution(
+                execution,
+                result,
+                simulated_time,
+                selected_clock,
+                resource_backend,
+                capture_collector,
+            )
         if setup_succeeded and not result.errors:
             await _validate_execution(execution, result, selected_clock)
     finally:
@@ -447,7 +482,7 @@ async def run_definition(
             await _teardown_execution(execution, result, selected_clock)
 
     result.valid = not result.errors and len(result.samples) == definition.measured_samples
-    result.environment = collect_environment()
+    result.environment = {**collect_environment(), **result.environment}
     return result
 
 

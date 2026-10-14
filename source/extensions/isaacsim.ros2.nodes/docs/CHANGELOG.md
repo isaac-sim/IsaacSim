@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.22.9] - 2026-10-02
+### Fixed
+- `test_stereo_without_distortion`: wait for both ROS 2 CameraInfo publishers before checking message delivery.
+
+## [1.22.8] - 2026-09-28
+### Fixed
+- Stabilize differential-drive reset and semantic-label clock checks in ROS 2 tests.
+- Wait for RTX lidar output before starting the LaserScan publisher discovery timeout.
+
 ## [1.22.7] - 2026-08-27
 ### Fixed
 - `SetPrimAttribute` now rejects invalid matrix JSON values without terminating Isaac Sim.

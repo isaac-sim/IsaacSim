@@ -247,6 +247,14 @@ class InterfaceConnectionRule(RuleInterface):
         if base_layer_exists:
             self._recover_extraneous_root_prims(interface_layer, base_layer_abs_path)
 
+        # The manager switches away from `source_stage` when this rule returns.
+        # Commit the pipeline's pending routing edits before dropping that stage;
+        # otherwise only the interface is saved and base can revert to disk.
+        source_layer = self.source_stage.GetRootLayer()
+        if source_layer.dirty:
+            source_layer.Save()
+            self.add_affected_stage(source_layer.identifier)
+
         # Save the interface layer
         interface_layer.Save()
         self.add_affected_stage(interface_layer_path)
@@ -421,7 +429,7 @@ class InterfaceConnectionRule(RuleInterface):
                 payload = Sdf.Payload(asset_rel_path)
                 variant_prim_spec.payloadList.Prepend(payload)
 
-            # Sets in clear_default_variant_sets stay unselected unless an explicit default is given.
+            # Sets in `clear_default_variant_sets` stay unselected unless an explicit default is given.
             if variant_set_name in default_variant_selections:
                 default_selection = default_variant_selections[variant_set_name]
             elif variant_set_name in clear_default_variant_sets:

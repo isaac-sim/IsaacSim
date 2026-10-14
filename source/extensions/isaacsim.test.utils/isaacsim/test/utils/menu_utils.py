@@ -287,7 +287,7 @@ async def _wait_for_menu_item(parent_widget: Any, menu_name: str, max_frames: in
     return await _poll_async(lambda: parent_widget.find_menu(menu_name), max_frames, "menu_click_with_retry")
 
 
-async def _wait_for_menu_path(menu_path: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> bool:
+async def _wait_for_menu_path(menu_path: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> Any:
     """Poll until every segment of ``menu_path`` resolves in the menubar.
 
     Walks the menu tree top-down using :py:meth:`MenuRef.find_menu` without
@@ -300,18 +300,79 @@ async def _wait_for_menu_path(menu_path: str, max_frames: int = _DEFAULT_MAX_WAI
         max_frames: Maximum app-update frames to poll before giving up.
 
     Returns:
-        True if every segment was resolved, False otherwise.
+        The resolved ``MenuRef``, or ``None`` if the path was not found within
+        *max_frames*.
     """
 
-    def _resolves() -> bool:
-        node = get_menubar()
+    def _resolve() -> Any:
+        try:
+            node = get_menubar()
+        except (AttributeError, ImportError):
+            # Minimal test applications may not load ``omni.kit.mainwindow``;
+            # an initializing main window can also lack its UI object briefly.
+            return None
+        if node is None:
+            return None
         for name in menu_path.split("/"):
             node = node.find_menu(name)
             if node is None:
-                return False
-        return True
+                return None
+        return node
 
-    return bool(await _poll_async(_resolves, max_frames, f"menu_click_with_retry/await_path/{menu_path}"))
+    return await _poll_async(_resolve, max_frames, f"wait_for_menu_path/{menu_path}")
+
+
+async def trigger_menu_item(menu_path: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> Any:
+    """Trigger an enabled leaf menu item's registered action.
+
+    Use this helper when a test needs to verify menu registration and action
+    wiring without opening or navigating the visual popup hierarchy. Use
+    :func:`menu_click_with_retry` when the popup interaction itself is under
+    test.
+
+    Args:
+        menu_path: Full menu path separated by ``/``.
+        max_frames: Maximum number of app-update frames to wait for the full
+            path to become available.
+
+    Returns:
+        The resolved leaf ``MenuRef`` whose action was triggered.
+
+    Raises:
+        ValueError: If *menu_path* is empty, contains an empty segment, or
+            resolves to a submenu.
+        TimeoutError: If the full menu path does not become available within
+            *max_frames*.
+        RuntimeError: If the resolved leaf is disabled or has no registered
+            action.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.test.utils import trigger_menu_item
+        >>>
+        >>> menu_item = await trigger_menu_item("Tools/Robotics/Robot Poser")
+    """
+    if not menu_path or any(not segment for segment in menu_path.split("/")):
+        raise ValueError("Menu path must contain non-empty '/'-separated segments")
+    if max_frames <= 0:
+        raise ValueError("max_frames must be greater than zero")
+
+    menu_item = await _wait_for_menu_path(menu_path, max_frames=max_frames)
+    if menu_item is None:
+        raise TimeoutError(f"Menu path '{menu_path}' not found after {max_frames} frames")
+
+    widget = menu_item.widget
+    if isinstance(widget, ui.Menu):
+        raise ValueError(f"Menu path '{menu_path}' resolves to a submenu, not a leaf item")
+    if not getattr(widget, "enabled", False):
+        raise RuntimeError(f"Menu item '{menu_path}' is disabled")
+    if not hasattr(widget, "has_triggered_fn") or not widget.has_triggered_fn():
+        raise RuntimeError(f"Menu item '{menu_path}' has no registered action")
+
+    widget.call_triggered_fn()
+    return menu_item
 
 
 async def _wait_for_shown(menu_widget: Any, menu_name: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> bool:
@@ -396,14 +457,20 @@ async def _navigate_menu(menu_path: str, human_delay_speed: int = 10) -> bool:
 
 
 async def menu_click_with_retry(
-    menu_path: str, delays: list[int] = None, window_name: str = None, wait_n_frames: int = 10
+    menu_path: str,
+    delays: list[int] = None,
+    window_name: str = None,
+    wait_n_frames: int = 10,
+    *,
+    use_direct_click: bool = True,
 ) -> Any:
     """Click a menu item with retry at different delay speeds.
 
-    First attempts a direct programmatic click via ``omni.kit.ui_test.menu_click``
-    which works in both windowed and headless (``--no-window``) modes.  If that
-    fails (e.g. due to slow submenus), falls back to step-by-step mouse-emulation
-    navigation via :func:`_navigate_menu` with increasing delays.
+    By default, first attempts a direct programmatic click via
+    ``omni.kit.ui_test.menu_click`` which works in both windowed and headless
+    (``--no-window``) modes. If that fails (e.g. due to slow submenus), or when
+    ``use_direct_click`` is False, uses step-by-step mouse-emulation navigation
+    via :func:`_navigate_menu` with increasing delays.
 
     Args:
         menu_path: The menu path to click (e.g., "Create/Sensors/Contact Sensor").
@@ -414,6 +481,8 @@ async def menu_click_with_retry(
             and returns the window widget.
         wait_n_frames: Number of frames to wait after a successful click when
             ``window_name`` is not provided.
+        use_direct_click: Try ``ui_test.menu_click`` before step-by-step navigation.
+            Set to False when a slow submenu makes that function log an error.
 
     Returns:
         The found window widget if window_name is provided and found, else None.
@@ -451,24 +520,25 @@ async def menu_click_with_retry(
         )
 
     # --- Primary path: direct programmatic menu click (works headless) ---
-    try:
-        await ui_test.menu_click(menu_path, human_delay_speed=3)
-        for _ in range(wait_n_frames):
-            await omni.kit.app.get_app().next_update_async()
+    if use_direct_click:
+        try:
+            await ui_test.menu_click(menu_path, human_delay_speed=3)
+            for _ in range(wait_n_frames):
+                await omni.kit.app.get_app().next_update_async()
 
-        if window_name:
-            if (window := ui_test.find(window_name)) is not None:
-                carb.log_info(f"[menu_click_with_retry] window '{window_name}' found via ui_test.menu_click")
-                return window
-            carb.log_info(
-                f"[menu_click_with_retry] ui_test.menu_click succeeded but window '{window_name}' not found, "
-                f"falling back to _navigate_menu"
-            )
-        else:
-            carb.log_info(f"[menu_click_with_retry] succeeded via ui_test.menu_click for '{menu_path}'")
-            return None
-    except Exception as e:
-        carb.log_info(f"[menu_click_with_retry] ui_test.menu_click failed for '{menu_path}': {e}")
+            if window_name:
+                if (window := ui_test.find(window_name)) is not None:
+                    carb.log_info(f"[menu_click_with_retry] window '{window_name}' found via ui_test.menu_click")
+                    return window
+                carb.log_info(
+                    f"[menu_click_with_retry] ui_test.menu_click succeeded but window '{window_name}' not found, "
+                    f"falling back to _navigate_menu"
+                )
+            else:
+                carb.log_info(f"[menu_click_with_retry] succeeded via ui_test.menu_click for '{menu_path}'")
+                return None
+        except Exception as e:
+            carb.log_info(f"[menu_click_with_retry] ui_test.menu_click failed for '{menu_path}': {e}")
 
     # --- Fallback: step-by-step mouse-emulation navigation ---
     for i, delay in enumerate(delays):

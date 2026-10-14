@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.2.10] - 2026-10-02
+### Fixed
+- Update texture collision regression tests to verify unique filenames and preserved payloads.
+- Complete exporter test helper documentation.
+
+## [2.2.9] - 2026-09-30
+### Fixed
+- Export UDIM textures with constant, uniform, and varying texture-coordinate primvars.
+- Reject texture filename collisions that would silently reuse unrelated payloads.
+- Prevent shared visual-collision primitives from applying composed scale twice.
+- Keep invisible and guide collision geometry out of visuals unless explicitly requested.
+- Resolve and deliver concrete UDIM texture tiles for OBJ and MTL exports.
+
+### Security
+- Reject remote texture filenames that decode to paths outside the export directory.
+
+## [2.2.8] - 2026-09-25
+### Fixed
+- Author explicit fixture units and valid limits in exporter regression tests.
+
+## [2.2.7] - 2026-09-19
+### Changed
+- Load `isaacsim.asset.exporter.urdf` from the independently built `isaacsim-asset` wheel.
+
 ## [2.2.6] - 2026-08-31
 ### Fixed
 - Apply composed parent and robot scale to exported primitive geometry dimensions.

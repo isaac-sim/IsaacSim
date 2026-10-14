@@ -22,39 +22,108 @@
 
 #include <OgnUCXPublishImageDatabase.h>
 #include <image_generated.h>
+#include <stdexcept>
 
 namespace
 {
-/**
- * @brief Build the image data Tensor for the Image FlatBuffer.
- * @details
- * Shared by the GPU-direct (empty pixel vector + CUDA device) and CPU (inline pixel vector +
- * CPU device) paths. Shape is `[height, width, bytes_per_pixel]` where `bpp = dataSize / (H*W)`;
- * row-major contiguous strides; dtype uint8. Warns if dataSize isn't evenly divisible by H*W
- * (i.e. a future padded/misaligned upstream would silently shape-truncate otherwise).
- */
-flatbuffers::Offset<isaac::Tensor> buildImageDataTensor(flatbuffers::FlatBufferBuilder& builder,
-                                                        flatbuffers::Offset<flatbuffers::Vector<uint8_t>> pixel_bytes,
-                                                        const isaac::DLDevice& device,
-                                                        uint32_t height,
-                                                        uint32_t width,
-                                                        size_t dataSize)
+// Build a contiguous tensor using the encoding dtype and HWC or CHW element shape.
+// Reject byte counts that disagree with the image dimensions and encoding.
+flatbuffers::Offset<holoscan::schema::Tensor> _buildImageDataTensor(
+    flatbuffers::FlatBufferBuilder& builder,
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> pixel_bytes,
+    const holoscan::schema::DLDevice& device,
+    uint32_t height,
+    uint32_t width,
+    size_t dataSize,
+    const std::string& encoding)
 {
-    const int64_t pixelCount = static_cast<int64_t>(height) * static_cast<int64_t>(width);
-    const int64_t bpp = static_cast<int64_t>(dataSize) / pixelCount;
-    if (bpp * pixelCount != static_cast<int64_t>(dataSize))
+    if (height == 0 || width == 0)
+        throw std::runtime_error("The camera dimensions must be positive.");
+    int channels = 1;
+    int bits = 8;
+    auto code = holoscan::schema::DLDataTypeCode_kDLUInt;
+    if (encoding == "rgb8" || encoding == "bgr8" || encoding == "r8_g8_b8" || encoding == "b8_g8_r8")
+        channels = 3;
+    else if (encoding == "rgba8" || encoding == "bgra8")
+        channels = 4;
+    else if (encoding == "mono16")
+        bits = 16;
+    else if (encoding == "mono32")
+        bits = 32;
+    else if (encoding == "mono32f" || encoding == "32FC1")
     {
-        CARB_LOG_WARN(
-            "dataSize (%zu) is not evenly divisible by height*width (%u*%u); "
-            "Tensor.shape will undercount bytes",
-            dataSize, height, width);
+        bits = 32;
+        code = holoscan::schema::DLDataTypeCode_kDLFloat;
     }
-    std::vector<int64_t> shape = { static_cast<int64_t>(height), static_cast<int64_t>(width), bpp };
+    else if (encoding != "mono8")
+        throw std::runtime_error("The camera encoding is unsupported.");
+    const uint64_t required = static_cast<uint64_t>(height) * width * channels * (bits / 8);
+    if (required != dataSize)
+        throw std::runtime_error("The camera byte count does not match its encoding and dimensions.");
+    const bool planar = encoding == "r8_g8_b8" || encoding == "b8_g8_r8";
+    std::vector<int64_t> shape =
+        planar ? std::vector<int64_t>{ channels, height, width } : std::vector<int64_t>{ height, width, channels };
     auto shape_fb = builder.CreateVector(shape);
-    isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLUInt, 8, 1);
-    std::vector<int64_t> strides = { static_cast<int64_t>(width) * bpp, bpp, 1 };
-    auto strides_fb = builder.CreateVector(strides);
-    return isaac::CreateTensor(builder, pixel_bytes, shape_fb, &dtype, &device, 3, strides_fb);
+    holoscan::schema::DLDataType dtype(code, bits, 1);
+    return holoscan::schema::CreateTensor(builder, pixel_bytes, shape_fb, &dtype, &device, 3);
+}
+
+std::vector<uint8_t> _buildImageMessage(flatbuffers::FlatBufferBuilder& builder,
+                                        const isaacsim::ucx::nodes::ImageMetadata& metadata,
+                                        flatbuffers::Offset<flatbuffers::Vector<uint8_t>> pixel_bytes,
+                                        const holoscan::schema::DLDevice& device,
+                                        size_t dataSize)
+{
+    auto data_tensor = _buildImageDataTensor(
+        builder, pixel_bytes, device, metadata.height, metadata.width, dataSize, metadata.encoding);
+
+    holoscan::schema::ImageEncoding encoding = holoscan::schema::ImageEncoding_CUSTOM;
+    {
+        const std::string& enc = metadata.encoding;
+        if (enc == "rgb8")
+            encoding = holoscan::schema::ImageEncoding_RGB8;
+        else if (enc == "rgba8")
+            encoding = holoscan::schema::ImageEncoding_RGBA8;
+        else if (enc == "bgr8")
+            encoding = holoscan::schema::ImageEncoding_BGR8;
+        else if (enc == "bgra8")
+            encoding = holoscan::schema::ImageEncoding_BGRA8;
+        else if (enc == "r8_g8_b8")
+            encoding = holoscan::schema::ImageEncoding_R8_G8_B8;
+        else if (enc == "b8_g8_r8")
+            encoding = holoscan::schema::ImageEncoding_B8_G8_R8;
+        else if (enc == "mono8")
+            encoding = holoscan::schema::ImageEncoding_MONO8;
+        else if (enc == "mono16")
+            encoding = holoscan::schema::ImageEncoding_MONO16;
+        else if (enc == "mono32")
+            encoding = holoscan::schema::ImageEncoding_MONO32;
+        else if (enc == "mono32f" || enc == "32FC1")
+            encoding = holoscan::schema::ImageEncoding_MONO32F;
+        else
+            throw std::runtime_error("The camera encoding is unsupported.");
+    }
+
+    const int64_t time_ns = static_cast<int64_t>(metadata.timestamp * 1e9);
+    auto frame_id_fb = builder.CreateString("");
+    auto header_fb = holoscan::schema::CreateHeader(builder, 0, frame_id_fb, time_ns);
+    std::vector<holoscan::schema::ImagePlaneLayout> planes;
+    if (metadata.encoding == "r8_g8_b8" || metadata.encoding == "b8_g8_r8")
+    {
+        const uint64_t planeBytes = static_cast<uint64_t>(metadata.width) * metadata.height;
+        for (uint64_t i = 0; i < 3; ++i)
+            planes.emplace_back(i * planeBytes, metadata.width, planeBytes);
+    }
+    auto layouts = planes.empty() ?
+                       flatbuffers::Offset<flatbuffers::Vector<const holoscan::schema::ImagePlaneLayout*>>{} :
+                       builder.CreateVectorOfStructs(planes);
+    auto image_fb = holoscan::schema::CreateImage(builder, header_fb, static_cast<int32_t>(metadata.height),
+                                                  static_cast<int32_t>(metadata.width), encoding, data_tensor,
+                                                  holoscan::schema::ColorSpace_UNSPECIFIED, 0, 0, 0, layouts);
+    holoscan::schema::FinishImageBuffer(builder, image_fb);
+
+    uint8_t const* bufPtr = builder.GetBufferPointer();
+    return std::vector<uint8_t>(bufPtr, bufPtr + builder.GetSize());
 }
 } // namespace
 
@@ -141,7 +210,7 @@ public:
         }
 
         // Skip frame if either previous async send is still in progress.
-        if ((m_sendRequest && !m_sendRequest->isCompleted()) ||
+        if ((m_pendingSend.isOutstanding() && !m_pendingSend.isCompleted()) ||
             (m_tensorSendRequest && !m_tensorSendRequest->isCompleted()))
         {
             return true;
@@ -156,11 +225,15 @@ public:
         }
 
         // Send metadata FlatBuffer (CPU memory, small).
-        m_messageBuffer = std::move(metaMsg);
         std::string errorMessage;
-        auto result = this->m_listener->tagSendWithRequest(
-            m_messageBuffer.data(), m_messageBuffer.size(), tag, errorMessage, m_sendRequest);
-        if (result != isaacsim::ucx::core::UcxSendResult::eSuccess)
+        const bool posted = m_pendingSend.post(std::move(metaMsg),
+                                               [&](void* buffer, size_t size, std::shared_ptr<ucxx::Request>& request)
+                                               {
+                                                   return this->m_listener->tagSendWithRequest(
+                                                              buffer, size, tag, errorMessage, request) ==
+                                                          isaacsim::ucx::core::UcxSendResult::eSuccess;
+                                               });
+        if (!posted)
         {
             db.logError("GPU-direct metadata tagSend failed: %s", errorMessage.c_str());
             return false;
@@ -170,19 +243,17 @@ public:
         // Same tag as metadata: UCX guarantees in-order delivery on a tag, so the receiver
         // can predictably post tagRecv for metadata then tagRecv for the tensor.
         void* gpuPtr = reinterpret_cast<void*>(db.inputs.dataPtr());
-        result =
+        auto result =
             this->m_listener->tagSendWithRequest(gpuPtr, db.inputs.bufferSize(), tag, errorMessage, m_tensorSendRequest);
         if (result != isaacsim::ucx::core::UcxSendResult::eSuccess)
         {
             db.logError("GPU-direct tensor tagSend failed: %s", errorMessage.c_str());
             // Cancel the metadata send so the pair stays atomic. Without this, the
             // receiver would consume the orphan metadata and then interpret the next
-            // frame's metadata as the missing tensor — sender/receiver desync.
-            if (m_sendRequest)
-            {
-                m_sendRequest->cancel();
-            }
-            m_sendRequest.reset();
+            // frame's metadata as the missing tensor — sender/receiver desync. Abandoning
+            // keeps the metadata buffer alive until the cancellation lands, and never
+            // blocks the application update thread.
+            m_pendingSend.abandon();
             m_tensorSendRequest.reset();
             return false;
         }
@@ -206,53 +277,16 @@ protected:
         flatbuffers::FlatBufferBuilder builder;
 
         // Empty pixel bytes — receiver will substitute the separately received GPU buffer.
-        auto pixel_bytes = builder.CreateVector(std::vector<uint8_t>{});
+        auto pixel_bytes = flatbuffers::Offset<flatbuffers::Vector<uint8_t>>{};
         // Mark device as CUDA so downstream consumers treat the tensor as GPU memory.
-        isaac::DLDevice device(isaac::DLDeviceType_kDLCUDA, cudaDeviceIndex);
-        auto data_tensor =
-            buildImageDataTensor(builder, pixel_bytes, device, metadata.height, metadata.width, metadata.dataSize);
-
-        isaac::ImageEncoding encoding = isaac::ImageEncoding_CUSTOM;
-        {
-            const std::string& enc = metadata.encoding;
-            if (enc == "rgb8")
-                encoding = isaac::ImageEncoding_RGB8;
-            else if (enc == "rgba8")
-                encoding = isaac::ImageEncoding_RGBA8;
-            else if (enc == "bgr8")
-                encoding = isaac::ImageEncoding_BGR8;
-            else if (enc == "bgra8")
-                encoding = isaac::ImageEncoding_BGRA8;
-            else if (enc == "r8_g8_b8")
-                encoding = isaac::ImageEncoding_R8_G8_B8;
-            else if (enc == "b8_g8_r8")
-                encoding = isaac::ImageEncoding_B8_G8_R8;
-            else if (enc == "mono8")
-                encoding = isaac::ImageEncoding_MONO8;
-            else if (enc == "mono16")
-                encoding = isaac::ImageEncoding_MONO16;
-            else if (enc == "mono32")
-                encoding = isaac::ImageEncoding_MONO32;
-            else if (enc == "mono32f")
-                encoding = isaac::ImageEncoding_MONO32F;
-        }
-
-        const int64_t time_ns = static_cast<int64_t>(metadata.timestamp * 1e9);
-        auto frame_id_fb = builder.CreateString("");
-        auto stamp_fb = isaac::CreateTime(builder, time_ns, 0);
-        auto header_fb = isaac::CreateHeader(builder, stamp_fb, frame_id_fb);
-        auto image_fb = isaac::CreateImage(builder, header_fb, static_cast<int32_t>(metadata.height),
-                                           static_cast<int32_t>(metadata.width), encoding, data_tensor);
-        builder.Finish(image_fb);
-
-        uint8_t const* bufPtr = builder.GetBufferPointer();
-        return std::vector<uint8_t>(bufPtr, bufPtr + builder.GetSize());
+        holoscan::schema::DLDevice device(holoscan::schema::DLDeviceType_kDLCUDA, cudaDeviceIndex);
+        return _buildImageMessage(builder, metadata, pixel_bytes, device, metadata.dataSize);
     }
     /**
      * @brief Generate message from image metadata and pixel data.
      * @details
      * Serializes image metadata and data as a FlatBuffers Image message.
-     * Pixel data is stored as a Tensor with dtype uint8 and shape [height, width, bytes_per_pixel].
+     * Tensor dtype and shape follow the encoding; channels are elements, not bytes.
      * GPU sources are first copied to CPU memory, then serialized.
      *
      * @param[in] metadata Image metadata (timestamp, dimensions, encoding)
@@ -351,52 +385,10 @@ protected:
             }
         }
 
-        // Map encoding string to ImageEncoding enum
-        isaac::ImageEncoding encoding = isaac::ImageEncoding_CUSTOM;
-        const std::string& enc = metadata.encoding;
-        if (enc == "rgb8")
-            encoding = isaac::ImageEncoding_RGB8;
-        else if (enc == "rgba8")
-            encoding = isaac::ImageEncoding_RGBA8;
-        else if (enc == "bgr8")
-            encoding = isaac::ImageEncoding_BGR8;
-        else if (enc == "bgra8")
-            encoding = isaac::ImageEncoding_BGRA8;
-        else if (enc == "r8_g8_b8")
-            encoding = isaac::ImageEncoding_R8_G8_B8;
-        else if (enc == "b8_g8_r8")
-            encoding = isaac::ImageEncoding_B8_G8_R8;
-        else if (enc == "mono8")
-            encoding = isaac::ImageEncoding_MONO8;
-        else if (enc == "mono16")
-            encoding = isaac::ImageEncoding_MONO16;
-        else if (enc == "mono32")
-            encoding = isaac::ImageEncoding_MONO32;
-        else if (enc == "mono32f")
-            encoding = isaac::ImageEncoding_MONO32F;
-
-        // Build FlatBuffers message
         flatbuffers::FlatBufferBuilder builder;
-
-        // Pixel bytes inline; the Tensor build is shared with the GPU-direct path via
-        // buildImageDataTensor (which sets the [H, W, bpp] shape and warns on misalignment).
         auto pixel_bytes = builder.CreateVector(dest, dataSize);
-        isaac::DLDevice device(isaac::DLDeviceType_kDLCPU, 0);
-        auto data_tensor = buildImageDataTensor(builder, pixel_bytes, device, metadata.height, metadata.width, dataSize);
-
-        // Header
-        const int64_t time_ns = static_cast<int64_t>(metadata.timestamp * 1e9);
-        auto frame_id_fb = builder.CreateString("");
-        auto stamp_fb = isaac::CreateTime(builder, time_ns, 0);
-        auto header_fb = isaac::CreateHeader(builder, stamp_fb, frame_id_fb);
-
-        // Image table
-        auto image_fb = isaac::CreateImage(builder, header_fb, static_cast<int32_t>(metadata.height),
-                                           static_cast<int32_t>(metadata.width), encoding, data_tensor);
-        builder.Finish(image_fb);
-
-        uint8_t const* bufPtr = builder.GetBufferPointer();
-        return std::vector<uint8_t>(bufPtr, bufPtr + builder.GetSize());
+        holoscan::schema::DLDevice device(holoscan::schema::DLDeviceType_kDLCPU, 0);
+        return _buildImageMessage(builder, metadata, pixel_bytes, device, dataSize);
     }
 };
 

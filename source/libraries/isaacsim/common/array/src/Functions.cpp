@@ -15,6 +15,7 @@
 
 #include "isaacsim/common/array/Functions.hpp"
 
+#include "details/ArrayUtils.hpp"
 #include "details/CudaKernel.hpp"
 #include "details/CudaRuntime.hpp"
 
@@ -44,64 +45,6 @@ namespace array
 namespace
 {
 
-// Materializes a new array by gathering elements of `source` through a stride map: for every
-// element of the destination, in row-major order, reads the source element at the dot product of
-// the destination multi-index with `sourceStrides`. A permutation of the source's contiguous
-// strides is how transpose() expresses an axis permutation.
-//
-// This mirrors the gather in Array::broadcastTo(), which expresses a broadcast axis as a stride of
-// 0. The two are deliberately kept as separate copies rather than factored into a shared helper.
-Array gather(const Array& source, const std::vector<int64_t>& sourceStrides, const Shape& destinationShape)
-{
-    const std::vector<int64_t> shape = destinationShape.shape();
-    const size_t destinationNdim = shape.size();
-    const size_t elementSize = source.dtype().size();
-    const size_t totalElements = destinationShape.size();
-    const Device device = source.device();
-
-    Array result = empty(destinationShape, source.dtype(), device);
-    if (totalElements == 0)
-    {
-        return result;
-    }
-
-    // CUDA
-    if (device.isCuda())
-    {
-        DeviceGuard deviceGuard(device);
-        details::CudaKernel::getInstance().broadcastTo(
-            source.data(), result.data(), sourceStrides, shape, elementSize, totalElements);
-        return result;
-    }
-    // CPU
-    else
-    {
-        const std::byte* sourceData = static_cast<const std::byte*>(source.data());
-        std::byte* destinationData = static_cast<std::byte*>(result.data());
-
-        std::vector<size_t> index(destinationNdim, 0);
-        for (size_t linear = 0; linear < totalElements; ++linear)
-        {
-            size_t sourceOffset = 0;
-            for (size_t axis = 0; axis < destinationNdim; ++axis)
-            {
-                sourceOffset += index[axis] * static_cast<size_t>(sourceStrides[axis]);
-            }
-            std::memcpy(destinationData + linear * elementSize, sourceData + sourceOffset * elementSize, elementSize);
-            // Increment multi-dimensional index (row-major)
-            for (size_t axis = destinationNdim; axis-- > 0;)
-            {
-                if (++index[axis] < static_cast<size_t>(shape[axis]))
-                {
-                    break;
-                }
-                index[axis] = 0;
-            }
-        }
-        return result;
-    }
-}
-
 // Materializes a new array by gathering slices of `source` along a single axis. Views `source` as
 // the three-dimensional shape (outer, axisSize, inner) and the destination as
 // (outer, indices.size(), inner), so that destination[o][j][i] == source[o][indices[j]][i] -- the
@@ -130,15 +73,20 @@ Array gatherAxis(const Array& source,
     if (device.isCuda())
     {
         DeviceGuard deviceGuard(device);
-        details::CudaKernel::getInstance().take(
-            source.data(), result.data(), indices, axisSize, inner, elementSize, totalElements);
+        const std::uintptr_t stream = details::operationStream(device);
+        ArrayReadAccess sourceAccess = acquireRead(source, stream);
+        ArrayWriteAccess resultAccess = acquireWrite(result, stream);
+        details::CudaKernel::getInstance().take(sourceAccess.data(), resultAccess.data(), indices, axisSize, inner,
+                                                elementSize, totalElements, reinterpret_cast<CUstream>(stream));
         return result;
     }
     // CPU
     else
     {
-        const std::byte* sourceData = static_cast<const std::byte*>(source.data());
-        std::byte* destinationData = static_cast<std::byte*>(result.data());
+        ArrayReadAccess sourceAccess = acquireRead(source);
+        ArrayWriteAccess resultAccess = acquireWrite(result);
+        const std::byte* sourceData = static_cast<const std::byte*>(sourceAccess.data());
+        std::byte* destinationData = static_cast<std::byte*>(resultAccess.data());
         const size_t blockSize = inner * elementSize;
 
         for (size_t outerIndex = 0; outerIndex < outer; ++outerIndex)
@@ -242,6 +190,18 @@ void applyUnaryOp(const T* source, T* destination, size_t count, details::UnaryO
                 return applyElementWise(
                     source, destination, count, [](T value) { return static_cast<T>(value < T{} ? -value : value); });
             }
+        case details::UnaryOp::eSqrt:
+            if constexpr (std::is_floating_point_v<T>)
+            {
+                return applyElementWise(
+                    source, destination, count, [](T value) { return static_cast<T>(std::sqrt(value)); });
+            }
+            else
+            {
+                // The caller promotes a boolean or integer operand to float64 before dispatching,
+                // so this is unreachable; throwing beats leaving the result uninitialized.
+                throw std::logic_error("applyUnaryOp(): square root of a non-floating-point operand");
+            }
         default:
             break;
         }
@@ -279,6 +239,17 @@ void applyBinaryOp(const T* source1, const T* source2, T* destination, size_t co
             return applyElementWise(source1, source2, destination, count, [](T a, T b) { return static_cast<T>(a - b); });
         case details::BinaryOp::eMultiply:
             return applyElementWise(source1, source2, destination, count, [](T a, T b) { return static_cast<T>(a * b); });
+        case details::BinaryOp::ePower:
+            if constexpr (std::is_floating_point_v<T>)
+            {
+                return applyElementWise(source1, source2, destination, count,
+                                        [](T base, T exponent) { return static_cast<T>(std::pow(base, exponent)); });
+            }
+            else
+            {
+                // The caller promotes boolean and integer operands to float64 before dispatching.
+                break;
+            }
         case details::BinaryOp::eDivide:
             return applyElementWise(source1, source2, destination, count, [](T a, T b) { return static_cast<T>(a / b); });
         }
@@ -295,40 +266,56 @@ Array applyUnaryOp(const Array& a, details::UnaryOp operation, std::string_view 
                                     "(): boolean negative is not supported; use logicalNot() instead");
     }
     // Logical negation narrows every input kind to a boolean result; the arithmetic operations keep
-    // the operand's dtype.
+    // the operand's dtype, except that a square root is computed in floating point whatever it was
+    // given, as true division is.
     const bool isLogicalNot = operation == details::UnaryOp::eLogicalNot;
-    const Dtype dtype = isLogicalNot ? Dtype::Bool() : a.dtype();
+    Dtype dtype = isLogicalNot ? Dtype::Bool() : a.dtype();
+    if (operation == details::UnaryOp::eSqrt && !dtype.isFloating())
+    {
+        dtype = Dtype::Float64();
+    }
     const Device device = a.device();
     const Shape& shape = a.shape();
     const size_t count = shape.size();
+    // Only a square root needs its operand converted; toDtype() to the dtype an operand already has
+    // is free, so the others are unaffected. Every operand is also made contiguous, since a
+    // non-contiguous view (a broadcast or transpose) cannot be read element-by-element through a raw
+    // pointer; toDtype() already returns a contiguous buffer, so the extra call is a free no-op there.
+    const Array source = operation == details::UnaryOp::eSqrt ? a.toDtype(dtype).contiguous() : a.contiguous();
     Array result = empty(shape, dtype, device);
 
     // CUDA
     if (device.isCuda())
     {
         DeviceGuard deviceGuard(device);
-        details::CudaKernel::getInstance().unaryOp(a.data(), result.data(), count, a.dtype().kind(), operation);
+        const std::uintptr_t stream = details::operationStream(device);
+        ArrayReadAccess sourceAccess = acquireRead(source, stream);
+        ArrayWriteAccess resultAccess = acquireWrite(result, stream);
+        details::CudaKernel::getInstance().unaryOp(sourceAccess.data(), resultAccess.data(), count,
+                                                   source.dtype().kind(), operation, reinterpret_cast<CUstream>(stream));
         return result;
     }
     // CPU
     else
     {
-        Dtype::dispatchByKind(a.dtype().kind(),
+        ArrayReadAccess sourceAccess = acquireRead(source);
+        ArrayWriteAccess resultAccess = acquireWrite(result);
+        Dtype::dispatchByKind(source.dtype().kind(),
                               [&](auto sample)
                               {
                                   using T = decltype(sample);
-                                  const auto* source = static_cast<const T*>(a.data());
+                                  const auto* sourceData = static_cast<const T*>(sourceAccess.data());
                                   if (isLogicalNot)
                                   {
-                                      auto* destination = static_cast<bool*>(result.data());
+                                      auto* destination = static_cast<bool*>(resultAccess.data());
                                       for (size_t i = 0; i < count; ++i)
                                       {
-                                          destination[i] = !static_cast<bool>(source[i]);
+                                          destination[i] = !static_cast<bool>(sourceData[i]);
                                       }
                                   }
                                   else
                                   {
-                                      applyUnaryOp(source, static_cast<T*>(result.data()), count, operation);
+                                      applyUnaryOp(sourceData, static_cast<T*>(resultAccess.data()), count, operation);
                                   }
                               });
         return result;
@@ -453,44 +440,49 @@ Array applyReduceOp(const Array& a, details::ReduceOp operation, std::string_vie
     const bool isBooleanResult = operation == details::ReduceOp::eAll || operation == details::ReduceOp::eAny;
     // all() and any() read the operand in its own dtype and narrow it to a boolean while reducing;
     // every other reduction accumulates in the result dtype, so the operand is cast up front.
-    const Array source = isBooleanResult ? a : a.toDtype(dtype);
+    const Array source = (isBooleanResult ? a : a.toDtype(dtype)).contiguous();
     Array result = empty(Shape(), dtype, device);
 
     // CUDA
     if (device.isCuda())
     {
         DeviceGuard deviceGuard(device);
-        details::CudaKernel::getInstance().reduceOp(
-            source.data(), result.data(), count, source.dtype().kind(), operation);
+        const std::uintptr_t stream = details::operationStream(device);
+        ArrayReadAccess sourceAccess = acquireRead(source, stream);
+        ArrayWriteAccess resultAccess = acquireWrite(result, stream);
+        details::CudaKernel::getInstance().reduceOp(sourceAccess.data(), resultAccess.data(), count,
+                                                    source.dtype().kind(), operation, reinterpret_cast<CUstream>(stream));
         return result;
     }
     // CPU
     else
     {
+        ArrayReadAccess sourceAccess = acquireRead(source);
+        ArrayWriteAccess resultAccess = acquireWrite(result);
         Dtype::dispatchByKind(source.dtype().kind(),
                               [&](auto sample)
                               {
                                   using T = decltype(sample);
-                                  const auto* values = static_cast<const T*>(source.data());
+                                  const auto* values = static_cast<const T*>(sourceAccess.data());
                                   switch (operation)
                                   {
                                   case details::ReduceOp::eAll:
-                                      *static_cast<bool*>(result.data()) = allAnyReduce<T, true>(values, count);
+                                      *static_cast<bool*>(resultAccess.data()) = allAnyReduce<T, true>(values, count);
                                       break;
                                   case details::ReduceOp::eAny:
-                                      *static_cast<bool*>(result.data()) = allAnyReduce<T, false>(values, count);
+                                      *static_cast<bool*>(resultAccess.data()) = allAnyReduce<T, false>(values, count);
                                       break;
                                   case details::ReduceOp::eMin:
-                                      *static_cast<T*>(result.data()) = minMaxReduce<T, true>(values, count);
+                                      *static_cast<T*>(resultAccess.data()) = minMaxReduce<T, true>(values, count);
                                       break;
                                   case details::ReduceOp::eMax:
-                                      *static_cast<T*>(result.data()) = minMaxReduce<T, false>(values, count);
+                                      *static_cast<T*>(resultAccess.data()) = minMaxReduce<T, false>(values, count);
                                       break;
                                   case details::ReduceOp::eSum:
-                                      *static_cast<T*>(result.data()) = sumProdReduce<T, true>(values, count);
+                                      *static_cast<T*>(resultAccess.data()) = sumProdReduce<T, true>(values, count);
                                       break;
                                   case details::ReduceOp::eProd:
-                                      *static_cast<T*>(result.data()) = sumProdReduce<T, false>(values, count);
+                                      *static_cast<T*>(resultAccess.data()) = sumProdReduce<T, false>(values, count);
                                       break;
                                   }
                               });
@@ -515,36 +507,44 @@ Array applyBinaryOp(const Array& a, const Array& b, details::BinaryOp operation,
     {
         throw std::invalid_argument(std::string(callerName) + "(): boolean subtract is not supported");
     }
-    // - True division: boolean and integer operands are computed in floating-point.
-    if (operation == details::BinaryOp::eDivide && !dtype.isFloating())
+    // - True division and exponentiation: boolean and integer operands are computed in
+    //   floating-point.
+    if ((operation == details::BinaryOp::eDivide || operation == details::BinaryOp::ePower) && !dtype.isFloating())
     {
         dtype = Dtype::Float64();
     }
 
     const Shape shape = broadcastShapes(a.shape(), b.shape(), callerName);
     const size_t count = shape.size();
-    const Array source1 = a.toDtype(dtype).broadcastTo(shape);
-    const Array source2 = b.toDtype(dtype).broadcastTo(shape);
+    const Array source1 = a.toDtype(dtype).broadcastView(shape).contiguous();
+    const Array source2 = b.toDtype(dtype).broadcastView(shape).contiguous();
     Array result = empty(shape, dtype, device);
 
     // CUDA
     if (device.isCuda())
     {
         DeviceGuard deviceGuard(device);
-        details::CudaKernel::getInstance().binaryOp(
-            source1.data(), source2.data(), result.data(), count, dtype.kind(), operation);
+        const std::uintptr_t stream = details::operationStream(device);
+        ArrayReadAccess source1Access = acquireRead(source1, stream);
+        ArrayReadAccess source2Access = acquireRead(source2, stream);
+        ArrayWriteAccess resultAccess = acquireWrite(result, stream);
+        details::CudaKernel::getInstance().binaryOp(source1Access.data(), source2Access.data(), resultAccess.data(),
+                                                    count, dtype.kind(), operation, reinterpret_cast<CUstream>(stream));
         return result;
     }
     // CPU
     else
     {
+        ArrayReadAccess source1Access = acquireRead(source1);
+        ArrayReadAccess source2Access = acquireRead(source2);
+        ArrayWriteAccess resultAccess = acquireWrite(result);
         Dtype::dispatchByKind(dtype.kind(),
                               [&](auto sample)
                               {
                                   using T = decltype(sample);
-                                  applyBinaryOp(static_cast<const T*>(source1.data()),
-                                                static_cast<const T*>(source2.data()), static_cast<T*>(result.data()),
-                                                count, operation);
+                                  applyBinaryOp(static_cast<const T*>(source1Access.data()),
+                                                static_cast<const T*>(source2Access.data()),
+                                                static_cast<T*>(resultAccess.data()), count, operation);
                               });
         return result;
     }
@@ -559,7 +559,7 @@ Array empty(const Shape& shape, Dtype dtype, const Device& device)
     // CUDA
     if (device.isCuda())
     {
-        // A zero-element array still allocates one byte: cudaMalloc(0) yields a null pointer, which
+        // A zero-element array still allocates one byte: cuMemAlloc() rejects a zero size, which
         // data() would then hand out as if it addressed elements. `new std::byte[0]` already returns
         // a valid distinct pointer, so the CPU branch needs no such guard.
         void* devicePointer = nullptr;
@@ -573,9 +573,6 @@ Array empty(const Shape& shape, Dtype dtype, const Device& device)
         // process teardown or after a cudaDeviceReset(). Leaking an allocation that is already
         // being torn down beats aborting the process.
         //
-        // It does not cover ~DeviceGuard(), which restores the previous device through a throwing
-        // cudaSetDevice() from its own noexcept destructor; that would terminate before unwinding
-        // reaches this handler. Fixing it belongs in DeviceGuard rather than here.
         auto deleter = [device](std::byte* pointer) noexcept
         {
             try
@@ -588,13 +585,13 @@ Array empty(const Shape& shape, Dtype dtype, const Device& device)
             }
         };
         return Array::fromBuffer(std::shared_ptr<std::byte[]>(static_cast<std::byte*>(devicePointer), std::move(deleter)),
-                                 shape, dtype, device);
+                                 std::max<size_t>(byteCount, 1), shape, dtype, device);
     }
     // CPU
     else
     {
         // Deliberately not value-initialized: the elements are unspecified, as in numpy.empty().
-        return Array::fromBuffer(std::shared_ptr<std::byte[]>(new std::byte[byteCount]), shape, dtype, device);
+        return Array::fromBuffer(std::shared_ptr<std::byte[]>(new std::byte[byteCount]), byteCount, shape, dtype, device);
     }
 }
 
@@ -613,12 +610,14 @@ Array zeros(const Shape& shape, Dtype dtype, const Device& device)
     if (device.isCuda())
     {
         DeviceGuard deviceGuard(device);
-        CudaRuntime::getInstance().cudaMemset(result.data(), 0, byteCount);
+        ArrayWriteAccess resultAccess = acquireWrite(result);
+        CudaRuntime::getInstance().cudaMemset(resultAccess.data(), 0, byteCount);
     }
     // CPU
     else
     {
-        std::memset(result.data(), 0, byteCount);
+        ArrayWriteAccess resultAccess = acquireWrite(result);
+        std::memset(resultAccess.data(), 0, byteCount);
     }
     return result;
 }
@@ -630,10 +629,8 @@ Array ones(const Shape& shape, Dtype dtype, const Device& device)
         return empty(shape, dtype, device);
     }
     // Unlike zeros(), one has no dtype-independent byte pattern (float 1.0f is 0x3F800000), so this
-    // casts a scalar to `dtype` and broadcasts it out, reusing the existing gather rather than
-    // adding a fill kernel. broadcastTo() from a 0-D operand materializes a dense result, so no
-    // further copy is needed.
-    return Array(int32_t{ 1 }, dtype, device).broadcastTo(shape);
+    // casts a scalar to `dtype`, broadcasts it, and materializes writable dense storage.
+    return Array(int32_t{ 1 }, dtype, device).broadcastView(shape, true);
 }
 
 Array add(const Array& a, const Array& b)
@@ -709,6 +706,26 @@ Array negative(const Array& a)
 Array absolute(const Array& a)
 {
     return applyUnaryOp(a, details::UnaryOp::eAbsolute, "absolute");
+}
+
+Array sqrt(const Array& a)
+{
+    return applyUnaryOp(a, details::UnaryOp::eSqrt, "sqrt");
+}
+
+Array power(const Array& a, const Array& b)
+{
+    return applyBinaryOp(a, b, details::BinaryOp::ePower, "power");
+}
+
+Array power(const Array& a, const details::SupportedInputSpecification& b)
+{
+    return power(a, Array(b, std::nullopt, a.device()));
+}
+
+Array power(const details::SupportedInputSpecification& a, const Array& b)
+{
+    return power(Array(a, std::nullopt, b.device()), b);
 }
 
 Array all(const Array& a)
@@ -803,6 +820,11 @@ Array operator/(const details::SupportedInputSpecification& a, const Array& b)
 
 Array transpose(const Array& a, const std::optional<std::vector<int64_t>>& axes)
 {
+    return transposeView(a, axes).copy();
+}
+
+Array transposeView(const Array& a, const std::optional<std::vector<int64_t>>& axes)
+{
     const size_t ndim = a.ndim();
 
     std::vector<int64_t> reversedAxes;
@@ -833,24 +855,15 @@ Array transpose(const Array& a, const std::optional<std::vector<int64_t>>& axes)
         resolvedAxes[i] = axis;
     }
 
-    // Contiguous source strides (in elements), then reordered onto the destination axes so that
-    // axis i of the result walks the source along its axis `resolvedAxes[i]`.
-    std::vector<int64_t> contiguousStrides(ndim);
-    int64_t stride = 1;
-    for (size_t i = ndim; i-- > 0;)
-    {
-        contiguousStrides[i] = stride;
-        stride *= a.shape()[static_cast<int64_t>(i)];
-    }
-
-    std::vector<int64_t> sourceStrides(ndim);
+    std::vector<int64_t> destinationStrides(ndim);
     std::vector<int64_t> destinationShape(ndim);
     for (size_t i = 0; i < ndim; ++i)
     {
-        sourceStrides[i] = contiguousStrides[static_cast<size_t>(resolvedAxes[i])];
+        destinationStrides[i] = a.strides()[static_cast<size_t>(resolvedAxes[i])];
         destinationShape[i] = a.shape()[resolvedAxes[i]];
     }
-    return gather(a, sourceStrides, Shape(destinationShape));
+    // Shares the operand's buffer, offset, and writeability; only the shape and strides differ.
+    return a._viewWithLayout(Shape(destinationShape), std::move(destinationStrides));
 }
 
 Array take(const Array& a, const std::vector<int64_t>& indices, const std::optional<int64_t>& axis)
@@ -860,7 +873,7 @@ Array take(const Array& a, const std::vector<int64_t>& indices, const std::optio
     // 1 there rather than rejecting it: np.take(np.array(1.0), [0], axis=0) is array([1.0]), and
     // its axis=1 error reports "an array of dimension 1".
     const bool gathersAlongAxis = axis.has_value() && a.ndim() > 0;
-    const Array source = gathersAlongAxis ? a : a.flatten();
+    const Array source = (gathersAlongAxis ? a : a.flatten()).contiguous();
     const int64_t resolvedAxis = resolveAxis(axis.value_or(0), source.ndim(), "take");
     const size_t ndim = source.ndim();
     const int64_t axisSize = source.shape()[resolvedAxis];

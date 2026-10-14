@@ -1,5 +1,5 @@
 [package]
-version = "1.0.6"
+version = "1.1.1"
 category = "Simulation"
 title = "Isaac Sim Newton Physics"
 description = "Extension for simulating physics with Newton and connecting with Fabric. Use isaacsim.physics.newton.tensors for the tensor interface."
@@ -13,6 +13,7 @@ writeTarget.kit = true
 [dependencies]
 "isaacsim.core.simulation_manager" = {}  # Required for SimulationManager integration
 "isaacsim.pip.newton" = {}  # Newton pip packages
+"isaacsim.test.utils" = { optional = true } 
 "omni.physics" = {}  # Required for unified physics interface registration
 "omni.warp.core" = {}
 "usdrt.scenegraph" = {}  # Required for fabric integration
@@ -105,7 +106,9 @@ args = [
 pythonTests.include = [
     "isaacsim.physics.newton.tests.test_deprecated_tensors*",
     "isaacsim.physics.newton.tests.test_hydroelastic*",
+    "isaacsim.physics.newton.tests.test_newton_config*",
     "isaacsim.physics.newton.tests.test_newton_stage*",
+    "isaacsim.physics.newton.tests.test_newton_substeps*",
     "isaacsim.physics.newton.tests.test_property_query*",
     "isaacsim.physics.newton.tests.test_warning_logging*",
 ]

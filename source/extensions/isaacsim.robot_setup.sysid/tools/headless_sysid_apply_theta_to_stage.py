@@ -333,6 +333,7 @@ def main() -> int:  # noqa: D103
             "disable_viewport_updates": True,
         }
     )
+    exit_code = 1
     try:
         loop = asyncio.get_event_loop()
         task = loop.create_task(_run(args))
@@ -342,12 +343,14 @@ def main() -> int:  # noqa: D103
         print("[sysid] Kit update pump stopped.", flush=True)
         summary = task.result()
         print(json.dumps(summary, indent=2), flush=True)
-        return 0 if summary.get("ok") else 1
+        exit_code = 0 if summary.get("ok") else 1
     except Exception as exc:
         print(f"[sysid] ERROR: {exc}", file=sys.stderr, flush=True)
-        return 1
+        exit_code = 1
     finally:
-        simulation_app.close()
+        # Fast shutdown terminates the process inside `close()`, so the status must be passed here.
+        simulation_app.close(exit_code=exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

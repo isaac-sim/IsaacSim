@@ -16,7 +16,7 @@
 #include "isaacsim/common/array/Shape.hpp"
 
 #include <algorithm>
-#include <numeric>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -93,11 +93,25 @@ size_t Shape::ndim() const
 
 size_t Shape::size() const
 {
-    if (std::any_of(m_shape.begin(), m_shape.end(), [](int64_t dim) { return dim < 0; }))
+    if (std::any_of(m_shape.begin(), m_shape.end(), [](int64_t dimension) { return dimension < 0; }))
     {
         throw std::invalid_argument("Shape::size(): negative dimensions are not allowed");
     }
-    return std::accumulate(m_shape.begin(), m_shape.end(), size_t{ 1 }, std::multiplies<size_t>());
+    if (std::find(m_shape.begin(), m_shape.end(), 0) != m_shape.end())
+    {
+        return 0;
+    }
+    size_t elementCount = 1;
+    for (const int64_t dimension : m_shape)
+    {
+        const size_t unsignedDimension = static_cast<size_t>(dimension);
+        if (unsignedDimension != 0 && elementCount > std::numeric_limits<size_t>::max() / unsignedDimension)
+        {
+            throw std::overflow_error("Shape::size(): element count of shape " + toString() + " overflows size_t");
+        }
+        elementCount *= unsignedDimension;
+    }
+    return elementCount;
 }
 
 bool Shape::canBroadcastTo(const Shape& other) const

@@ -168,7 +168,8 @@ def discover_actuators_from_usd(franka_path: str) -> ArticulationActuators:
     from isaacsim.core.experimental.actuators import ArticulationActuators
 
     actuated = ArticulationActuators(franka_path)
-    print(f"Discovered {len(actuated.actuators)} actuators")
+    # Compatible actuators are grouped, so one batch can drive several DOFs.
+    print(f"Discovered {len(actuated.actuated_dof_indices)} actuated DOFs in {len(actuated.actuators)} batches")
     print(f"Actuated DOF indices: {actuated.actuated_dof_indices}")
     # <end-discover-from-usd-snippet>
     return actuated
@@ -205,7 +206,7 @@ def round_trip_demo(out_path: pathlib.Path) -> None:
         # For sim stability, and simulation of the reflected inertia (armature) of the actuator.
         actuated.articulation.set_dof_armatures(0.1)
         try:
-            assert len(actuated.actuators) == 7, "Expected 7 actuators on the Franka arm"
+            assert len(actuated.actuated_dof_indices) == 7, "Expected 7 actuated DOFs on the Franka arm"
 
             timeline = omni.timeline.get_timeline_interface()
             timeline.play()

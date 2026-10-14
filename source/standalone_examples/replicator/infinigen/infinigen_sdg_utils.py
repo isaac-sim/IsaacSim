@@ -785,12 +785,11 @@ def get_or_create_physx_scene(prim_path: str = "/PhysicsScene") -> PhysxSchema.P
     return PhysxSchema.PhysxSceneAPI.Apply(stage.GetPrimAtPath(prim_path))
 
 
-# Default GPU collision stack size for the infinigen SDG pipeline (300 MB).
-# The PhysX default (64 MB) is insufficient for scenes with many colliders (e.g. 30+ shape
+# Default GPU collision stack size for the infinigen SDG pipeline (384 MiB).
+# The PhysX default (64 MiB) is insufficient for scenes with many colliders (e.g. 30+ shape
 # distractors, 10+ mesh distractors, labeled assets, and environment collision meshes).
-# The error message from PhysX recommends at least ~272 MB for a typical infinigen scene,
-# so 300 MB provides a comfortable margin.
-INFINIGEN_DEFAULT_GPU_COLLISION_STACK_SIZE = 314572800
+# A test scene required at least 314,841,920 bytes, so 384 MiB leaves headroom.
+INFINIGEN_DEFAULT_GPU_COLLISION_STACK_SIZE = 402653184
 
 
 def configure_physics_scene(physics_config: dict | None = None) -> None:
@@ -804,7 +803,7 @@ def configure_physics_scene(physics_config: dict | None = None) -> None:
         physics_config: Optional dictionary with physics configuration overrides.
             Supported keys (all optional):
             - gpu_collision_stack_size (int): GPU collision stack size in bytes.
-              Defaults to INFINIGEN_DEFAULT_GPU_COLLISION_STACK_SIZE (300 MB).
+              Defaults to INFINIGEN_DEFAULT_GPU_COLLISION_STACK_SIZE (384 MiB).
             - gpu_found_lost_pairs_capacity (int): GPU found/lost pairs capacity.
             - gpu_found_lost_aggregate_pairs_capacity (int): GPU found/lost aggregate pairs capacity.
             - gpu_total_aggregate_pairs_capacity (int): GPU total aggregate pairs capacity.

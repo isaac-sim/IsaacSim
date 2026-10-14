@@ -26,7 +26,7 @@ and capability callbacks. Scene-query, interaction, and benchmark callbacks
 remain unavailable.
 """
 
-from .newton_config import NewtonConfig
+from .newton_config import NewtonConfig, NewtonSolverOutputConfig
 from .newton_stage import NewtonStage
 from .register_simulation import (
     NewtonSimulationRegistry,
@@ -34,10 +34,14 @@ from .register_simulation import (
     register,
     unregister,
 )
+from .solver_config import SolverConfig, SolverType
 
 __all__ = [
     "NewtonConfig",
+    "NewtonSolverOutputConfig",
     "NewtonStage",
+    "SolverConfig",
+    "SolverType",
     "NewtonSimulationRegistry",
     "register",
     "unregister",

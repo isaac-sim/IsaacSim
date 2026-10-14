@@ -1,0 +1,32 @@
+id = "benchmarks.ovsim.api.falling_cube"
+title = "OV Sim Falling Cube"
+summary = "Measure completed physics steps and position readback, without rendering."
+owners = [
+    "isaacsim.ovsim.api",
+    "isaacsim.foundation.objects",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.performance.benchmarking",
+]
+topics = ["benchmarking", "physics"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+modules = [
+    { name = "isaacsim_ovsim", surfaces = ["python"] },
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+    { name = "isaacsim_physics_engines", surfaces = ["python"] },
+    { name = "isaacsim_performance", surfaces = ["python"] },
+]
+
+[[test]]
+name = "default"
+path = "test.py"
+timeout_seconds = 120
+stdout_contains = ["Falling cube benchmark test passed."]

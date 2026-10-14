@@ -121,7 +121,7 @@ class PIDControlConfig:
 class NeuralControlConfig:
     """Configuration for a neural-network controller (MLP or LSTM).
 
-    The concrete class (``ControllerNeuralMLP`` or ``ControllerNeuralLSTM``) is
+    The concrete class (``DriveNeuralMLP`` or ``DriveNeuralLSTM``) is
     selected at parse time by inspecting the ``model_type`` metadata stored inside
     the checkpoint at `model_path`.
 

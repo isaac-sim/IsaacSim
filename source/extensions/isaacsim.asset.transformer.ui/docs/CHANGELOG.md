@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.5] - 2026-09-29
+### Fixed
+- Show a gain-review notice when a successful PhysX conversion creates actuators without authored gains.
+
+## [1.1.4] - 2026-09-28
+### Fixed
+- Keep dictionary parameters synchronized after repeated key renames, value edits, and row removal.
+
+## [1.1.3] - 2026-09-23
+### Fixed
+- Give each rule action an independent copy of mutable parameter defaults.
+
 ## [1.1.2] - 2026-06-09
 ### Fixed
 - Fix linter errors and missing or incomplete docstrings.

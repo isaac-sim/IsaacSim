@@ -50,7 +50,7 @@ def unpack_joint_state_message(buffer: object) -> tuple:
     """
     buf = bytearray(buffer.tobytes())
     msg = JointState.JointState.GetRootAs(buf, 0)
-    timestamp = msg.Header().Stamp().TimeNs() / 1e9
+    timestamp = msg.Header().CaptureTimestampNs() / 1e9
     num_joints = int(msg.Position().Shape(0))
     positions = _read_tensor_f32(msg.Position())
     velocities = _read_tensor_f32(msg.Velocity())

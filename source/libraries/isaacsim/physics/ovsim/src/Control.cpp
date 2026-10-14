@@ -19,6 +19,8 @@
 #include <isaacsim/physics/ovsim/control/authoring/Authoring.hpp>
 #include <isaacsim/physics/ovsim/control/simulation/Simulation.hpp>
 
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace isaacsim
@@ -37,6 +39,7 @@ namespace
 
 int64_t g_usdStageId = 0;
 void* g_ovstageInstancePointer = nullptr;
+double g_timeStep = 1.0 / 60.0;
 
 } // namespace
 
@@ -160,6 +163,7 @@ void initialize()
             "Set the 'ovstage-stage-ptr' parameter before calling initialize.");
     }
     details::clearRegistry();
+    manager::PhysicsManager::getInstance().configure(static_cast<float>(g_timeStep));
     if (!manager::PhysicsManager::getInstance().initialize(g_ovstageInstancePointer, g_usdStageId))
     {
         throw std::runtime_error("Physics manager initialization failed.");
@@ -198,6 +202,16 @@ void setParameter(const std::string& provider, const std::string& parameterName,
             throw std::invalid_argument("Invalid value type for parameter 'ovstage-stage-ptr'. Expected uintptr_t.");
         }
     }
+    else if (parameterName == "time-step")
+    {
+        const auto* timeStep = std::get_if<double>(&value);
+        if (!timeStep || !std::isfinite(*timeStep) || *timeStep <= 0.0 ||
+            *timeStep > std::numeric_limits<float>::max() || static_cast<float>(*timeStep) == 0.0f)
+        {
+            throw std::invalid_argument("time-step must be a double representable as a finite positive float in seconds.");
+        }
+        g_timeStep = *timeStep;
+    }
     else if (parameterName == "physics-engine")
     {
         if (std::holds_alternative<std::string>(value))
@@ -215,7 +229,8 @@ void setParameter(const std::string& provider, const std::string& parameterName,
     }
     else
     {
-        throw std::invalid_argument("Invalid parameter name. Expected 'ovstage-stage-ptr' or 'physics-engine'.");
+        throw std::invalid_argument(
+            "Invalid parameter name. Expected 'ovstage-stage-ptr', 'physics-engine', or 'time-step'.");
     }
 }
 
@@ -230,9 +245,13 @@ OutputParameterType getParameter(const std::string& provider, const std::string&
     {
         return reinterpret_cast<uintptr_t>(g_ovstageInstancePointer);
     }
+    else if (parameterName == "time-step")
+    {
+        return g_timeStep;
+    }
     else
     {
-        throw std::invalid_argument("Invalid parameter name. Expected 'ovstage-stage-ptr'.");
+        throw std::invalid_argument("Invalid parameter name. Expected 'ovstage-stage-ptr' or 'time-step'.");
     }
 }
 

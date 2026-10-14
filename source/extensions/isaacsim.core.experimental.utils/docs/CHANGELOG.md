@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.23.3] - 2026-09-24
+### Fixed
+- `update_app`: reject UI and asynchronous contexts that would re-enter the Kit update loop.
+
+## [0.23.2] - 2026-09-23
+### Fixed
+- Validate empty prim-path expressions, honor stage overrides for prim mutations, and support saving opened stages in place.
+- Preserve non-unit scale when setting USDRT poses.
+
+## [0.23.1] - 2026-09-22
+### Fixed
+- `open_stage` and `open_stage_async`: document that a missing file is reported through the returned success flag, not an exception.
+
 ## [0.23.0] - 2026-07-23
 ### Added
 - Add a `space` parameter to `compute_obb` for computing bounds in `world`, `local`, or `untransformed` coordinate frames.

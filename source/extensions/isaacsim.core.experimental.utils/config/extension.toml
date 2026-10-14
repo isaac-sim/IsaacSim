@@ -1,5 +1,5 @@
 [package]
-version = "0.23.0"
+version = "0.23.3"
 category = "Simulation"
 title = "Isaac Sim Core (Utils)"
 description = "The Core Utils extension provides a set of utility functions."

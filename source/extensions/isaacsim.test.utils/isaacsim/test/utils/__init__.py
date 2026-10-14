@@ -341,6 +341,7 @@ __all__ = [
     "wait_for_widget_enabled",
     "scroll_to_widget",
     "menu_click_with_retry",
+    "trigger_menu_item",
     "list_menu_paths",
     "perform_widget_action",
     "get_all_menu_paths",

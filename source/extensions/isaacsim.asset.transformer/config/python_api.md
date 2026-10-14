@@ -53,6 +53,8 @@
   - finished_at: str | None
   - results: list[RuleExecutionResult]
   - output_stage_path: str | None
+  - composition_errors: list[str]
+  - composition_errors_truncated: bool
   - def to_dict(self) -> dict[str, Any]
   - def to_json(self) -> str
   - def close(self)

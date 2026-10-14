@@ -83,12 +83,15 @@ PYBIND11_MODULE(_surface_gripper, m)
         .attr("__module__") = "_surface_gripper";
 
     defineInterfaceClass<SurfaceGripperInterface>(
-        m, "SurfaceGripperInterface", "acquire_surface_gripper_interface", "release_surface_gripper_interface")
+        m, "SurfaceGripperInterface", "acquire_surface_gripper_interface", "release_surface_gripper_interface",
+        "Native gripper operations release the GIL and serialize against gripper physics/lifecycle callbacks. "
+        "Independent paths within a batch remain parallel. Concurrent external USD edits and PhysX object "
+        "destruction still require the engine safe phase.")
         .def(
             "set_gripper_action",
             [](const SurfaceGripperInterface* iface, const char* primPath, const float action) -> bool
             { return iface ? iface->setGripperAction(primPath, action) : false; },
-            py::arg("prim_path"), py::arg("action"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_path"), py::arg("action"),
             R"doc(
                 Sets the action of a surface gripper.
                 
@@ -106,7 +109,7 @@ PYBIND11_MODULE(_surface_gripper, m)
             "open_gripper",
             [](const SurfaceGripperInterface* iface, const char* primPath) -> bool
             { return iface ? iface->openGripper(primPath) : false; },
-            py::arg("prim_path"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_path"),
             R"doc(
                 Opens/releases a surface gripper.
                 
@@ -123,7 +126,7 @@ PYBIND11_MODULE(_surface_gripper, m)
             "close_gripper",
             [](const SurfaceGripperInterface* iface, const char* primPath) -> bool
             { return iface ? iface->closeGripper(primPath) : false; },
-            py::arg("prim_path"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_path"),
             R"doc(
                 Closes/activates a surface gripper.
                 
@@ -146,7 +149,7 @@ PYBIND11_MODULE(_surface_gripper, m)
                 }
                 return static_cast<GripperStatus>(iface->getGripperStatus(primPath));
             },
-            py::arg("prim_path"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_path"),
             R"doc(
                 Gets the status of a surface gripper.
                 
@@ -160,7 +163,7 @@ PYBIND11_MODULE(_surface_gripper, m)
             "set_write_to_usd",
             [](const SurfaceGripperInterface* iface, bool writeToUsd) -> bool
             { return iface ? iface->setWriteToUsd(writeToUsd) : false; },
-            py::arg("write_to_usd"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("write_to_usd"),
             R"doc(
                 Sets whether to write gripper state to USD.
                 
@@ -184,7 +187,7 @@ PYBIND11_MODULE(_surface_gripper, m)
             "get_gripped_objects",
             [](const SurfaceGripperInterface* iface, const char* primPath) -> std::vector<std::string>
             { return iface ? iface->getGrippedObjects(primPath) : std::vector<std::string>(); },
-            py::arg("prim_path"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_path"),
             R"doc(
                 Gets a list of objects currently gripped.
                 
@@ -213,7 +216,7 @@ PYBIND11_MODULE(_surface_gripper, m)
                 }
                 return iface->getGripperStatusBatch(cpaths.data(), cpaths.size());
             },
-            py::arg("prim_paths"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_paths"),
             R"doc(
                 Gets statuses for multiple surface grippers in parallel.
                 
@@ -241,7 +244,7 @@ PYBIND11_MODULE(_surface_gripper, m)
                 }
                 return iface->openGripperBatch(cpaths.data(), cpaths.size());
             },
-            py::arg("prim_paths"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_paths"),
             R"doc(
                 Opens multiple surface grippers in parallel.
                 
@@ -269,7 +272,7 @@ PYBIND11_MODULE(_surface_gripper, m)
                 }
                 return iface->closeGripperBatch(cpaths.data(), cpaths.size());
             },
-            py::arg("prim_paths"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_paths"),
             R"doc(
                 Closes multiple surface grippers in parallel.
                 
@@ -298,7 +301,7 @@ PYBIND11_MODULE(_surface_gripper, m)
                 }
                 return iface->setGripperActionBatch(cpaths.data(), actions.data(), actions.size());
             },
-            py::arg("prim_paths"), py::arg("actions"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_paths"), py::arg("actions"),
             R"doc(
                 Sets actions for multiple surface grippers in parallel.
                 
@@ -331,7 +334,7 @@ PYBIND11_MODULE(_surface_gripper, m)
                 }
                 return iface->getGrippedObjectsBatch(cpaths.data(), cpaths.size());
             },
-            py::arg("prim_paths"),
+            py::call_guard<py::gil_scoped_release>(), py::arg("prim_paths"),
             R"doc(
                 Gets gripped objects for multiple surface grippers in parallel.
                 

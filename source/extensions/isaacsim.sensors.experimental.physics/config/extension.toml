@@ -1,5 +1,5 @@
 [package]
-version = "3.3.0"
+version = "4.0.0"
 category = "Simulation"
 title = "Isaac Sim Physics Sensor Simulation"
 description = "Isaac Sim Physics Sensor Simulation extension provides APIs for physics-based sensors, including Contact Sensor, Effort Sensor, IMU Sensor, Joint State Sensor, & Raycast Sensor."

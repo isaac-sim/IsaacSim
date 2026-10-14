@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.0.0] - 2026-09-09
+### Added
+- `get_sensor_reading_view()`: add read-only, zero-copy live raycast and joint-state buffers with dynamic validity.
+
+### Changed
+- `get_sensor_reading()`: return mutable owned snapshots independent of later updates or sensor destruction.
+- `JointStateSensorReading` attributes are read-only, matching `RaycastSensorReading` and the snapshot contract that captured values do not change; the arrays and the DOF name list a reading owns stay mutable in place. Code that rebound an attribute (for example `reading.time = t`) must construct a new `JointStateSensorReading` instead.
+
+### Fixed
+- Raycast hit prim path storage retires an outgrown buffer instead of freeing it, so a `hit_prim_paths` pointer a reader already holds cannot dangle when a physics step writes a longer path.
+
 ## [3.3.0] - 2026-08-20
 ### Changed
 - `EffortSensor.change_buffer_size` validates its size, rejecting `0` and booleans (previously accepted) and accepting numpy integers.

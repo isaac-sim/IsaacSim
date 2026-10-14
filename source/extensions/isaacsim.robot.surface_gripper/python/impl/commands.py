@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Deprecated surface gripper command implementations."""
+"""Undoable surface gripper creation commands."""
 
 import carb
 import omni.kit.commands
@@ -22,24 +22,14 @@ from pxr import Usd
 from .surface_gripper import create_surface_gripper
 
 
-class CreateSurfaceGripper(omni.kit.commands.Command):
-    """Deprecated command that creates a Surface Gripper prim.
-
-    .. deprecated:: Use create_surface_gripper(stage, prim_path) directly instead.
+class CreateSurfaceGripperPrim(omni.kit.commands.Command):
+    """Create a Surface Gripper prim with undo and redo support.
 
     Args:
         prim_path: Path where the surface gripper will be created.
     """
 
     def __init__(self, prim_path: str = "") -> None:
-        carb.log_warn(
-            "CreateSurfaceGripper command is deprecated and will be removed in a future version. "
-            "Use create_surface_gripper(stage, prim_path) directly instead."
-        )
-        # condensed way to copy all input arguments into self with an underscore prefix
-        for name, value in vars().items():
-            if name != "self":
-                setattr(self, f"_{name}", value)
         self._prim = None
         self._stage = omni.usd.get_context().get_stage()
         if prim_path == "":
@@ -62,7 +52,7 @@ class CreateSurfaceGripper(omni.kit.commands.Command):
             The created Surface Gripper prim.
         """
         self._prim = create_surface_gripper(self._stage, self._prim_path)
-        self._prim_path = str(self._prim.GetPath())
+        self._created_path = str(self._prim.GetPath())
         return self._prim
 
     def undo(self) -> bool | None:
@@ -72,8 +62,23 @@ class CreateSurfaceGripper(omni.kit.commands.Command):
             True if the prim was successfully removed, False otherwise.
         """
         if self._prim:
-            return self._stage.RemovePrim(self._prim_path)
+            return self._stage.RemovePrim(self._created_path)
         return None
+
+
+class CreateSurfaceGripper(CreateSurfaceGripperPrim):
+    """Deprecated alias for the undoable Surface Gripper creation command.
+
+    Args:
+        prim_path: Path where the surface gripper will be created.
+    """
+
+    def __init__(self, prim_path: str = "") -> None:
+        carb.log_warn(
+            "CreateSurfaceGripper command is deprecated and will be removed in a future version. "
+            "Use CreateSurfaceGripperPrim for undoable creation or create_surface_gripper(stage, prim_path) directly."
+        )
+        super().__init__(prim_path)
 
 
 omni.kit.commands.register_all_commands_in_module(__name__)

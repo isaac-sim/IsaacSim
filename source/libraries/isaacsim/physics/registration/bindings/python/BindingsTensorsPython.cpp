@@ -15,6 +15,9 @@
 
 #include "TensorNbHelpers.hpp"
 
+#include <isaacsim/common/array/nanobind/DeviceCaster.hpp>
+#include <isaacsim/common/array/nanobind/DtypeCaster.hpp>
+#include <isaacsim/physics/registration/tensors/ArrayTensorSpecification.hpp>
 #include <isaacsim/physics/registration/tensors/IEntityView.hpp>
 #include <isaacsim/physics/registration/tensors/Metadata.hpp>
 #include <isaacsim/physics/registration/tensors/PhysicsEnums.hpp>
@@ -43,6 +46,7 @@ namespace registration
 namespace details
 {
 
+using tensors::ArrayTensorSpecification;
 using tensors::DeviceKind;
 using tensors::DofDriveType;
 using tensors::DofMotion;
@@ -57,6 +61,7 @@ using tensors::ObjectType;
 using tensors::TensorDescription;
 using tensors::TensorRegistry;
 using tensors::TensorSpecification;
+namespace array = isaacsim::common::array;
 
 namespace
 {
@@ -181,6 +186,43 @@ void bindTensors(nb::module_& module)
         .def_rw("supports_masked_write", &TensorSpecification::supportsMaskedWrite,
                 "Whether the operation supports masked writes.")
         .def_rw("requires_host_data", &TensorSpecification::requiresHostData,
+                "Whether write data must be available in host memory.");
+
+    nb::class_<ArrayTensorSpecification>(
+        module, "ArrayTensorSpec", "Describe a tensor operation's shape, type, placement, and capabilities.")
+        .def(nb::init<>(), "Create a tensor specification with default capabilities.")
+        .def(
+            "__init__",
+            [](ArrayTensorSpecification* self, array::Dtype dtype, std::vector<int64_t> shapeHint,
+               std::optional<array::Device> device, bool supports, bool supportsIndexedRead, bool supportsIndexedWrite,
+               bool supportsMaskedWrite)
+            {
+                new (self) ArrayTensorSpecification{};
+                self->dtype = dtype;
+                self->shapeHint = std::move(shapeHint);
+                self->device = device;
+                self->supports = supports;
+                self->supportsIndexedRead = supportsIndexedRead;
+                self->supportsIndexedWrite = supportsIndexedWrite;
+                self->supportsMaskedWrite = supportsMaskedWrite;
+            },
+            nb::arg("dtype") = array::Dtype::Float32(), nb::arg("shape_hint") = std::vector<int64_t>{},
+            nb::arg("device") = std::nullopt, nb::arg("supports") = true, nb::arg("supports_indexed_read") = false,
+            nb::arg("supports_indexed_write") = false, nb::arg("supports_masked_write") = false,
+            "Create a tensor specification from capability fields.")
+        .def_rw("dtype", &ArrayTensorSpecification::dtype, "Required tensor element type.")
+        .def_rw("shape_hint", &ArrayTensorSpecification::shapeHint,
+                "Expected tensor dimensions, excluding the view dimension.")
+        .def_rw("device", &ArrayTensorSpecification::device,
+                "Required tensor device placement, or None to use the physics engine's preferred placement.")
+        .def_rw("supports", &ArrayTensorSpecification::supports, "Whether the operation is supported.")
+        .def_rw("supports_indexed_read", &ArrayTensorSpecification::supportsIndexedRead,
+                "Whether the operation supports indexed reads.")
+        .def_rw("supports_indexed_write", &ArrayTensorSpecification::supportsIndexedWrite,
+                "Whether the operation supports indexed writes.")
+        .def_rw("supports_masked_write", &ArrayTensorSpecification::supportsMaskedWrite,
+                "Whether the operation supports masked writes.")
+        .def_rw("requires_host_data", &ArrayTensorSpecification::requiresHostData,
                 "Whether write data must be available in host memory.");
 
     // ----- TensorDescription ---------------------------------------------------

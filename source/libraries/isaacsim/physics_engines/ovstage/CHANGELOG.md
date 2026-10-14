@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Configure OVStage and OvPhysX from their declared Python dependencies instead of an Isaac Sim-bundled runtime.
+- Register Newton and PhysX USD schemas through OVNewton's public hook before loading OvPhysX or allowing OVStage
+  population.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

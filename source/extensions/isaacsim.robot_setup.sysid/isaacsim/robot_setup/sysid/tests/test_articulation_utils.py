@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import omni.kit.test
 from isaacsim.robot_setup.sysid.articulation_utils import (
@@ -146,8 +147,9 @@ class ArticulationUtilsTests(omni.kit.test.AsyncTestCase):
         paths = ["/Robot/Arm/Joint", "/Robot/Leg/Joint"]
         trajectory = SimpleNamespace(metadata=SimpleNamespace(extra={"joint_names": ["Joint"]}))
 
-        with self.assertLogs("isaacsim.robot_setup.sysid.articulation_utils", level="WARNING") as captured:
+        with patch("carb.log_warn") as log_warn:
             ordered = order_joint_paths_for_trajectory(paths, trajectory)
 
         self.assertEqual(ordered, paths)
-        self.assertTrue(any("multiple joint prims share leaf name" in message for message in captured.output))
+        messages = [call.args[0] for call in log_warn.call_args_list]
+        self.assertTrue(any("multiple joint prims share leaf name" in message for message in messages))

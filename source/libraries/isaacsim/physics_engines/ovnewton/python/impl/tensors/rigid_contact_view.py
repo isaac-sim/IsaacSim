@@ -161,7 +161,7 @@ class NewtonRigidContactView:
         self._max_contact_data_count = backend.max_contact_data_count if backend.max_contact_data_count > 0 else 1000
 
         # Create tensors for caching contact forces
-        self._net_forces, self._net_forces_desc = self._frontend.create_tensor((self.sensor_count, 3), float32)
+        self._net_forces = self._frontend.create_tensor((self.sensor_count, 3), float32)
 
         # Use body-to-sensor mapping from backend (already created with correct original body indices)
         self._body_sensor_map = self._backend.body_sensor_map
@@ -314,6 +314,18 @@ class NewtonRigidContactView:
         """
         self._sim_timestamp += dt
 
+    def _require_contact_forces(self) -> None:
+        """Reject force queries when contact-force computation was not requested."""
+        if self._newton_stage.config.solver_outputs.contact_forces:
+            return
+        message = (
+            "Newton contact force reporting is disabled. Set "
+            "NewtonConfig.solver_outputs.contact_forces=True before initializing physics, then recreate the "
+            "simulation and tensor views."
+        )
+        _log.warning(message)
+        raise RuntimeError(message)
+
     @_no_profile
     def get_net_contact_forces(self, copy: bool = copy_data) -> Any:
         """Get net contact forces for each sensor.
@@ -325,6 +337,7 @@ class NewtonRigidContactView:
             A tensor of shape (sensor_count, 3) with net contact forces.
 
         """
+        self._require_contact_forces()
         model = self._model
         zero_tensor(self._net_forces)
 
@@ -369,9 +382,10 @@ class NewtonRigidContactView:
             A tensor of shape (sensor_count, filter_count, 3).
 
         """
+        self._require_contact_forces()
         # Lazy initialization
         if self._force_matrix is None:
-            self._force_matrix, _ = self._frontend.create_tensor((self.sensor_count, self.filter_count, 3), float32)
+            self._force_matrix = self._frontend.create_tensor((self.sensor_count, self.filter_count, 3), float32)
 
         model = self._model
 
@@ -424,14 +438,15 @@ class NewtonRigidContactView:
             indices.
 
         """
+        self._require_contact_forces()
         if max_contact_data_count <= 0:
             max_contact_data_count = self._max_contact_data_count
 
         if self._contact_forces_buffer is None or self._contact_forces_buffer.shape[0] != max_contact_data_count:
-            self._contact_forces_buffer, _ = self._frontend.create_tensor((max_contact_data_count, 1), float32)
-            self._contact_points_buffer, _ = self._frontend.create_tensor((max_contact_data_count, 3), float32)
-            self._contact_normals_buffer, _ = self._frontend.create_tensor((max_contact_data_count, 3), float32)
-            self._contact_separations_buffer, _ = self._frontend.create_tensor((max_contact_data_count, 1), float32)
+            self._contact_forces_buffer = self._frontend.create_tensor((max_contact_data_count, 1), float32)
+            self._contact_points_buffer = self._frontend.create_tensor((max_contact_data_count, 3), float32)
+            self._contact_normals_buffer = self._frontend.create_tensor((max_contact_data_count, 3), float32)
+            self._contact_separations_buffer = self._frontend.create_tensor((max_contact_data_count, 1), float32)
             # Create uint32 arrays directly as Warp arrays (PyTorch doesn't support uint32 well)
             self._contact_counts = wp.zeros(
                 (self.sensor_count, self.filter_count), dtype=wp.uint32, device=self._model.device
@@ -601,13 +616,14 @@ class NewtonRigidContactView:
             indices, and identifiers for the other actors.
 
         """
+        self._require_contact_forces()
         max_count = self._max_contact_data_count
 
         if self._raw_forces_buffer is None or self._raw_forces_buffer.shape[0] != max_count:
-            self._raw_forces_buffer, _ = self._frontend.create_tensor((max_count, 1), float32)
-            self._raw_points_buffer, _ = self._frontend.create_tensor((max_count, 3), float32)
-            self._raw_normals_buffer, _ = self._frontend.create_tensor((max_count, 3), float32)
-            self._raw_separations_buffer, _ = self._frontend.create_tensor((max_count, 1), float32)
+            self._raw_forces_buffer = self._frontend.create_tensor((max_count, 1), float32)
+            self._raw_points_buffer = self._frontend.create_tensor((max_count, 3), float32)
+            self._raw_normals_buffer = self._frontend.create_tensor((max_count, 3), float32)
+            self._raw_separations_buffer = self._frontend.create_tensor((max_count, 1), float32)
             self._raw_counts = wp.zeros(self.sensor_count, dtype=wp.uint32, device=self._model.device)
             self._raw_start_indices = wp.zeros(self.sensor_count, dtype=wp.uint32, device=self._model.device)
             self._raw_scan_counts = wp.zeros(self.sensor_count, dtype=wp.int32, device=self._model.device)

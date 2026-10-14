@@ -37,6 +37,7 @@ call "%~dp0kit\kit.exe"  "%%~dp0apps/isaacsim.exp.base.kit" ^
     --/omni/kit/plugin/syncUsdLoads=1 ^
     --/rtx/hydra/materialSyncLoads=1 ^
     --/app/asyncRendering=0 ^
+    --/renderer/asyncInit=0 ^
     --/app/fastShutdown=1 ^
     --/app/file/ignoreUnsavedStage=1 ^
     --/app/warmupMode=0 ^
@@ -49,6 +50,7 @@ if %ERRORLEVEL% neq 0 (echo "Error warming up shader cache.") else (echo "Shader
 
 call "%~dp0python.bat" "%~dp0standalone_examples\testing\isaacsim.simulation_app\test_viewport_ready.py" ^
     --portable-root "%PORTABLE_ROOT%" ^
+    --/renderer/asyncInit=0 ^
     --/log/flushStandardStreamOutput=1 ^
     --no-window ^
     --silent ^

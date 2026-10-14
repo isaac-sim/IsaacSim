@@ -342,7 +342,9 @@ class VisualMaterial(Prim, ABC):
             material = UsdShade.Material(prim)
         # shader
         if material is not None:
-            shader = UsdShade.Shader(omni.usd.get_shader_from_material(prim, get_prim=True))
+            connected_shader = omni.usd.get_shader_from_material(prim, get_prim=True)
+            if connected_shader:
+                shader = UsdShade.Shader(connected_shader)
         if shader is None:
             for name in ["Shader", "shader"]:
                 prim = stage.GetPrimAtPath(f"{path}/{name}")

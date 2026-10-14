@@ -19,9 +19,9 @@ Use when Nucleus server is unavailable and you need cloud assets as fallback.
 
 Injected globals (via isaacsim_send.py --arg):
     asset_root: str — Asset root URL. Special values:
-        "production" -> S3 production assets (Isaac 5.0)
-        "staging" -> S3 staging assets (Isaac 6.0, recommended for 6.x builds)
-        "nucleus" -> Reset to default Nucleus server
+        "production" -> S3 production assets (Isaac 6.2, recommended)
+        "staging" -> S3 staging assets (Isaac 6.2, explicit testing only)
+        "nucleus" -> Reset to the configured application default (legacy name)
         Any URL -> Set directly
     check: str — "true" to verify the path works (default: "true").
 """
@@ -36,9 +36,9 @@ if "asset_root" not in dir():
     print(f"Current asset root: {current}")
     print()
     print("Usage: --arg asset_root=<value>")
-    print("  staging    -> S3 staging assets (Isaac 6.0, recommended for 6.x builds)")
-    print("  production -> S3 production assets (Isaac 5.0)")
-    print("  nucleus    -> Reset to Nucleus default")
+    print("  production -> S3 production assets (Isaac 6.2, recommended)")
+    print("  staging    -> S3 staging assets (Isaac 6.2, explicit testing only)")
+    print("  nucleus    -> Reset to configured application default (legacy name)")
     asset_root = None  # signal to skip the rest
 
 if asset_root is not None:
@@ -48,8 +48,8 @@ if asset_root is not None:
     S3_PROD = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac"
     S3_STAGING = "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac"
     PRESETS = {
-        "production": f"{S3_PROD}/5.0",
-        "staging": f"{S3_STAGING}/6.0",
+        "production": f"{S3_PROD}/6.2",
+        "staging": f"{S3_STAGING}/6.2",
     }
 
     url = PRESETS.get(asset_root, asset_root)

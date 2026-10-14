@@ -18,8 +18,10 @@
 #include "isaacsim/common/array/Device.hpp"
 #include "isaacsim/common/array/Dtype.hpp"
 #include "isaacsim/common/array/Export.h"
+#include "isaacsim/common/array/ManagedAccess.hpp"
 #include "isaacsim/common/array/Shape.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -38,27 +40,8 @@ namespace array
 namespace details
 {
 
-/**
- * @brief CPU backing storage holding a reference-counted byte buffer.
- */
-struct CpuStorage
-{
-    /**
-     * @brief Shared ownership of the raw byte allocation.
-     */
-    std::shared_ptr<std::byte[]> data;
-};
-
-/**
- * @brief CUDA device backing storage holding a reference-counted device pointer.
- */
-struct CudaStorage
-{
-    /**
-     * @brief Shared ownership of the CUDA device allocation.
-     */
-    std::shared_ptr<void> data;
-};
+class ArrayStorageFactory;
+class Storage;
 
 #define ISAACSIM_COMMON_ARRAY_DIM0(T) T
 #define ISAACSIM_COMMON_ARRAY_DIM1(T) std::vector<T>
@@ -89,13 +72,12 @@ using SupportedInputSpecification = std::variant<ISAACSIM_COMMON_ARRAY_SCALARS(I
  * @class Array
  * @brief Multi-dimensional array with support for CPU and CUDA devices.
  * @details
- * An Array combines a contiguous element buffer with a @ref Shape, a @ref Dtype, and a
+ * An Array combines an element buffer with a @ref Shape, element strides, a @ref Dtype, and a
  * @ref Device. Multiple Array instances may share the same underlying buffer; operations
- * such as @ref reshape() and @ref at() return views over the original allocation without
- * copying data. Copy-construction and copy-assignment are likewise cheap and share the
- * buffer; use @ref copy() to allocate an independent buffer, or @ref clone() when you also
- * need to preserve the full buffer layout including any pre-element offset from a prior
- * @ref at() call.
+ * such as @ref reshape(), @ref broadcastView(), and @ref at() can return views over the original
+ * allocation without copying data. Copy-construction and copy-assignment are likewise cheap and
+ * share the buffer; use @ref copy() to allocate an independent, contiguous buffer, or @ref clone()
+ * when you also need to preserve the full buffer layout.
  *
  * Arrays can be constructed from scalar values, `std::vector`, or `std::vector<std::vector>`
  * via @c SupportedInputSpecification, or from an existing buffer via @ref fromBuffer(). Device and
@@ -158,6 +140,44 @@ public:
     const Shape& shape() const;
 
     /**
+     * @brief Returns the stride of each axis in elements.
+     * @details A zero stride denotes a broadcast axis. Strides are non-negative and have the same
+     *          length as @ref shape().
+     * @return A const reference to the element strides.
+     */
+    const std::vector<int64_t>& strides() const;
+
+    /**
+     * @brief Returns whether the visible elements use a C-contiguous row-major layout.
+     * @return `true` if the array is C-contiguous, otherwise `false`.
+     */
+    bool isContiguous() const;
+
+    /**
+     * @brief Returns whether the element data may be written through this array.
+     * @details
+     * An array is read-only when a zero stride replicates an axis longer than one element, which is
+     * what @ref broadcastView() produces along a broadcast axis: a write would resolve to one buffer
+     * location from many logical positions. Both @ref set() overloads and the mutable @ref data()
+     * overload throw on such an array.
+     *
+     * A view created from a read-only array inherits the flag, so slicing or reshaping cannot escape
+     * the restriction -- `a.broadcastView(shape).at(0)` stays read-only even though its own strides no
+     * longer replicate anything, because `at(0)` and `at(1)` still resolve to the same bytes.
+     * Allocating fresh storage clears it: @ref copy(), @ref broadcastView() with `copy = true`, and any
+     * @ref toDevice() or @ref toDtype() that transfers or converts.
+     *
+     * @ref contiguous() is not on that list: it decides purely on layout and has no flag to force an
+     * allocation, so it returns an already-contiguous array unchanged and a read-only one stays
+     * read-only -- `a.broadcastView(shape).at(0).contiguous()` still rejects writes. Use @ref copy()
+     * when the goal is a writeable buffer rather than a dense layout.
+     *
+     * @return `true` if writes through this array are permitted, otherwise `false`.
+     * @see fromBuffer() for the overlapping layouts this flag does not detect.
+     */
+    bool isWriteable() const;
+
+    /**
      * @brief Returns the compute device on which this array resides.
      * @return The @ref Device of this array.
      */
@@ -188,6 +208,22 @@ public:
     size_t nbytes() const;
 
     /**
+     * @brief Returns the size in bytes of the full retained allocation.
+     * @details Measured in bytes, not elements. Unlike @ref nbytes(), which covers only this view's
+     *          elements, this counts the whole allocation -- including bytes before element 0 and
+     *          any stride gaps -- and is shared by every view over it, so it does not change under
+     *          @ref at(), @ref reshape(), or @ref broadcastTo().
+     * @return Number of bytes available from @ref buffer().
+     */
+    size_t capacity() const;
+
+    /**
+     * @brief Returns the byte offset of element 0 from the start of the retained allocation.
+     * @return View offset in bytes.
+     */
+    size_t offset() const;
+
+    /**
      * @brief Returns a mutable raw pointer to the first element of this array.
      * @details
      * The pointer is offset-adjusted and points directly to element 0 within the
@@ -195,8 +231,15 @@ public:
      *
      * For a CUDA array this is a device pointer into the device allocation: it is valid only for
      * CUDA APIs and kernels on @ref device(), and must not be dereferenced by host code.
+     * Prefer @ref acquireWrite() for retained, ordered mutation. If this raw pointer is required,
+     * externally serialize every alias and call @ref recordCudaWrite() after enqueueing CUDA writes.
+     *
+     * The elements this pointer addresses are laid out according to @ref strides(); only a
+     * @ref isContiguous() array may be walked as a dense block of @ref nbytes() bytes.
      *
      * @return Mutable pointer to the element data.
+     * @throws std::runtime_error if this array is not @ref isWriteable(). Use the `const` overload
+     *         to read from a read-only array.
      */
     void* data();
 
@@ -208,6 +251,8 @@ public:
      *
      * For a CUDA array this is a device pointer into the device allocation: it is valid only for
      * CUDA APIs and kernels on @ref device(), and must not be dereferenced by host code.
+     * This raw accessor does not order pending producer work for another stream; use
+     * @ref acquireRead() for retained stream-aware access.
      *
      * @return Const pointer to the element data.
      */
@@ -233,30 +278,48 @@ public:
      * @details
      * Uses @ref Shape::resolve() to interpret the target shape, so @p shape may contain
      * at most one -1 dimension whose size is inferred from the total element count.
-     * No data is copied; the returned array shares the underlying buffer.
+     * A C-contiguous array is reshaped without copying. A non-contiguous array is first compacted
+     * in logical row-major order.
      *
      * @param[in] shape Target shape, optionally containing one -1 dimension to infer.
-     * @return A new Array with the resolved shape sharing this array's buffer.
+     * @return A new Array with the resolved shape.
      * @throws std::invalid_argument if @p shape is incompatible with the total element count.
      * @see Shape::resolve()
      */
     Array reshape(const Shape& shape) const;
 
     /**
-     * @brief Returns a 1-D view of this array over the same buffer.
-     * @details Shorthand for reshaping to a single dimension holding all @ref size() elements.
-     *          No data is copied; the returned array shares the underlying buffer.
-     * @return A new 1-D Array sharing this array's buffer.
+     * @brief Returns this array as a single dimension.
+     * @details Shorthand for reshaping to a single dimension holding all @ref size() elements. A
+     *          C-contiguous array shares the underlying buffer; a non-contiguous array is compacted
+     *          in logical row-major order into a new buffer.
+     * @return A new 1-D Array.
      * @see reshape()
      */
     Array flatten() const;
 
     /**
+     * @brief Returns a C-contiguous array containing this array's data.
+     * @details Returns a shallow view sharing storage when this array is already contiguous.
+     *          Otherwise, materializes the visible elements in logical row-major order.
+     *
+     * Layout is the only thing considered: there is no flag to force an allocation, and
+     * @ref isWriteable() carries over untouched when the array is returned unchanged. A contiguous
+     * read-only array therefore comes back read-only.
+     *
+     * @return A C-contiguous Array with the same shape, dtype, and device.
+     * @see copy() to obtain an independent, writeable buffer unconditionally.
+     */
+    Array contiguous() const;
+
+    /**
      * @brief Returns an independent, compacted deep copy of this array.
-     * @details Allocates a new buffer of exactly @ref nbytes() and copies all visible
-     *          elements. The returned array has offset 0, so a slice obtained via @ref at()
-     *          is materialized into a standalone, densely-packed array.
-     * @return A new Array with identical metadata and an independent buffer.
+     * @details Allocates a new buffer holding @ref nbytes() of elements and copies all visible
+     *          elements into it in logical row-major order. The returned array has offset 0 and
+     *          C-contiguous strides, so a slice obtained via @ref at() or a strided view is
+     *          materialized into a standalone, densely-packed, writeable array.
+     * @return A new C-contiguous Array with identical shape, dtype, and device, and an independent
+     *         buffer.
      * @see clone() to preserve the full buffer layout including any pre-element offset.
      */
     Array copy() const;
@@ -264,12 +327,11 @@ public:
     /**
      * @brief Returns an independent deep copy of this array with its own buffer.
      * @details
-     * Duplicates the whole allocation, including any bytes preceding element 0, so the
-     * offset of a slice obtained via @ref at() is preserved (unlike @ref copy(), which
-     * compacts the visible elements to offset 0). The returned array does not share
-     * storage with this array.
+     * Duplicates the reachable buffer span, including any bytes preceding element 0, so the
+     * offset and strides are preserved (unlike @ref copy(), which compacts the visible elements
+     * to offset 0). The returned array does not share storage with this array.
      *
-     * @return A new Array with the same shape, dtype, device, offset, and copied element data.
+     * @return A new Array with the same shape, strides, dtype, device, offset, and copied element data.
      */
     Array clone() const;
 
@@ -282,12 +344,45 @@ public:
      * returned by @ref buffer() for a CUDA array); its deleter is preserved, so whatever owns the
      * device allocation keeps owning it.
      *
+     * @p strides that replicate an axis (a zero stride on an axis longer than one element) make the
+     * result read-only, as for @ref broadcastView(). Layouts that overlap *without* a zero stride --
+     * shape `{2, 2}` with strides `{1, 1}`, say -- are not detected and are reported as
+     * @ref isWriteable(); writing through one overwrites elements in an unspecified order. Supplying
+     * an overlapping layout is the caller's responsibility.
+     *
      * @param[in] data   Shared pointer to the byte buffer.
+     * @param[in] capacity Size in bytes of the allocation beginning at @p data.
      * @param[in] shape  Shape of the array.
      * @param[in] dtype  Element type. Required: raw bytes carry no type of their own.
      * @param[in] device Device on which the buffer resides. Defaults to the CPU.
      * @param[in] offset Byte offset within @p data at which element 0 begins.
+     * @param[in] strides Element strides for each axis. An empty value selects a C-contiguous layout.
      * @return A new Array backed by @p data.
+     * @throws std::invalid_argument if the stride rank differs from the shape rank, a stride is negative,
+     *         a non-empty array has a null buffer, or the view extends beyond @p capacity.
+     * @throws std::overflow_error if the strided buffer span cannot be represented.
+     */
+    static Array fromBuffer(std::shared_ptr<std::byte[]> data,
+                            size_t capacity,
+                            const Shape& shape,
+                            Dtype dtype,
+                            const Device& device = Device::Cpu(),
+                            size_t offset = 0,
+                            const std::vector<int64_t>& strides = {});
+
+    /**
+     * @brief Adopts a contiguous buffer using its declared shape and dtype.
+     * @details The declared capacity is the byte offset plus the contiguous element span. The caller
+     * must ensure the allocation is at least that large; this overload cannot measure allocation size.
+     * Shared ownership and the original deleter are retained without copying elements.
+     * @param[in] data Shared pointer to the allocation beginning.
+     * @param[in] shape Shape of the array.
+     * @param[in] dtype Element type.
+     * @param[in] device Device on which the buffer resides.
+     * @param[in] offset Byte offset of the first element.
+     * @return An Array sharing the supplied buffer.
+     * @throws std::overflow_error if the declared span or offset cannot be represented.
+     * @throws std::invalid_argument if the shape, buffer, or device is invalid.
      */
     static Array fromBuffer(std::shared_ptr<std::byte[]> data,
                             const Shape& shape,
@@ -327,8 +422,8 @@ public:
      * @details
      * If the shape already matches and @p copy is `false`, the returned array shares
      * the underlying buffer. If @p copy is `true`, a fresh copy is always returned.
-     * When broadcasting is required, a new buffer is allocated and elements are
-     * replicated along broadcast axes following NumPy rules.
+     * Any changed shape, including insertion of singleton dimensions, returns an independent
+     * contiguous, writeable array. Use @ref broadcastView() for an explicit zero-copy view.
      *
      * @param[in] shape Target shape. Must be broadcast-compatible with this array's shape.
      * @param[in] copy  If `true`, always return an independent copy.
@@ -339,14 +434,28 @@ public:
     Array broadcastTo(const Shape& shape, bool copy = false) const;
 
     /**
+     * @brief Returns a broadcast view, optionally materialized into independent storage.
+     * @details Replicated axes have zero strides and make the view read-only. Views preserve the
+     * source owner and writeability restrictions. A copy is contiguous and writeable.
+     * @param[in] shape Broadcast-compatible target shape.
+     * @param[in] copy Whether to return an independent copy instead of a view.
+     * @return An Array with the requested shape.
+     * @throws std::invalid_argument if the shapes cannot broadcast.
+     */
+    Array broadcastView(const Shape& shape, bool copy = false) const;
+
+
+    /**
      * @brief Returns a mutable view of the slice at the given index along axis 0.
      * @details
      * Negative indices are supported and count from the last element along axis 0.
      * The returned array shares the underlying buffer; no data is copied.
      *
      * @param[in] index Index along axis 0, in the range `[-shape()[0], shape()[0])`.
-     * @return A mutable Array view with one fewer dimension than this array.
+     * @return An Array view with one fewer dimension than this array, inheriting
+     *         @ref isWriteable() from it.
      * @throws std::out_of_range if this array is 0-D or if @p index is out of range.
+     * @throws std::overflow_error if the resulting byte offset exceeds `size_t`.
      */
     Array at(int64_t index);
 
@@ -358,6 +467,7 @@ public:
      * The value is broadcast and cast to match this array's shape and dtype.
      *
      * @param[in] value Scalar or nested vector to write into this array.
+     * @throws std::runtime_error if this array is not @ref isWriteable().
      */
     void set(const details::SupportedInputSpecification& value);
 
@@ -369,6 +479,7 @@ public:
      *
      * @param[in] other Source array. Must be broadcast-compatible with this array's shape.
      * @throws std::invalid_argument if @p other cannot be broadcast to this array's shape.
+     * @throws std::runtime_error if this array is not @ref isWriteable().
      */
     void set(const Array& other);
 
@@ -409,14 +520,31 @@ public:
     std::string toString() const;
 
 private:
-    std::shared_ptr<std::byte[]> _copyToCpuBuffer() const;
+    friend class details::ArrayStorageFactory;
+
     std::shared_ptr<std::byte[]> _buildCpuBuffer(const details::SupportedInputSpecification& value);
 
-    Array(std::variant<details::CpuStorage, details::CudaStorage> storage,
+    Array(std::shared_ptr<details::Storage> storage,
           size_t offset,
           Shape shape,
+          std::vector<int64_t> strides,
           Dtype dtype,
-          Device device);
+          Device device,
+          bool writeable);
+
+    /**
+     * @brief Returns a view of this array's storage under a different shape and stride layout.
+     * @details Shares the buffer, dtype, and device, and inherits @ref isWriteable(). The offset
+     *          defaults to this array's own.
+     */
+    Array _viewWithLayout(Shape shape, std::vector<int64_t> strides, std::optional<size_t> offset = std::nullopt) const;
+
+    size_t _storageSpanNbytes() const;
+    void _requireWriteable(const std::string& callerName) const;
+
+    // transposeView() builds a permuted view over the operand's buffer and must carry the operand's
+    // writeability across, which the public fromBuffer() entry point cannot express.
+    friend ISAACSIM_COMMON_ARRAY_API Array transposeView(const Array& a, const std::optional<std::vector<int64_t>>& axes);
 
     std::string _formatItem() const;
     std::string _formatData() const;
@@ -434,6 +562,16 @@ protected:
     Shape m_shape;
 
     /**
+     * @brief Element stride of each axis.
+     */
+    std::vector<int64_t> m_strides;
+
+    /**
+     * @brief Whether writes through this array are permitted.
+     */
+    bool m_writeable;
+
+    /**
      * @brief Element data type of this array.
      */
     Dtype m_dtype;
@@ -449,9 +587,9 @@ protected:
     size_t m_offset;
 
     /**
-     * @brief Reference-counted backing storage, either CPU or CUDA.
+     * @brief Reference-counted backing allocation shared by all views.
      */
-    std::variant<details::CpuStorage, details::CudaStorage> m_storage;
+    std::shared_ptr<details::Storage> m_storage;
 };
 
 } // namespace array

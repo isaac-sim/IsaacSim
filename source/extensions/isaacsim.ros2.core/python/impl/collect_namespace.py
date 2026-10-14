@@ -16,6 +16,7 @@
 
 """Utility for collecting ROS 2 namespaces from USD prim hierarchies."""
 
+import carb
 from isaacsim.core.rendering_manager import ViewportManager
 
 
@@ -45,7 +46,11 @@ def collect_namespace(namespace_input: str, render_product_path: str) -> str:
 
     namespace_string = ""
 
-    start_prim = ViewportManager.get_camera(render_product_path).GetPrim()
+    try:
+        start_prim = ViewportManager.get_camera(render_product_path).GetPrim()
+    except ValueError as exc:
+        carb.log_warn(f"Unable to collect ROS 2 namespace for render product '{render_product_path}': {exc}")
+        return ""
 
     current_prim = start_prim
 

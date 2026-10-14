@@ -15,15 +15,21 @@
 
 -- Setup the basic extension variables
 local ext = get_current_extension_info()
+dofile(root .. "/tools/isaac_build/extension_wheel.lua")
+
 -- Set up the basic shared project information
-project_ext (ext)
+project_ext(ext)
 
 -- -------------------------------------
 -- Link/copy folders and files to be packaged with the extension
+stage_isaacsim_extension_wheel_with_python_overlays(ext, "isaacsim.robot_motion.cumotion", {
+    "isaacsim/robot_motion/cumotion/__init__.py",
+    "isaacsim/robot_motion/cumotion/extension.py",
+    "isaacsim/robot_motion/cumotion/impl/kit_cumotion_debug_visualizer.py",
+})
+
 repo_build.prebuild_link {
     { "data", ext.target_dir.."/data" },
     { "docs", ext.target_dir.."/docs" },
-    { "python", ext.target_dir.."/isaacsim/robot_motion/cumotion" },
-    { "$root/_build/target-deps/isaac_cumotion_prebundle", ext.target_dir.."/pip_prebundle" },
-    { "robot_configurations", ext.target_dir.."/robot_configurations" },
+    { "python/tests", ext.target_dir.."/isaacsim/robot_motion/cumotion/tests" },
 }

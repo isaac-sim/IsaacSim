@@ -1,5 +1,5 @@
 [package]
-version = "2.2.3"
+version = "3.2.0"
 category = "Simulation"
 title = "System Identification Backend (Beta)"
 description = "Beta: headless system identification runtime and optimizers for robot simulation parameters. Run contracts and APIs may change in future releases."
@@ -19,6 +19,7 @@ writeTarget.python = true
 "isaacsim.core.experimental.utils" = {}  # stage lifecycle and app launch helpers
 "isaacsim.core.simulation_manager" = {}  # physics-step timing
 "isaacsim.physics.newton" = { optional = true }  # optional Isaac-hosted Newton backend
+"isaacsim.physics.newton.tensors" = { optional = true }  # Newton SimulationManager tensor interface
 "isaacsim.pip.newton" = {}  # packaged Newton, Warp, MuJoCo, and USD schemas
 "omni.physics" = {}  # physics stepping and PhysX replication
 "omni.timeline" = {}  # rollout timeline control
@@ -34,6 +35,7 @@ name = "isaacsim.robot_setup.sysid"
 name = "isaacsim.robot_setup.sysid.tests"
 
 [[test]]
+timeout = 900
 dependencies = [
     "isaacsim.test.utils", # Used to suppress NumPy coverage errors
     "omni.isaac.ml_archive", # tests import torch directly

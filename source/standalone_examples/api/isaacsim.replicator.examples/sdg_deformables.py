@@ -143,7 +143,15 @@ def run_example(assets_config: list[tuple[str, int, str, float, float]]) -> None
     backend = rep.backends.get("DiskBackend")
     backend.initialize(output_dir=output_dir)
     writer = rep.writers.get("BasicWriter")
-    writer.initialize(backend=backend, rgb=True, semantic_segmentation=True, colorize_semantic_segmentation=True)
+    # For deformables the bounding_box_3d transform stays at the spawn pose and the deformation is
+    # carried by the local extents, so compose transform x extents to get the world space box.
+    writer.initialize(
+        backend=backend,
+        rgb=True,
+        semantic_segmentation=True,
+        colorize_semantic_segmentation=True,
+        bounding_box_3d=True,
+    )
     writer.attach(render_product)
 
     # GPU physics required for deformable tensor API
@@ -223,8 +231,10 @@ test_parser.add_argument(
 test_args, _ = test_parser.parse_known_args()
 
 if test_args.test:
+    import json
     import sys
 
+    import numpy as np
     import omni.kit.app
     from isaacsim.core.utils.extensions import enable_extension
 
@@ -235,6 +245,7 @@ if test_args.test:
 
     out_dir = os.path.join(os.getcwd(), "_out_deformable_drop")
     rgb_mean_diff_tolerance = 5
+    bbox3d_tolerance = 0.02
     replicator_examples_ext_path = (
         omni.kit.app.get_app().get_extension_manager().get_extension_path_by_module("isaacsim.replicator.examples")
     )
@@ -250,18 +261,20 @@ if test_args.test:
     )
     num_assets = sum(count for _, count, _, _, _ in ASSETS_CONFIG)
     expected_pngs = num_assets * 2  # rgb + colorized semantic segmentation per capture
-    expected_json = num_assets  # semantic segmentation label json per capture
+    # semantic segmentation labels, plus bounding box 3d labels and prim paths, per capture
+    expected_json = num_assets * 3
+    expected_npy = num_assets  # bounding box 3d data per capture
     ok = validate_folder_contents(
         path=out_dir,
         recursive=True,
-        expected_counts={"png": expected_pngs, "json": expected_json},
-        fail_on_empty_extensions={"png", "json"},
+        expected_counts={"png": expected_pngs, "json": expected_json, "npy": expected_npy},
+        fail_on_empty_extensions={"png", "json", "npy"},
     )
     if not ok:
         summary = get_folder_file_summary(out_dir, recursive=True)
         print(
             f"[SDG][Test][FAIL] Output validation failed for {out_dir}: "
-            f"expected png={expected_pngs}, json={expected_json}, found {summary}"
+            f"expected png={expected_pngs}, json={expected_json}, npy={expected_npy}, found {summary}"
         )
         sys.exit(1)
 
@@ -273,7 +286,7 @@ if test_args.test:
         allclose_rtol=None,
         allclose_atol=None,
         mean_tolerance=rgb_mean_diff_tolerance,
-        print_all_stats=False,
+        print_all_stats=True,
     )
     if not rgb_result["all_passed"]:
         print(
@@ -281,6 +294,38 @@ if test_args.test:
             f"Golden dir: {golden_dir}, output dir: {out_dir}"
         )
         sys.exit(1)
+
+    # Row order and semantic ids are not stable between runs, so key the boxes by prim path.
+    # Only the geometry is compared; occlusionRatio is -1 for the deformables because their
+    # semantic root spans the render mesh plus the cooked simulation and collision meshes.
+    def load_bbox3d_by_prim_path(directory: str, index: int) -> dict:
+        boxes = np.load(os.path.join(directory, f"bounding_box_3d_{index:04d}.npy"))
+        with open(os.path.join(directory, f"bounding_box_3d_prim_paths_{index:04d}.json")) as prim_paths_file:
+            prim_paths = json.load(prim_paths_file)
+        extent_fields = ["x_min", "y_min", "z_min", "x_max", "y_max", "z_max"]
+        return {
+            prim_path: np.concatenate([[box[field] for field in extent_fields], np.ravel(box["transform"])])
+            for prim_path, box in zip(prim_paths, boxes)
+        }
+
+    for frame in range(num_assets):
+        golden_boxes = load_bbox3d_by_prim_path(golden_dir, frame)
+        test_boxes = load_bbox3d_by_prim_path(out_dir, frame)
+        if golden_boxes.keys() != test_boxes.keys():
+            print(
+                f"[SDG][Test][FAIL] Bounding box 3d prim paths differ in frame {frame}: "
+                f"only in golden={sorted(golden_boxes.keys() - test_boxes.keys())}, "
+                f"only in output={sorted(test_boxes.keys() - golden_boxes.keys())}"
+            )
+            sys.exit(1)
+        for prim_path, golden_box in golden_boxes.items():
+            max_diff = float(np.abs(golden_box - test_boxes[prim_path]).max())
+            if max_diff > bbox3d_tolerance:
+                print(
+                    f"[SDG][Test][FAIL] Bounding box 3d mismatch in frame {frame} for {prim_path}: "
+                    f"max diff {max_diff:.6f} exceeds tolerance {bbox3d_tolerance}"
+                )
+                sys.exit(1)
 
     print(f"[SDG][Test][PASS] Output validation succeeded for {out_dir}")
 # <end-sdg-deformables-test>

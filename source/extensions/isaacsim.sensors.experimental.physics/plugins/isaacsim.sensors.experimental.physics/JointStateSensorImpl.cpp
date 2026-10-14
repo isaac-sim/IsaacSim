@@ -31,9 +31,13 @@
 #include <omni/physics/simulation/IPhysicsStageUpdate.h>
 #include <omni/usd/UsdContext.h>
 
+#include <atomic>
 #include <cmath>
+#include <memory>
+#include <new>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace isaacsim::sensors::experimental::physics
@@ -50,6 +54,7 @@ using core::simulation_manager::ISimulationManager;
 // Per-sensor data: one articulation view and cached DOF state updated each physics step.
 struct JointStateSensorData
 {
+    std::atomic<bool> active{ true };
     std::string articulationRootPath;
     std::string viewId;
     IArticulationDataView* articulationView = nullptr;
@@ -65,12 +70,88 @@ struct JointStateSensorData
     std::vector<float> efforts;
 
     JointStateSensorReading latestReading;
+    float stageMetersPerUnit = 0.0f;
     bool enabled = true;
+};
+
+using JointStateSensorMap = std::unordered_map<std::string, std::shared_ptr<JointStateSensorData>>;
+
+std::shared_ptr<JointStateSensorData> findJointStateSensor(const JointStateSensorMap& sensors,
+                                                           const std::string& articulationRootPath)
+{
+    const auto it = sensors.find(articulationRootPath);
+    return it == sensors.end() ? nullptr : it->second;
+}
+
+bool hasValidJointStateReading(const std::shared_ptr<JointStateSensorData>& sensor)
+{
+    return sensor && sensor->active.load(std::memory_order_acquire) && sensor->enabled && sensor->latestReading.isValid;
+}
+
+class JointStateSensorReadingViewImpl final : public JointStateSensorReadingView
+{
+public:
+    explicit JointStateSensorReadingViewImpl(std::shared_ptr<JointStateSensorData> sensor) : m_sensor(std::move(sensor))
+    {
+    }
+
+    int32_t getDofCount() const override
+    {
+        return m_sensor ? static_cast<int32_t>(m_sensor->dofNames.size()) : 0;
+    }
+
+    const char* const* getDofNames() const override
+    {
+        return m_sensor && !m_sensor->dofNamePtrs.empty() ? m_sensor->dofNamePtrs.data() : nullptr;
+    }
+
+    const float* getPositions() const override
+    {
+        return m_sensor && !m_sensor->positions.empty() ? m_sensor->positions.data() : nullptr;
+    }
+
+    const float* getVelocities() const override
+    {
+        return m_sensor && !m_sensor->velocities.empty() ? m_sensor->velocities.data() : nullptr;
+    }
+
+    const float* getEfforts() const override
+    {
+        return m_sensor && !m_sensor->efforts.empty() ? m_sensor->efforts.data() : nullptr;
+    }
+
+    const uint8_t* getDofTypes() const override
+    {
+        return m_sensor && !m_sensor->dofTypes.empty() ? m_sensor->dofTypes.data() : nullptr;
+    }
+
+    float getStageMetersPerUnit() const override
+    {
+        return m_sensor ? m_sensor->stageMetersPerUnit : 0.0f;
+    }
+
+    float getTime() const override
+    {
+        return m_sensor ? m_sensor->latestReading.time : 0.0f;
+    }
+
+    bool isValid() const override
+    {
+        return hasValidJointStateReading(m_sensor);
+    }
+
+    void release() override
+    {
+        delete this;
+    }
+
+private:
+    std::shared_ptr<JointStateSensorData> m_sensor;
 };
 
 } // namespace
 
-// PIMPL: shared stage/reader, subscriptions, and the map of prim path -> JointStateSensorData.
+// PIMPL: shared stage/reader, subscriptions, and the map of prim path -> retained sensor data.
 struct JointStateSensorImpl::ImplData
 {
     long stageId = 0;
@@ -87,7 +168,7 @@ struct JointStateSensorImpl::ImplData
     carb::events::ISubscriptionPtr physicsEventSub;
 
     pxr::UsdStageRefPtr usdStage;
-    std::unordered_map<std::string, JointStateSensorData> sensors;
+    JointStateSensorMap sensors;
 };
 
 JointStateSensorImpl::JointStateSensorImpl() : m_impl(std::make_unique<ImplData>())
@@ -215,9 +296,10 @@ bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
         {
             return true;
         }
-        if (m_impl->reader && !existing->second.viewId.empty())
+        existing->second->active.store(false, std::memory_order_release);
+        if (m_impl->reader && !existing->second->viewId.empty())
         {
-            m_impl->reader->removeView(existing->second.viewId.c_str());
+            m_impl->reader->removeView(existing->second->viewId.c_str());
         }
         m_impl->sensors.erase(existing);
     }
@@ -227,7 +309,9 @@ bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
         return false;
     }
 
-    JointStateSensorData& sensor = m_impl->sensors[key];
+    auto sensorData = std::make_shared<JointStateSensorData>();
+    m_impl->sensors[key] = sensorData;
+    JointStateSensorData& sensor = *sensorData;
     sensor.articulationRootPath = articulationRootPath;
     sensor.viewId = "joint_state_art_" + key;
 
@@ -236,6 +320,7 @@ bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
         m_impl->reader->createArticulationView(sensor.viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
     if (!sensor.articulationView)
     {
+        sensor.active.store(false, std::memory_order_release);
         m_impl->sensors.erase(key);
         return false;
     }
@@ -249,6 +334,7 @@ bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
     {
         CARB_LOG_WARN("JointStateSensor: no DOFs found under articulation root '%s'", articulationRootPath);
         m_impl->reader->removeView(sensor.viewId.c_str());
+        sensor.active.store(false, std::memory_order_release);
         m_impl->sensors.erase(key);
         return false;
     }
@@ -260,7 +346,10 @@ bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
     {
         sensor.dofNames.push_back(names[i] ? names[i] : std::string());
     }
-    sensor.dofTypes.assign(types, types + (typeCount >= dofCount ? dofCount : typeCount));
+    if (types && typeCount > 0)
+    {
+        sensor.dofTypes.assign(types, types + (typeCount >= dofCount ? dofCount : typeCount));
+    }
     if (static_cast<int>(sensor.dofTypes.size()) < dofCount)
     {
         sensor.dofTypes.resize(dofCount, 0);
@@ -276,6 +365,13 @@ bool JointStateSensorImpl::createSensor(const char* articulationRootPath)
     sensor.velocities.resize(dofCount, 0.0f);
     sensor.efforts.resize(dofCount, 0.0f);
 
+    if (m_impl->usdStage)
+    {
+        const double metersPerUnit = UsdGeomGetStageMetersPerUnit(m_impl->usdStage);
+        sensor.stageMetersPerUnit =
+            static_cast<float>(std::isfinite(metersPerUnit) && metersPerUnit > 0.0 ? metersPerUnit : 1.0);
+    }
+
     m_impl->readerGeneration = m_impl->reader->getGeneration();
     return true;
 }
@@ -287,9 +383,10 @@ void JointStateSensorImpl::removeSensor(const char* articulationRootPath)
     {
         return;
     }
-    if (m_impl->reader && !it->second.viewId.empty())
+    it->second->active.store(false, std::memory_order_release);
+    if (m_impl->reader && !it->second->viewId.empty())
     {
-        m_impl->reader->removeView(it->second.viewId.c_str());
+        m_impl->reader->removeView(it->second->viewId.c_str());
     }
     m_impl->sensors.erase(it);
 }
@@ -297,46 +394,45 @@ void JointStateSensorImpl::removeSensor(const char* articulationRootPath)
 JointStateSensorReading JointStateSensorImpl::getSensorReading(const char* articulationRootPath)
 {
     std::string key(articulationRootPath);
-    const auto it = m_impl->sensors.find(key);
-    if (it == m_impl->sensors.end())
+    std::shared_ptr<JointStateSensorData> sensor = findJointStateSensor(m_impl->sensors, key);
+    if (!sensor)
     {
         return JointStateSensorReading();
     }
 
     _refreshReaderAndSensorViews(false);
 
-    JointStateSensorData& sensor = it->second;
-
-    if (sensor.enabled && !sensor.latestReading.isValid && sensor.articulationView && m_impl->simManager &&
+    if (sensor->enabled && !sensor->latestReading.isValid && sensor->articulationView && m_impl->simManager &&
         m_impl->usdStage && m_impl->lastDt > 0.0f)
     {
         double simTime = m_impl->simManager->getSimulationTime();
         _processSensor(*m_impl, key, simTime);
     }
 
-    if (!sensor.enabled || !sensor.latestReading.isValid)
+    if (!hasValidJointStateReading(sensor))
     {
         return JointStateSensorReading();
     }
 
     // Fill reading with pointers into sensor-owned vectors (valid until next step or removal).
     JointStateSensorReading reading;
-    reading.time = sensor.latestReading.time;
+    reading.time = sensor->latestReading.time;
     reading.isValid = true;
-    reading.dofCount = static_cast<int32_t>(sensor.dofNames.size());
-    reading.dofNames = sensor.dofNamePtrs.empty() ? nullptr : sensor.dofNamePtrs.data();
-    reading.positions = sensor.positions.empty() ? nullptr : sensor.positions.data();
-    reading.velocities = sensor.velocities.empty() ? nullptr : sensor.velocities.data();
-    reading.efforts = sensor.efforts.empty() ? nullptr : sensor.efforts.data();
-    reading.dofTypes = sensor.dofTypes.empty() ? nullptr : sensor.dofTypes.data();
-    reading.stageMetersPerUnit = 0.0f;
-    if (m_impl->usdStage)
-    {
-        const double metersPerUnit = UsdGeomGetStageMetersPerUnit(m_impl->usdStage);
-        reading.stageMetersPerUnit =
-            static_cast<float>(std::isfinite(metersPerUnit) && metersPerUnit > 0.0 ? metersPerUnit : 1.0);
-    }
+    reading.dofCount = static_cast<int32_t>(sensor->dofNames.size());
+    reading.dofNames = sensor->dofNamePtrs.empty() ? nullptr : sensor->dofNamePtrs.data();
+    reading.positions = sensor->positions.empty() ? nullptr : sensor->positions.data();
+    reading.velocities = sensor->velocities.empty() ? nullptr : sensor->velocities.data();
+    reading.efforts = sensor->efforts.empty() ? nullptr : sensor->efforts.data();
+    reading.dofTypes = sensor->dofTypes.empty() ? nullptr : sensor->dofTypes.data();
+    reading.stageMetersPerUnit = sensor->stageMetersPerUnit;
     return reading;
+}
+
+JointStateSensorReadingView* JointStateSensorImpl::getSensorReadingView(const char* articulationRootPath)
+{
+    const std::string key(articulationRootPath);
+    std::shared_ptr<JointStateSensorData> sensor = findJointStateSensor(m_impl->sensors, key);
+    return new (std::nothrow) JointStateSensorReadingViewImpl(std::move(sensor));
 }
 
 void JointStateSensorImpl::_clearSensors()
@@ -344,9 +440,10 @@ void JointStateSensorImpl::_clearSensors()
     for (const auto& [id, sensor] : m_impl->sensors)
     {
         (void)id;
-        if (m_impl->reader && !sensor.viewId.empty())
+        sensor->active.store(false, std::memory_order_release);
+        if (m_impl->reader && !sensor->viewId.empty())
         {
-            m_impl->reader->removeView(sensor.viewId.c_str());
+            m_impl->reader->removeView(sensor->viewId.c_str());
         }
     }
     m_impl->sensors.clear();
@@ -385,15 +482,15 @@ void JointStateSensorImpl::_recreateSensorViews()
 
     for (auto& [id, sensor] : m_impl->sensors)
     {
-        sensor.articulationView = nullptr;
-        if (sensor.viewId.empty() || sensor.articulationRootPath.empty())
+        sensor->articulationView = nullptr;
+        if (sensor->viewId.empty() || sensor->articulationRootPath.empty())
         {
             continue;
         }
 
-        const char* pathStr = sensor.articulationRootPath.c_str();
-        sensor.articulationView =
-            m_impl->reader->createArticulationView(sensor.viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
+        const char* pathStr = sensor->articulationRootPath.c_str();
+        sensor->articulationView =
+            m_impl->reader->createArticulationView(sensor->viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
         // DOF names/count remain unchanged across view recreation
     }
     m_impl->readerGeneration = m_impl->reader->getGeneration();
@@ -491,7 +588,7 @@ void JointStateSensorImpl::_processSensor(ImplData& impl, const std::string& art
     {
         return;
     }
-    JointStateSensorData& sensor = it->second;
+    JointStateSensorData& sensor = *it->second;
 
     if (!sensor.enabled || !sensor.articulationView)
     {
@@ -522,26 +619,26 @@ void JointStateSensorImpl::_processSensor(ImplData& impl, const std::string& art
 
     // Keep arrays sized to dofCount so getSensorReading() can safely expose dofCount elements
     // (bindings copy r.dofCount elements; shrinking would cause buffer over-read).
-    sensor.positions.resize(dofCount, 0.0f);
     std::copy(positions, positions + n, sensor.positions.begin());
+    std::fill(sensor.positions.begin() + n, sensor.positions.end(), 0.0f);
 
     if (velocities && velCount >= n)
     {
-        sensor.velocities.resize(dofCount, 0.0f);
         std::copy(velocities, velocities + n, sensor.velocities.begin());
+        std::fill(sensor.velocities.begin() + n, sensor.velocities.end(), 0.0f);
     }
     else
     {
-        sensor.velocities.assign(dofCount, 0.0f);
+        std::fill(sensor.velocities.begin(), sensor.velocities.end(), 0.0f);
     }
     if (efforts && effCount >= n)
     {
-        sensor.efforts.resize(dofCount, 0.0f);
         std::copy(efforts, efforts + n, sensor.efforts.begin());
+        std::fill(sensor.efforts.begin() + n, sensor.efforts.end(), 0.0f);
     }
     else
     {
-        sensor.efforts.assign(dofCount, 0.0f);
+        std::fill(sensor.efforts.begin(), sensor.efforts.end(), 0.0f);
     }
 
     sensor.latestReading.time = static_cast<float>(simTime);

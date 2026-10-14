@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.1.5] - 2026-09-22
+### Fixed
+- Create grippers on stages without a default prim, with undo and redo support.
+
 ## [3.1.4] - 2026-04-21
 ### Changed
 - Replace `omni.kit.commands.execute("CreateSurfaceGripper")` call sites with direct `create_surface_gripper()` API

@@ -30,12 +30,15 @@ from isaacsim.robot_setup.sysid.errors import SysIdRuntimeUnavailableError
 from isaacsim.robot_setup.sysid.preflight import (
     SysIdRunPreflight,
     _check_newton_usd_actuator_schemas,
+    _check_outputs,
+    _check_parameters,
     _check_residuals,
+    _check_simulation,
     _check_solver,
     _check_telemetry,
     preflight_sysid_run_spec,
 )
-from isaacsim.robot_setup.sysid.run_spec import SysIdRunSpec
+from isaacsim.robot_setup.sysid.run_spec import ParameterRunSpec, SysIdRunSpec
 from isaacsim.robot_setup.sysid.trajectory_csv import TrajectoryDataset
 
 
@@ -127,6 +130,102 @@ class PreflightValidationTests(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("registry unavailable", errors[0].message)
 
+    async def test_isaac_hosted_newton_rejects_friction_before_rollout(self) -> None:
+        """Keep a tensor-backend limitation behind the shared UI/headless Check gate."""
+        spec = SysIdRunSpec()
+        spec.simulation.engine = "isaac_sim"
+        spec.simulation.physics_backend = "newton"
+        spec.parameters.selected = [
+            ParameterRunSpec(param_type="joint_friction", dof_index=0, initial=1.0, min=0.5, max=1.5)
+        ]
+        result = SysIdRunPreflight()
+
+        _check_parameters(spec, result)
+
+        self.assertIn("isaac_sim_newton_joint_friction", {issue.code for issue in result.errors})
+
+    async def test_standalone_newton_keeps_friction_available(self) -> None:
+        """Do not apply the hosted tensor limitation to the standalone Newton bridge."""
+        spec = SysIdRunSpec()
+        spec.simulation.engine = "newton"
+        spec.parameters.selected = [
+            ParameterRunSpec(param_type="joint_friction", dof_index=0, initial=1.0, min=0.5, max=1.5)
+        ]
+        result = SysIdRunPreflight()
+
+        _check_parameters(spec, result)
+
+        self.assertNotIn("isaac_sim_newton_joint_friction", {issue.code for issue in result.errors})
+
+    async def test_standalone_mujoco_rejects_joint_limit_scales_before_rollout(self) -> None:
+        """Mirror the standalone bridge contract in shared preflight."""
+        spec = SysIdRunSpec()
+        spec.simulation.engine = "newton"
+        spec.simulation.newton.solver = "mujoco"
+        spec.parameters.selected = [
+            ParameterRunSpec(param_type="joint_limit_lower_scale", dof_index=0, initial=1.0, min=0.5, max=1.5)
+        ]
+        result = SysIdRunPreflight()
+
+        _check_parameters(spec, result)
+
+        self.assertIn("parameter_backend_unsupported", {issue.code for issue in result.errors})
+
+    async def test_programmatic_spec_rejects_unknown_newton_solver(self) -> None:
+        """Do not route an unchecked solver typo into the MuJoCo bridge."""
+        spec = SysIdRunSpec()
+        spec.simulation.engine = "newton"
+        spec.simulation.newton.solver = "mujco"
+        result = SysIdRunPreflight()
+
+        _check_simulation(spec, result, stage=None)
+
+        errors = [issue for issue in result.errors if issue.code == "backend_capabilities"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("mujoco", errors[0].message)
+        self.assertIn("featherstone_diff", errors[0].message)
+
+    async def test_standalone_newton_rejects_unavailable_pose_and_contact_residuals(self) -> None:
+        """Reject residuals that neither standalone bridge can simulate."""
+        spec = SysIdRunSpec()
+        spec.simulation.engine = "newton"
+        spec.residuals.end_effector_pose_weight = 1.0
+        spec.residuals.contact_force_weight = 1.0
+        result = SysIdRunPreflight()
+
+        _check_residuals(spec, result, trajectory=None)
+
+        codes = {issue.code for issue in result.errors}
+        self.assertIn("residual_backend_end_effector_pose", codes)
+        self.assertIn("residual_backend_contact_force", codes)
+
+    async def test_isaac_hosted_newton_rejects_unavailable_force_residuals(self) -> None:
+        """Do not treat Newton's placeholder force tensors as measured state."""
+        spec = SysIdRunSpec()
+        spec.simulation.physics_backend = "newton"
+        spec.residuals.torque_weight = 1.0
+        spec.residuals.contact_force_weight = 1.0
+        result = SysIdRunPreflight()
+
+        _check_residuals(spec, result, trajectory=None)
+
+        codes = {issue.code for issue in result.errors}
+        self.assertIn("residual_backend_torque", codes)
+        self.assertIn("residual_backend_contact_force", codes)
+
+    async def test_isaac_physx_accepts_every_residual_channel(self) -> None:
+        """Keep the full residual surface available on the complete backend."""
+        spec = SysIdRunSpec()
+        spec.simulation.physics_backend = "physx"
+        spec.residuals.torque_weight = 1.0
+        spec.residuals.end_effector_pose_weight = 1.0
+        spec.residuals.contact_force_weight = 1.0
+        result = SysIdRunPreflight()
+
+        _check_residuals(spec, result, trajectory=None)
+
+        self.assertFalse(any(issue.code.startswith("residual_backend_") for issue in result.errors))
+
     async def test_newton_schema_check_propagates_unexpected_bridge_failure(self) -> None:
         """Surface bridge defects while tolerating only known optional-runtime failures."""
         bridge_module = _bridge_module_with_load_error(RuntimeError("bridge defect"))
@@ -163,6 +262,19 @@ class PreflightValidationTests(omni.kit.test.AsyncTestCase):
         self.assertIn("solver_epsilon", {issue.code for issue in result.errors})
         self.assertIn("solver_damping", {issue.code for issue in result.errors})
         self.assertIn("residual_weight", {issue.code for issue in result.errors})
+
+    async def test_preflight_rejects_invalid_validation_thresholds(self) -> None:
+        """Validate configurable comparison thresholds for programmatic callers."""
+        spec = SysIdRunSpec()
+        spec.outputs.validation_relative_change_threshold = float("nan")
+        spec.outputs.validation_absolute_change_threshold = -1.0
+        result = SysIdRunPreflight()
+
+        _check_outputs(spec, result)
+
+        codes = {issue.code for issue in result.errors}
+        self.assertIn("validation_relative_change_threshold", codes)
+        self.assertIn("validation_absolute_change_threshold", codes)
 
     async def test_preflight_reports_missing_robot_prim_path_once_with_stage(self) -> None:
         """Centralize the shared robot-path requirement for both simulation engines."""

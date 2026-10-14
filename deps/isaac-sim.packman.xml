@@ -2,12 +2,12 @@
     <dependency name="nv_ros2_humble" linkPath="../_build/target-deps/nv_ros2_humble">
         <package name="nv_ros2" version="humble_py_3.12_20260831_00f7a46_manylinux_2_35_aarch64_release" platforms="manylinux_2_35_aarch64"/>
         <package name="nv_ros2" version="humble_py_3.12_20260831_00f7a46_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
-        <package name="nv_ros2" version="humble_py_3.12_20260831_pixi_windows-x86_64_release" platforms="windows-x86_64"/>
+        <package name="nv_ros2" version="humble_py_3.12_20261001_pixi_windows-x86_64_release" platforms="windows-x86_64"/>
     </dependency>
     <dependency name="nv_ros2_jazzy" linkPath="../_build/target-deps/nv_ros2_jazzy">
         <package name="nv_ros2" version="jazzy_py_3.12_20260831_00f7a46_manylinux_2_35_aarch64_release" platforms="manylinux_2_35_aarch64"/>
         <package name="nv_ros2" version="jazzy_py_3.12_20260831_00f7a46_manylinux_2_35_x86_64_release" platforms="manylinux_2_35_x86_64"/>
-        <package name="nv_ros2" version="jazzy_py_3.12_20260831_pixi_windows-x86_64_release" platforms="windows-x86_64"/>
+        <package name="nv_ros2" version="jazzy_py_3.12_20261001_pixi_windows-x86_64_release" platforms="windows-x86_64"/>
     </dependency>
     <dependency name="lula" linkPath="../_build/target-deps/lula">
         <package name="lula" version="v0.10.1_b351d9b.linux-x86_64.py312.release" platforms="manylinux_2_35_x86_64"/>
@@ -36,13 +36,13 @@
         <package name="flatbuffers" version="22.12.06-1-${platform}-static-release" />
     </dependency>
   <dependency name="generic_model_output_${config}" linkPath="../_build/target-deps/generic_model_output/${platform_target}/${config}">
-    <package name="generic-model-output" version="110.3.0+feature.371399.00c488ae.gl.${platform_target_abi}.${config}"/>
+    <package name="generic-model-output" version="110.4.0+feature.385918.38d1d38e.gl.${platform_target_abi}.${config}"/>
   </dependency>
   <dependency name="rapidjson" linkPath="../_build/target-deps/rapidjson">
     <package name="rapidjson" version="5.2.1-5-b4cf59b6" />
   </dependency>
   <dependency name="sensor-checker" linkPath="../_build/target-deps/sensor-checker/${platform_target}/${config}">
-    <package name="sensor-checker" version="110.3.0+feature.371399.00c488ae.gl.${platform_target_abi}.${config}"/>
+    <package name="sensor-checker" version="110.4.0+feature.385918.38d1d38e.gl.${platform_target_abi}.${config}"/>
   </dependency>
   <dependency name="hsb_emulator" linkPath="../_build/target-deps/hsb_emulator">
     <package name="hsb_emulator" version="2.7.0-1.${platform_target_abi}" platforms="manylinux_2_35_x86_64 manylinux_2_35_aarch64"/>

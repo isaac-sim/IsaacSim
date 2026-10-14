@@ -59,10 +59,15 @@ message CreateSimulationRequest {
 
   // Required complete USDA text imported by the local native implementation.
   string usd_content = 2;
+
+  // Physics time step in seconds. Omission preserves the default 1/60 second.
+  optional double time_step = 3;
 }
 
-// Empty acknowledgement that asynchronous initialization was accepted.
-message CreateSimulationResponse {}
+// Acknowledges initialization and the physics time step accepted by the host.
+message CreateSimulationResponse {
+  optional double time_step = 1;
+}
 
 message GetSimulationRequest {
   // Required identifier supplied to CreateSimulation.

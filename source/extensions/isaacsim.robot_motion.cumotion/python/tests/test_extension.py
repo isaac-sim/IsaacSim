@@ -51,6 +51,10 @@ class TestExtension(omni.kit.test.AsyncTestCase):
         # available assert methods to check for and report failures.
         print("Test case: test_extension")
         import cumotion
+        import isaacsim.robot_motion.cumotion as cu_mg
 
         world = cumotion.create_world()
         self.assertIsNotNone(world)
+        module_path = getattr(cu_mg, "__file__", None)
+        self.assertIsNotNone(module_path)
+        self.assertIn("pip_prebundle", module_path)

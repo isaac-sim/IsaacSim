@@ -928,7 +928,8 @@ class SimulationControl:
             else:
                 carb.log_warn("usdrt stage not available for counting spawned entities, using 0 as count")
             entity_name = f"SpawnedEntity_{spawned_count}"
-        elif not entity_name.startswith("/"):
+
+        if not entity_name.startswith("/"):
             entity_name = f"/{entity_name}"
             carb.log_info(f"Using entity name as is: {entity_name}")
 
@@ -1485,8 +1486,11 @@ class SimulationControl:
 
             from simulation_interfaces.msg import Result
 
-            stage = stage_utils.get_current_stage()
-            if not stage:
+            try:
+                stage_utils.get_current_stage()
+            except ValueError as exc:
+                if not str(exc).startswith("No stage found."):
+                    raise
                 response.result = Result(result=Result.RESULT_OPERATION_FAILED, error_message="Stage not available")
                 return response
 

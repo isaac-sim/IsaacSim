@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.7.1] - 2026-09-29
+### Added
+- Test repeated-path batches and active-joint removal during asynchronous physics.
+
+### Fixed
+- Avoid blocking main-thread gripper calls on the asynchronous simulation completion notification.
+- Bound asynchronous regression tests through native calls and executor cleanup; enable main-thread API coverage.
+- Document the deprecated command alias argument.
+
+## [3.7.0] - 2026-09-22
+### Added
+- Add undoable `CreateSurfaceGripperPrim` command.
+
+### Fixed
+- Synchronize API batches with physics and lifecycle callbacks while retaining independent-path parallelism.
+- Defer reentrant prim notifications and release the Python GIL during native operations.
+- Accept NumPy and Warp property arrays and validate batches before writing.
+- Reject non-gripper prims and diagnose removed or changed prims.
+- Support root-level gripper creation and correct command redo placement.
+- Parallelize distinct batch paths while preserving repeated-path order and safe result writes.
+- Remove invalid active attachments even when force limits are disabled or joints are settling.
+
 ## [3.6.3] - 2026-07-20
 ### Changed
 - Renamed C++ headers from `.h` to `.hpp`; update downstream include directives.

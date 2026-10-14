@@ -164,6 +164,90 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
             "Expected sensor reading time to advance as simulation steps",
         )
 
+    async def test_snapshot_is_mutable_and_independent_of_later_steps(self) -> None:
+        """Owned snapshots expose stable mutable arrays without copies on property access."""
+        await self.create_simple_articulation()
+
+        self.joint_state_sensor = JointStateSensor("/Articulation")
+        self._timeline.play()
+        await step_simulation(0.2)
+
+        reading = self.joint_state_sensor.get_sensor_reading()
+        self.assertTrue(reading.is_valid)
+        self.assertIs(reading.positions, reading.positions)
+
+        original_position = float(reading.positions[0])
+        reading.positions[0] = original_position + 1.0
+        self.assertEqual(reading.positions[0], original_position + 1.0)
+        reading.positions[0] = original_position
+
+        snapshot_time = reading.time
+        snapshot_positions = reading.positions.copy()
+        await step_simulation(0.1)
+        self.assertEqual(reading.time, snapshot_time)
+        np.testing.assert_array_equal(reading.positions, snapshot_positions)
+
+    async def test_snapshot_scalars_are_read_only(self) -> None:
+        """Captured scalars on the native snapshot are read-only; only its arrays are mutable."""
+        await self.create_simple_articulation()
+
+        self.joint_state_sensor = JointStateSensor("/Articulation")
+        self._timeline.play()
+        await step_simulation(0.2)
+
+        from isaacsim.sensors.experimental.physics.impl.extension import get_joint_state_sensor_interface
+
+        iface = get_joint_state_sensor_interface()
+        self.assertIsNotNone(iface)
+        # JointStateSensor creates its native counterpart on the first read, so the
+        # interface only knows the articulation once that read has happened.
+        self.assertTrue(self.joint_state_sensor.get_sensor_reading().is_valid)
+        reading = iface.get_sensor_reading("/Articulation")
+        self.assertTrue(reading.is_valid)
+
+        for field in ("time", "is_valid", "dof_count", "stage_meters_per_unit"):
+            with self.subTest(field=field):
+                with self.assertRaises(AttributeError):
+                    setattr(reading, field, 0)
+
+        original_position = float(reading.positions[0])
+        reading.positions[0] = original_position + 1.0
+        self.assertEqual(reading.positions[0], original_position + 1.0)
+
+    async def test_reading_view_is_live_read_only_and_invalidates_on_reset(self) -> None:
+        """Owner-backed joint views update in place and retain last data after reset."""
+        await self.create_simple_articulation()
+
+        self.joint_state_sensor = JointStateSensor("/Articulation")
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+
+        view = self.joint_state_sensor.get_sensor_reading_view()
+        self.assertFalse(view.is_valid)
+        await step_simulation(0.2)
+
+        self.assertTrue(view.is_valid)
+        positions = view.positions
+        self.assertFalse(positions.flags.writeable)
+        self.assertIs(positions.base, view)
+        self.assertEqual(view.dof_names, tuple(self.joint_state_sensor.get_sensor_reading().dof_names))
+        data_address = positions.__array_interface__["data"][0]
+        first_time = view.time
+
+        with self.assertRaises(ValueError):
+            positions[0] = 0.0
+        with self.assertRaises(ValueError):
+            positions.setflags(write=True)
+
+        await step_simulation(0.1)
+        self.assertGreater(view.time, first_time)
+        self.assertEqual(view.positions.__array_interface__["data"][0], data_address)
+
+        retained_values = positions.copy()
+        self.joint_state_sensor.reset()
+        self.assertFalse(view.is_valid)
+        np.testing.assert_array_equal(positions, retained_values)
+
     async def test_reading_changes_when_load_changes(self) -> None:
         """Verify positions, velocities, and efforts all change when we add a cube to the arm (like effort sensor test)."""
         await self.create_simple_articulation()
@@ -334,6 +418,35 @@ class TestJointStateSensor(omni.kit.test.AsyncTestCase):
         self.assertEqual(len(reading.efforts), 0)
         self.assertEqual(len(reading.dof_types), 0)
         self.assertEqual(reading.stage_meters_per_unit, 0.0)
+
+    async def test_reading_attributes_are_read_only(self) -> None:
+        """A reading describes one capture, so no attribute can be rebound after construction."""
+        reading = JointStateSensorReading(
+            is_valid=True,
+            time=1.0,
+            dof_names=["joint"],
+            positions=np.array([0.25], dtype=np.float32),
+        )
+
+        for field in (
+            "is_valid",
+            "time",
+            "dof_names",
+            "positions",
+            "velocities",
+            "efforts",
+            "dof_types",
+            "stage_meters_per_unit",
+        ):
+            with self.subTest(field=field):
+                with self.assertRaises(AttributeError):
+                    setattr(reading, field, None)
+
+        # The arrays and the name list the reading owns stay mutable in place.
+        reading.positions[0] = 0.5
+        self.assertEqual(reading.positions[0], 0.5)
+        reading.dof_names.append("extra")
+        self.assertEqual(reading.dof_names, ["joint", "extra"])
 
     async def test_dof_types_and_stage_units(self) -> None:
         """Verify dof_types (0=revolute, 1=prismatic) and stage_meters_per_unit match stage."""

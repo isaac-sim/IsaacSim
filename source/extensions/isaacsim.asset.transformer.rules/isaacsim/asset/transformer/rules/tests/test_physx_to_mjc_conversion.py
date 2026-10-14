@@ -32,7 +32,11 @@ _CONV_LOGGER = "isaacsim.asset.importer.utils.impl.physx_asset_to_mjc"
 
 
 def _build_physx_stage() -> Usd.Stage:
-    """Build a stage with revolute/prismatic joints, a mimic, and an articulation root."""
+    """Build a stage with revolute/prismatic joints, a mimic, and an articulation root.
+
+    Returns:
+        In-memory stage populated with the conversion fixture.
+    """
     stage = Usd.Stage.CreateInMemory()
     root = UsdGeom.Xform.Define(stage, "/robot").GetPrim()
     stage.SetDefaultPrim(root)
@@ -74,7 +78,11 @@ def _build_physx_stage() -> Usd.Stage:
 
 
 def _build_multi_dof_stage() -> Usd.Stage:
-    """Build a stage with a generic D6 joint and a spherical joint."""
+    """Build a stage with a generic D6 joint and a spherical joint.
+
+    Returns:
+        In-memory stage populated with the multi-DOF fixture.
+    """
     stage = Usd.Stage.CreateInMemory()
     root = UsdGeom.Xform.Define(stage, "/robot").GetPrim()
     stage.SetDefaultPrim(root)
@@ -155,6 +163,34 @@ class TestPhysxToMjcConversionRule(omni.kit.test.AsyncTestCase):
         self.assertEqual(actuator.GetAttribute("mjc:biasType").Get(), "affine")
         self._success = True
 
+    async def test_missing_source_gains_report_new_actuators(self) -> None:
+        """Report gain review separately from structural success and existing motors."""
+        stage = _build_physx_stage()
+        for joint_name, drive_type in (("revolute_j", "angular"), ("prismatic_j", "linear")):
+            joint = stage.GetPrimAtPath(f"/robot/{joint_name}")
+            drive = UsdPhysics.DriveAPI(joint, drive_type)
+            drive.GetStiffnessAttr().Clear()
+            drive.GetDampingAttr().Clear()
+        stage.DefinePrim("/robot/Physics/existing_motor", "MjcActuator")
+
+        rule = self._create_rule(stage)
+        rule.process_rule()
+        log = "\n".join(rule.get_operation_log())
+        self.assertIn("MuJoCo actuators generated: 2; new actuators without authored gain/bias: 2", log)
+        self.assertIn("Control readiness warning: 2 new actuator(s)", log)
+        self.assertIn("PhysxToMjcConversionRule completed", log)
+        self._success = True
+
+    async def test_overlay_with_gains_has_no_readiness_warning(self) -> None:
+        """Authored PhysX gains produce complete new actuators in an overlay."""
+        stage = _build_physx_stage()
+        rule = self._create_rule(stage, destination_path="converted.usda")
+        rule.process_rule()
+        log = "\n".join(rule.get_operation_log())
+        self.assertIn("MuJoCo actuators generated: 2; new actuators without authored gain/bias: 0", log)
+        self.assertNotIn("Control readiness warning:", log)
+        self._success = True
+
     async def test_physx_joint_attrs_to_mjc(self) -> None:
         """PhysX friction/armature and drive target become mjc:* attributes."""
         stage = _build_physx_stage()
@@ -163,7 +199,8 @@ class TestPhysxToMjcConversionRule(omni.kit.test.AsyncTestCase):
         joint = stage.GetPrimAtPath("/robot/revolute_j")
         self.assertAlmostEqual(joint.GetAttribute("mjc:frictionloss").Get(), 0.1)
         self.assertAlmostEqual(joint.GetAttribute("mjc:armature").Get(), 0.05)
-        self.assertAlmostEqual(joint.GetAttribute("mjc:ref").Get(), 0.25, places=2)
+        # mjc:ref is the joint zero point, not a drive target, so the drive targetPosition is not copied to it.
+        self.assertFalse(joint.GetAttribute("mjc:ref").HasAuthoredValue())
         self._success = True
 
     async def test_prismatic_actuator_created(self) -> None:

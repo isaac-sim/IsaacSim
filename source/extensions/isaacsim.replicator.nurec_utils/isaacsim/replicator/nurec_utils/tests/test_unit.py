@@ -205,6 +205,16 @@ class TestLoadConfig(omni.kit.test.AsyncTestCase):
             # (asserting the value would just duplicate the default config).
             self.assertIn("/omni/rtx/nre/compositing/disableNuRecPostProcessings", spg)  # sibling kept
 
+    async def test_default_spg_gaussian_accumulation_overrides(self) -> None:
+        """Default SPG config enables gaussian accumulation quality overrides."""
+        cfg = load_config(None)
+        spg = cfg["spg_pre_hydra_sync_overrides"]
+        self.assertTrue(spg["/rtx/rtpt/gaussian/accumulatedDepth/allHits/enabled"])
+        self.assertTrue(spg["/rtx/rtpt/gaussian/accumulatedAlbedo/enabled"])
+        self.assertEqual(spg["/rtx/rtpt/gaussian/maxGaussiansToAccumulate"], 360)
+        no_spg = cfg["no_spg_pre_hydra_sync_overrides"]
+        self.assertIsNone(no_spg["/rtx/rtpt/gaussian/skipTonemapping/enabled"])
+
 
 class TestMetrics(omni.kit.test.AsyncTestCase):
     """Pure-numpy metric helpers (PSNR/SSIM are torch, tested elsewhere)."""

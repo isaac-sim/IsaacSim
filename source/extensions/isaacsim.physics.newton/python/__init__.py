@@ -33,7 +33,7 @@ from .impl.extension import (
     get_available_physics_engines,
     get_newton_config,
 )
-from .impl.newton_config import NewtonConfig
+from .impl.newton_config import NewtonConfig, NewtonSolverOutputConfig
 from .impl.newton_stage import NewtonStage
 from .impl.solver_config import (
     MuJoCoSolverConfig,
@@ -57,6 +57,7 @@ __all__ = [
     "get_available_physics_engines",
     # Configuration classes
     "NewtonConfig",
+    "NewtonSolverOutputConfig",
     "CollisionConfig",
     "HydroelasticConfig",
     "NewtonStage",

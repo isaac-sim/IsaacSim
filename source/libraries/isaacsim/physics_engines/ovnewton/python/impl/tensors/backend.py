@@ -106,6 +106,7 @@ class ArticulationSet:
         dof_position_indices: Model position-coordinate indices in view order.
         dof_velocity_indices: Model velocity-coordinate indices in view order.
         dof_axis_indices: Model degree-of-freedom axis indices in view order.
+        dof_body_indices: Model child-body indices in view order.
         joint_indices: Model joint indices in view order.
         shape_indices: Model shape indices grouped by articulation.
         link_indices: Model body indices grouped by articulation.
@@ -124,9 +125,11 @@ class ArticulationSet:
         dof_position_indices: wp.array,
         dof_velocity_indices: wp.array,
         dof_axis_indices: wp.array,
+        dof_body_indices: wp.array,
         joint_indices: wp.array,
         shape_indices: wp.array,
         link_indices: wp.array,
+        link_joint_indices: wp.array,
         meta_types: list[ArticulationMetaType],
         count: int,
         max_dofs: int,
@@ -138,9 +141,11 @@ class ArticulationSet:
         self.dof_position_indices = dof_position_indices
         self.dof_velocity_indices = dof_velocity_indices
         self.dof_axis_indices = dof_axis_indices
+        self.dof_body_indices = dof_body_indices
         self.joint_indices = joint_indices
         self.shape_indices = shape_indices
         self.link_indices = link_indices
+        self.link_joint_indices = link_joint_indices
         self.meta_types = meta_types
         self.count = count
         self.max_dofs = max_dofs
@@ -405,16 +410,6 @@ class NewtonSimView:
         self.newton_stage = newton_stage
         self.is_valid_flag = True
         self.device = newton_stage.device
-        if hasattr(self.device, "is_cpu") and self.device.is_cpu:
-            self.device_ordinal = -1
-        elif hasattr(self.device, "is_cuda") and self.device.is_cuda:
-            self.device_ordinal = self.device.ordinal
-        elif str(self.device) == "cpu":
-            self.device_ordinal = -1
-        elif "cuda" in str(self.device):
-            self.device_ordinal = int(str(self.device).split(":")[-1])
-        else:
-            self.device_ordinal = -1
 
     @property
     def model(self) -> Any | None:
@@ -710,6 +705,7 @@ class NewtonSimView:
         dof_position_indices = []
         dof_velocity_indices = []
         dof_axis_indices = []
+        dof_body_indices = []
         joint_indices = []
         meta_types = []
         max_dofs = 0
@@ -790,6 +786,7 @@ class NewtonSimView:
                         joint_path = joint_label[global_joint_index]
                         for c in range(joint_axis_count):
                             dof_axis_indices.append(joint_axis_s + c)
+                            dof_body_indices.append(self.model.joint_child.numpy()[global_joint_index])
                             if joint_type == newton.JointType.BALL or joint_type == newton.JointType.D6:
                                 if joint_axis[joint_axis_s + c] == [1.0, 0.0, 0.0]:
                                     articulation_dof_paths.append(joint_path + ":0")
@@ -875,6 +872,7 @@ class NewtonSimView:
         dof_position_indices = wp.array(dof_position_indices, dtype=int, device=self.device)
         dof_velocity_indices = wp.array(dof_velocity_indices, dtype=int, device=self.device)
         dof_axis_indices = wp.array(dof_axis_indices, dtype=int, device=self.device)
+        dof_body_indices = wp.array(dof_body_indices, dtype=int, device=self.device)
         joint_indices = wp.array(joint_indices, dtype=int, device=self.device)
 
         max_shapes = 0
@@ -889,6 +887,7 @@ class NewtonSimView:
 
         shape_indices = np.ones((len(view_indices), max_shapes), dtype=int) * -1
         link_indices = np.ones((len(view_indices), max_links), dtype=int) * -1
+        link_joint_indices = np.ones((len(view_indices), max_links), dtype=int) * -1
 
         for i, meta in enumerate(meta_types):
             for j in range(shape_counts[i]):
@@ -896,10 +895,13 @@ class NewtonSimView:
 
             for j in range(link_counts[i]):
                 link_indices[i, j] = meta.link_indices[meta.link_names[j]]
+                if j > 0:
+                    link_joint_indices[i, j] = arti_starts[view_indices[i]] + j
 
         count = len(view_indices)
         shape_indices = wp.array(shape_indices, dtype=wp.int32, device=self.device)
         link_indices = wp.array(link_indices, dtype=wp.int32, device=self.device)
+        link_joint_indices = wp.array(link_joint_indices, dtype=wp.int32, device=self.device)
 
         return ArticulationSet(
             self.newton_stage,
@@ -909,9 +911,11 @@ class NewtonSimView:
             dof_position_indices,
             dof_velocity_indices,
             dof_axis_indices,
+            dof_body_indices,
             joint_indices,
             shape_indices,
             link_indices,
+            link_joint_indices,
             meta_types,
             count,
             max_dofs,

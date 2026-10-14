@@ -849,6 +849,10 @@ void PublishImageWorkerThread::_workerThreadFunction()
 
         // Process the request without holding the lock
         OgnROS2PublishImage::publishImageMessage(data);
+        // reset() may destroy the ROS node as soon as completion is signaled.
+        // Release the worker's publisher before allowing that cleanup to proceed.
+        data.publisher.reset();
+        data.message.reset();
         if (data.completionPromise)
         {
             data.completionPromise->set_value();

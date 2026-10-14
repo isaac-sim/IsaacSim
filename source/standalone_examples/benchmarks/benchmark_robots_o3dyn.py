@@ -61,7 +61,7 @@ import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import omni.kit.test
 from isaacsim.core.experimental.prims import Articulation
-from isaacsim.core.simulation_manager import SimulationManager
+from isaacsim.core.simulation_manager import PhysicsScene, PhysxGpuCfg, PhysxScene, SimulationManager
 from isaacsim.core.utils.extensions import enable_extension
 from isaacsim.core.utils.viewports import set_camera_view
 from omni.kit.viewport.utility import get_active_viewport
@@ -90,11 +90,24 @@ robot_path = benchmark.assets_root_path + "/Isaac/Robots_Multiphysics/Fraunhofer
 scene_path = benchmark.assets_root_path + "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd"
 benchmark.fully_load_stage(scene_path)
 
+# Peak demand measured on this scene is ~200-240 found/lost aggregate pairs per robot; 256 leaves headroom.
+GPU_AGGREGATE_PAIRS_PER_ROBOT = 256
+
 SimulationManager.set_backend(physics_backend)
 if physics_backend == "numpy":
     SimulationManager.set_physics_sim_device("cpu")
 else:
     SimulationManager.set_physics_sim_device("cuda")
+    # The O3dyn's articulated wheels generate many collision aggregates, so the GPU found/lost aggregate
+    # pairs pool has to scale with `n_robots`. Left at the scene default, PhysX overflows the pool and
+    # drops interactions mid-run, which corrupts the measured FPS without failing the benchmark.
+    physx_scene = PhysxScene(PhysicsScene.get_physics_scene_paths()[0])
+    scene_capacity = physx_scene.get_gpu_configuration().gpu_found_lost_aggregate_pairs_capacity
+    physx_scene.set_gpu_configuration(
+        PhysxGpuCfg(
+            gpu_found_lost_aggregate_pairs_capacity=max(scene_capacity, GPU_AGGREGATE_PAIRS_PER_ROBOT * n_robots)
+        )
+    )
 
 set_camera_view(eye=[-6, -15.5, 6.5], target=[-6, 10.5, -1], camera_prim_path="/OmniverseKit_Persp")
 

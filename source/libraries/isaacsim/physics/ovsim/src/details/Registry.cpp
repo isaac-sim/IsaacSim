@@ -229,7 +229,7 @@ OutputValueType getAttributeValues(const std::vector<std::string>& paths,
             }
         }
     }
-    // Default implementation: PhysicsEntity::getData.
+    // Default implementation: PhysicsEntity::getArrayData.
     try
     {
         return instance->getData(attributeName, indices);
@@ -314,7 +314,7 @@ void setAttributeValues(const std::vector<std::string>& paths,
             }
         }
     }
-    // Default implementation: PhysicsEntity::setData.
+    // Default implementation: PhysicsEntity::setArrayData.
     try
     {
         instance->setData(attributeName, arrayValues, indices);

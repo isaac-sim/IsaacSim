@@ -15,15 +15,17 @@
 
 #pragma once
 
+#include <isaacsim/common/array/Array.hpp>
 #include <isaacsim/physics/manager/Export.h>
+#include <isaacsim/physics/registration/tensors/ArrayTensorSpecification.hpp>
 #include <isaacsim/physics/registration/tensors/IEntityView.hpp>
 #include <isaacsim/physics/registration/tensors/Metadata.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
+#include <isaacsim/physics/registration/tensors/TensorConversion.hpp>
 #include <isaacsim/physics/registration/tensors/TensorTypes.hpp>
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,60 +36,68 @@ namespace physics
 namespace tensors
 {
 
-/**
- * @brief Callback that reads one tensor from an entity view.
- *
- * The registered operation defines the selector or query semantics and data type of `indices`. An empty descriptor
- * requests all entities only for operations that adopt that convention. The callback may write through `output.data` or
- * return a descriptor for other storage.
- *
- * @param[in] indices Operation-defined selector or query descriptor.
- * @param[in,out] output Optional destination tensor descriptor. The callback may write to the referenced backing
- *                       memory but does not modify the descriptor object.
- * @return Descriptor for the resulting tensor. It may reference storage supplied by `output` or other
- *         provider-selected storage. A nonempty `keepAlive` member retains that storage's owner.
- */
+/** @brief Descriptor callbacks preserve caller storage and layout. */
 using GetImplementationFunction =
     std::function<TensorDescription(const TensorDescription& indices, const TensorDescription& output)>;
-
-/**
- * @brief Callback that writes one tensor to an entity view.
- *
- * The registered operation defines the selector semantics and data type of `indices`. An empty descriptor selects all
- * entities only for operations that adopt that convention.
- *
- * @param[in] data Source tensor descriptor.
- * @param[in] indices Operation-defined selector descriptor.
- */
 using SetImplementationFunction = std::function<void(const TensorDescription& data, const TensorDescription& indices)>;
-
-/**
- * @brief Callback that reads multiple tensors from an entity view.
- *
- * The registered operation defines the selector or query semantics and data type of `indices`. An empty descriptor
- * requests all entities only for operations that adopt that convention. Each `output` element supplies optional
- * destination storage for the corresponding returned tensor.
- *
- * @param[in] indices Operation-defined selector or query descriptor.
- * @param[in,out] output Optional destination tensor descriptors. The callback may write to their referenced backing
- *                       memory but does not modify the descriptor objects.
- * @return Descriptors for the resulting tensors. They may reference storage supplied by `output` or other
- *         provider-selected storage. A nonempty `keepAlive` member retains the corresponding storage owner.
- */
 using GetMultiImplementationFunction = std::function<std::vector<TensorDescription>(
     const TensorDescription& indices, const std::vector<TensorDescription>& output)>;
-
-/**
- * @brief Callback that writes multiple tensors to an entity view.
- *
- * The registered operation defines the selector semantics and data type of `indices`. An empty descriptor selects all
- * entities only for operations that adopt that convention.
- *
- * @param[in] data Source tensor descriptors.
- * @param[in] indices Operation-defined selector descriptor.
- */
 using SetMultiImplementationFunction =
     std::function<void(const std::vector<TensorDescription>& data, const TensorDescription& indices)>;
+
+/**
+ * @brief Callback that reads one tensor from an entity view as an array.
+ *
+ * The registered operation defines the selector or query semantics and data type of `indices`. An absent selector
+ * requests all entities only for operations that adopt that convention. The callback may write through `output` or
+ * return an array over other storage.
+ *
+ * @param[in] indices Operation-defined selector or query, or `std::nullopt` to request all entities.
+ * @param[in,out] output Optional destination. The callback may write through its storage but does not rebind it.
+ * @return The resulting array. It may alias the storage supplied by `output` or provider-selected storage, which the
+ *         provider is free to overwrite on the next call.
+ */
+using GetArrayImplementationFunction =
+    std::function<array::Array(const std::optional<array::Array>& indices, const std::optional<array::Array>& output)>;
+
+/**
+ * @brief Callback that writes one tensor to an entity view from an array.
+ *
+ * The registered operation defines the selector semantics and data type of `indices`. An absent selector selects all
+ * entities only for operations that adopt that convention.
+ *
+ * @param[in] data Source array.
+ * @param[in] indices Operation-defined selector, or `std::nullopt` to select all entities.
+ */
+using SetArrayImplementationFunction =
+    std::function<void(const array::Array& data, const std::optional<array::Array>& indices)>;
+
+/**
+ * @brief Callback that reads multiple tensors from an entity view as arrays.
+ *
+ * The registered operation defines the selector or query semantics and data type of `indices`. An absent selector
+ * requests all entities only for operations that adopt that convention.
+ *
+ * @param[in] indices Operation-defined selector or query, or `std::nullopt` to request all entities.
+ * @param[in,out] output Optional destinations, one per returned buffer, supplied either in full or not at all. The
+ *                       callback may write through their storage but does not rebind them.
+ * @return The resulting arrays. They may alias the storage supplied by `output` or provider-selected storage, which
+ *         the provider is free to overwrite on the next call.
+ */
+using GetArrayMultiImplementationFunction = std::function<std::vector<array::Array>(
+    const std::optional<array::Array>& indices, const std::optional<std::vector<array::Array>>& output)>;
+
+/**
+ * @brief Callback that writes multiple tensors to an entity view from arrays.
+ *
+ * The registered operation defines the selector semantics and data type of `indices`. An absent selector selects all
+ * entities only for operations that adopt that convention.
+ *
+ * @param[in] data Source arrays.
+ * @param[in] indices Operation-defined selector, or `std::nullopt` to select all entities.
+ */
+using SetArrayMultiImplementationFunction =
+    std::function<void(const std::vector<array::Array>& data, const std::optional<array::Array>& indices)>;
 
 /**
  * @brief Callback that returns provider-specific entity-view metadata.
@@ -110,6 +120,57 @@ using MetadataImplementationFunction = std::function<Metadata()>;
 class ISAACSIM_PHYSICS_MANAGER_API EntityView : public IEntityView
 {
 public:
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                GetImplementationFunction callback,
+                                TensorSpecification specification);
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                SetImplementationFunction callback,
+                                TensorSpecification specification);
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                GetMultiImplementationFunction callback,
+                                TensorSpecification specification);
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                SetMultiImplementationFunction callback,
+                                TensorSpecification specification);
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    bool registerImplementation(const std::string& operationName,
+                                ImplementationKind kind,
+                                GetMultiImplementationFunction callback,
+                                std::vector<TensorSpecification> outputSpecifications);
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    TensorSpecification getImplementationSpecification(const std::string& operationName, ImplementationKind kind) const;
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    std::vector<TensorSpecification> getMultiImplementationSpecifications(const std::string& operationName,
+                                                                          ImplementationKind kind) const;
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    TensorDescription getData(const std::string& operationName,
+                              const TensorDescription& indices,
+                              const TensorDescription& output) const;
+    /**
+     * @brief Dispatch a descriptor-based multi-buffer read.
+     * @note Array-backed providers allocate omitted destinations through their no-output route.
+     * Supplied destinations must match result shapes and dtypes and have writable layouts. All
+     * destinations are validated before copying; copies may cross devices. Mixed output lists
+     * snapshot provider results before writes to protect cross-slot aliases. Results retain supplied
+     * destinations or owned snapshots for omitted slots; all-unspecified lists retain provider storage.
+     */
+    std::vector<TensorDescription> getDataMulti(const std::string& operationName,
+                                                const TensorDescription& indices,
+                                                const std::vector<TensorDescription>& output) const;
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    void setData(const std::string& operationName, const TensorDescription& data, const TensorDescription& indices) const;
+    /** @brief Dispatch or describe a descriptor-based tensor operation. */
+    void setDataMulti(const std::string& operationName,
+                      const std::vector<TensorDescription>& data,
+                      const TensorDescription& indices) const;
     /**
      * @brief Constructs an entity view without path patterns.
      */
@@ -151,10 +212,10 @@ public:
      * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eGet or `operationName` is already
      *         registered as a multi-buffer read operation.
      */
-    bool registerImplementation(const std::string& operationName,
-                                ImplementationKind kind,
-                                GetImplementationFunction callback,
-                                TensorSpecification specification);
+    bool registerArrayImplementation(const std::string& operationName,
+                                     ImplementationKind kind,
+                                     GetArrayImplementationFunction callback,
+                                     ArrayTensorSpecification specification);
 
     /**
      * @brief Registers a single-buffer write operation.
@@ -170,10 +231,10 @@ public:
      * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eSet or `operationName` is already
      *         registered as a multi-buffer write operation.
      */
-    bool registerImplementation(const std::string& operationName,
-                                ImplementationKind kind,
-                                SetImplementationFunction callback,
-                                TensorSpecification specification);
+    bool registerArrayImplementation(const std::string& operationName,
+                                     ImplementationKind kind,
+                                     SetArrayImplementationFunction callback,
+                                     ArrayTensorSpecification specification);
 
     /**
      * @brief Registers a multi-buffer read operation with one aggregate specification.
@@ -189,10 +250,10 @@ public:
      * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eGet or `operationName` is already
      *         registered as a single-buffer read operation.
      */
-    bool registerImplementation(const std::string& operationName,
-                                ImplementationKind kind,
-                                GetMultiImplementationFunction callback,
-                                TensorSpecification specification);
+    bool registerArrayImplementation(const std::string& operationName,
+                                     ImplementationKind kind,
+                                     GetArrayMultiImplementationFunction callback,
+                                     ArrayTensorSpecification specification);
 
     /**
      * @brief Registers a multi-buffer write operation.
@@ -208,10 +269,10 @@ public:
      * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eSet or `operationName` is already
      *         registered as a single-buffer write operation.
      */
-    bool registerImplementation(const std::string& operationName,
-                                ImplementationKind kind,
-                                SetMultiImplementationFunction callback,
-                                TensorSpecification specification);
+    bool registerArrayImplementation(const std::string& operationName,
+                                     ImplementationKind kind,
+                                     SetArrayMultiImplementationFunction callback,
+                                     ArrayTensorSpecification specification);
 
     /**
      * @brief Registers a metadata provider.
@@ -238,10 +299,10 @@ public:
      * @throws std::invalid_argument If `kind` is not @c ImplementationKind::eGet or `operationName` is already
      *         registered as a single-buffer read operation.
      */
-    bool registerImplementation(const std::string& operationName,
-                                ImplementationKind kind,
-                                GetMultiImplementationFunction callback,
-                                std::vector<TensorSpecification> outputSpecifications);
+    bool registerArrayImplementation(const std::string& operationName,
+                                     ImplementationKind kind,
+                                     GetArrayMultiImplementationFunction callback,
+                                     std::vector<ArrayTensorSpecification> outputSpecifications);
 
     /**
      * @brief Lists registered operation names for a read or write kind.
@@ -273,7 +334,8 @@ public:
      * @return The operation's tensor specification.
      * @throws std::out_of_range If no matching operation is registered.
      */
-    TensorSpecification getImplementationSpecification(const std::string& operationName, ImplementationKind kind) const;
+    ArrayTensorSpecification getArrayImplementationSpecification(const std::string& operationName,
+                                                                 ImplementationKind kind) const;
 
     /**
      * @brief Gets per-output specifications for a multi-buffer read operation.
@@ -283,8 +345,8 @@ public:
      * @return Per-output specifications, or an empty vector if the operation was registered with one aggregate
      *         specification, is not a multi-buffer read operation, or is not registered.
      */
-    std::vector<TensorSpecification> getMultiImplementationSpecifications(const std::string& operationName,
-                                                                          ImplementationKind kind) const;
+    std::vector<ArrayTensorSpecification> getArrayMultiImplementationSpecifications(const std::string& operationName,
+                                                                                    ImplementationKind kind) const;
 
     /**
      * @brief Gets metadata from a registered provider.
@@ -301,77 +363,77 @@ public:
      * @brief Invokes a registered single-buffer read operation.
      *
      * @param[in] operationName Read-operation name.
-     * @param[in] indices Operation-defined selector or query descriptor. An empty descriptor requests all entities
-     *                    only when the registered operation defines that convention.
-     * @param[in,out] output Optional destination tensor descriptor supplied to the provider. The provider may write to
-     *                       its referenced backing memory but does not modify the descriptor object.
-     * @return Descriptor for the resulting tensor. It may reference storage supplied by `output` or other
-     *         provider-selected storage. A nonempty `keepAlive` member retains that storage's owner.
+     * @param[in] indices Operation-defined selector or query, or `std::nullopt` to request all entities, which is
+     *                    honored only when the registered operation defines that convention.
+     * @param[in,out] output Optional destination supplied to the provider. The provider may write through its storage
+     *                       but does not rebind it.
+     * @return The resulting array. It may alias the storage supplied by `output` or provider-selected storage.
      * @throws std::out_of_range If no matching single-buffer read operation is registered.
      * @throws std::runtime_error If the operation is registered but not supported by the provider.
-     * @throws std::invalid_argument If `indices` is nonempty and the operation does not support indexed reads.
+     * @throws std::invalid_argument If `indices` is present and the operation does not support indexed reads.
      * @throws std::bad_function_call If the registered provider callback is empty.
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    TensorDescription getData(const std::string& operationName,
-                              const TensorDescription& indices,
-                              const TensorDescription& output) const;
+    array::Array getArrayData(const std::string& operationName,
+                              const std::optional<array::Array>& indices = std::nullopt,
+                              const std::optional<array::Array>& output = std::nullopt) const;
 
     /**
      * @brief Invokes a registered multi-buffer read operation.
      *
      * @param[in] operationName Read-operation name.
-     * @param[in] indices Operation-defined selector or query descriptor. An empty descriptor requests all entities
-     *                    only when the registered operation defines that convention.
-     * @param[in,out] output Optional destination tensor descriptors supplied to the provider. The provider may write
-     *                       to their referenced backing memory but does not modify the descriptor objects.
-     * @return Descriptors for the resulting tensors. They may reference storage supplied by `output` or other
-     *         provider-selected storage. A nonempty `keepAlive` member retains the corresponding storage owner.
+     * @param[in] indices Operation-defined selector or query, or `std::nullopt` to request all entities, which is
+     *                    honored only when the registered operation defines that convention.
+     * @param[in,out] output Optional destinations, one per returned buffer, supplied either in full or not at all.
+     *                       The provider may write through their storage but does not rebind them.
+     * @return The resulting arrays. They may alias the storage supplied by `output` or provider-selected storage.
      * @throws std::out_of_range If no matching multi-buffer read operation is registered.
      * @throws std::runtime_error If the operation is registered but not supported by the provider.
-     * @throws std::invalid_argument If `indices` is nonempty and the operation does not support indexed reads.
+     * @throws std::invalid_argument If `indices` is present and the operation does not support indexed reads.
      * @throws std::bad_function_call If the registered provider callback is empty.
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    std::vector<TensorDescription> getDataMulti(const std::string& operationName,
-                                                const TensorDescription& indices,
-                                                const std::vector<TensorDescription>& output) const;
+    std::vector<array::Array> getArrayDataMulti(const std::string& operationName,
+                                                const std::optional<array::Array>& indices = std::nullopt,
+                                                const std::optional<std::vector<array::Array>>& output = std::nullopt) const;
 
     /**
      * @brief Invokes a registered single-buffer write operation.
      *
      * @param[in] operationName Write-operation name.
-     * @param[in] data Source tensor descriptor.
-     * @param[in] indices Operation-defined selector descriptor. An empty descriptor selects all entities only when the
-     *                    registered operation defines that convention.
+     * @param[in] data Source array.
+     * @param[in] indices Operation-defined selector, or `std::nullopt` to select all entities, which is honored only
+     *                    when the registered operation defines that convention.
      * @throws std::out_of_range If no matching single-buffer write operation is registered.
      * @throws std::runtime_error If the operation is registered but not supported by the provider.
-     * @throws std::invalid_argument If `indices` is nonempty and the operation does not support indexed writes.
+     * @throws std::invalid_argument If `indices` is present and the operation does not support indexed writes.
      * @throws std::bad_function_call If the registered provider callback is empty.
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    void setData(const std::string& operationName, const TensorDescription& data, const TensorDescription& indices) const;
+    void setArrayData(const std::string& operationName,
+                      const array::Array& data,
+                      const std::optional<array::Array>& indices = std::nullopt) const;
 
     /**
      * @brief Invokes a registered multi-buffer write operation.
      *
      * @param[in] operationName Write-operation name.
-     * @param[in] data Source tensor descriptors.
-     * @param[in] indices Operation-defined selector descriptor. An empty descriptor selects all entities only when the
-     *                    registered operation defines that convention.
+     * @param[in] data Source arrays.
+     * @param[in] indices Operation-defined selector, or `std::nullopt` to select all entities, which is honored only
+     *                    when the registered operation defines that convention.
      * @throws std::out_of_range If no matching multi-buffer write operation is registered.
      * @throws std::runtime_error If the operation is registered but not supported by the provider.
-     * @throws std::invalid_argument If `indices` is nonempty and the operation does not support indexed writes.
+     * @throws std::invalid_argument If `indices` is present and the operation does not support indexed writes.
      * @throws std::bad_function_call If the registered provider callback is empty.
      *
      * @note Other exceptions raised by the provider callback propagate to the caller.
      */
-    void setDataMulti(const std::string& operationName,
-                      const std::vector<TensorDescription>& data,
-                      const TensorDescription& indices) const;
+    void setArrayDataMulti(const std::string& operationName,
+                           const std::vector<array::Array>& data,
+                           const std::optional<array::Array>& indices = std::nullopt) const;
 
     /**
      * @brief Gets the prim-path patterns supplied at construction.
@@ -428,24 +490,36 @@ public:
     }
 
     /**
-     * @brief Gets the ordinal of the device on which this view's tensors reside.
+     * @brief Gets the device on which this view's tensors reside.
      *
      * Consumers read this on every access rather than caching it, because an engine may select its device
      * after the view is created. An engine that resolves its device later overrides this to report the
      * current one; the base implementation returns the stored value.
      *
-     * @return The device ordinal, or `-1` for host memory.
+     * @return The device, which is @c array::Device::Cpu() for host memory.
      */
+    virtual array::Device getDevice() const noexcept
+    {
+        const int ordinal = getDeviceOrdinal();
+        return ordinal < 0 ? array::Device::Cpu() : array::Device::Cuda(ordinal);
+    }
+
+    /**
+     * @brief Sets the device on which this view's tensors reside.
+     *
+     * @param[in] device Device holding this view's tensors, or @c array::Device::Cpu() for host memory.
+     */
+    void setDevice(const array::Device& device) noexcept
+    {
+        m_deviceOrdinal = device.isCpu() ? -1 : device.ordinal();
+    }
+
+    /** @brief Return the currently selected device ordinal, or -1 for CPU. */
     virtual int getDeviceOrdinal() const noexcept
     {
         return m_deviceOrdinal;
     }
-
-    /**
-     * @brief Sets the ordinal of the device on which this view's tensors reside.
-     *
-     * @param[in] ordinal Device ordinal, or `-1` to indicate host memory.
-     */
+    /** @brief Select the device ordinal, or -1 for CPU. */
     void setDeviceOrdinal(int ordinal) noexcept
     {
         m_deviceOrdinal = ordinal;
@@ -488,10 +562,12 @@ protected:
     std::vector<std::string> m_primPathPatterns;
     /** @brief Number of entities resolved by the engine. */
     int64_t m_entityCount{ 0 };
-    /** @brief Ordinal of the device holding this view's tensors, or `-1` for host memory. */
+    /** @brief Device holding this view's tensors; the CPU until an engine selects another. */
     int m_deviceOrdinal{ -1 };
 
 private:
+    struct LegacyImplementation;
+    std::unique_ptr<LegacyImplementation> m_legacy;
     struct Implementation;
     std::unique_ptr<Implementation> m_implementation;
 };

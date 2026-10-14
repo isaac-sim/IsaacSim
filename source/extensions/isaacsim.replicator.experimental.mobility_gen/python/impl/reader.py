@@ -27,6 +27,10 @@ import PIL.Image
 from .config import Config
 from .occupancy_map import OccupancyMap
 
+# Buffer name suffix identifying instance ID segmentation frames. Used to recognise them inside
+# state/segmentation in recordings made before they were given their own tag and folder.
+_INSTANCE_ID_SEGMENTATION_SUFFIX = "instance_id_segmentation_image"
+
 
 class MobilityGenReader:
     """Reader for accessing recorded MobilityGen data from a directory.
@@ -51,13 +55,29 @@ class MobilityGenReader:
 
         self.rgb_folders = glob.glob(os.path.join(self.recording_path, "state", "rgb", "*"))
         self.segmentation_folders = glob.glob(os.path.join(self.recording_path, "state", "segmentation", "*"))
+        self.instance_id_segmentation_folders = glob.glob(
+            os.path.join(self.recording_path, "state", "instance_id_segmentation", "*")
+        )
         self.depth_folders = glob.glob(os.path.join(self.recording_path, "state", "depth", "*"))
         self.normals_folders = glob.glob(os.path.join(self.recording_path, "state", "normals", "*"))
 
         self.rgb_names = [os.path.basename(folder) for folder in self.rgb_folders]
-        self.segmentation_names = [os.path.basename(folder) for folder in self.segmentation_folders]
+        segmentation_names = [os.path.basename(folder) for folder in self.segmentation_folders]
+        self.instance_id_segmentation_names = [
+            os.path.basename(folder) for folder in self.instance_id_segmentation_folders
+        ]
         self.depth_names = [os.path.basename(folder) for folder in self.depth_folders]
         self.normals_names = [os.path.basename(folder) for folder in self.normals_folders]
+
+        # Recordings made before instance ID segmentation had its own tag wrote those frames into
+        # state/segmentation alongside the semantic ones. Keep reading them, but report them as
+        # instance ID data rather than as segmentation.
+        self.legacy_instance_id_segmentation_names = [
+            name for name in segmentation_names if name.endswith(_INSTANCE_ID_SEGMENTATION_SUFFIX)
+        ]
+        self.segmentation_names = [
+            name for name in segmentation_names if not name.endswith(_INSTANCE_ID_SEGMENTATION_SUFFIX)
+        ]
 
     def read_config(self) -> Config:
         """Read and return the scenario configuration.
@@ -119,6 +139,58 @@ class MobilityGenReader:
         step = self.steps[index]
         image = PIL.Image.open(os.path.join(self.recording_path, "state", "segmentation", name, f"{step:08d}.png"))
         return np.asarray(image)
+
+    def read_instance_id_segmentation(self, name: str, index: int) -> np.ndarray:
+        """Read an instance ID segmentation image frame by camera name and step index.
+
+        Read lossless NumPy arrays from the dedicated folder. Fall back to PNG files for recordings
+        written before instance ID segmentation used its own lossless format.
+
+        Args:
+            name: The camera name subfolder.
+            index: The step index.
+
+        Returns:
+            The instance ID segmentation image as a numpy array.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> name = reader.instance_id_segmentation_names[0]
+            >>> image = reader.read_instance_id_segmentation(name, 0)
+            >>> image.dtype  # doctest: +NO_CHECK
+            dtype('uint32')
+        """
+        step = self.steps[index]
+        folder = "instance_id_segmentation" if name in self.instance_id_segmentation_names else "segmentation"
+        folder_path = os.path.join(self.recording_path, "state", folder, name)
+        array_path = os.path.join(folder_path, f"{step:08d}.npy")
+        if os.path.isfile(array_path):
+            return np.load(array_path)
+        image = PIL.Image.open(os.path.join(folder_path, f"{step:08d}.png"))
+        return np.asarray(image)
+
+    def read_state_dict_instance_id_segmentation(self, index: int) -> dict:
+        """Read all instance ID segmentation images for the given step index.
+
+        Args:
+            index: The step index.
+
+        Returns:
+            A dict mapping camera name to instance ID segmentation numpy array.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> sorted(reader.read_state_dict_instance_id_segmentation(0))  # doctest: +NO_CHECK
+            ['robot.front_camera.instance_id_segmentation_image']
+        """
+        instance_id_segmentation_dict = OrderedDict()
+        for name in self.instance_id_segmentation_names + self.legacy_instance_id_segmentation_names:
+            instance_id_segmentation_dict[name] = self.read_instance_id_segmentation(name, index)
+        return instance_id_segmentation_dict
 
     def read_normals(self, name: str, index: int) -> np.ndarray:
         """Read a surface normals frame by camera name and step index.
@@ -222,6 +294,7 @@ class MobilityGenReader:
         state_dict = self.read_state_dict_common(index)
         rgb_dict = self.read_state_dict_rgb(index)
         segmentation_dict = self.read_state_dict_segmentation(index)
+        instance_id_segmentation_dict = self.read_state_dict_instance_id_segmentation(index)
         depth_dict = self.read_state_dict_depth(index)
         normals_dict = self.read_state_dict_normals(index)
 
@@ -229,6 +302,7 @@ class MobilityGenReader:
         full_dict.update(state_dict)
         full_dict.update(rgb_dict)
         full_dict.update(segmentation_dict)
+        full_dict.update(instance_id_segmentation_dict)
         full_dict.update(depth_dict)
         full_dict.update(normals_dict)
 

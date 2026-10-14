@@ -26,8 +26,14 @@ class TestPipArchive(omni.kit.test.AsyncTestCase):
         import cbor2
         import mujoco
         import mujoco_warp
+        import numpy as np
+
+        nodes, weights = np.polynomial.legendre.leggauss(32)
+
         import newton
 
+        self.assertEqual(nodes.shape, (32,))
+        self.assertEqual(weights.shape, (32,))
         self.assertIsNotNone(cbor2)
         self.assertIsNotNone(mujoco)
         self.assertIsNotNone(mujoco_warp)

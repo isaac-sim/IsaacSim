@@ -1,5 +1,5 @@
 [package]
-version = "1.7.18"
+version = "1.7.25"
 category = "Simulation"
 title = "Isaac Sim Asset Transformer Rules"
 description = "Rule implementations for the Asset Transformer"
@@ -26,6 +26,8 @@ name = "isaacsim.asset.transformer.rules.tests"
 [[test]]
 timeout = 900
 dependencies = [
+    "isaacsim.asset.importer.mjcf", # MJCF equality-to-USD package regression
+    "isaacsim.core.simulation_manager", # reopened-stage PhysX Play regression
     "isaacsim.storage.native", # tests resolve Isaac assets root for the UR10 gripper-variant regression
 ]
 

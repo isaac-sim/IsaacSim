@@ -222,7 +222,7 @@ class ConveyorBuilder:
             ]
             return available_connections
 
-    def is_track(self, prim_path: str) -> bool:
+    def is_track(self, prim_path: str | None) -> bool:
         """Check if the prim at the given path is a conveyor track asset.
 
         Args:
@@ -231,7 +231,11 @@ class ConveyorBuilder:
         Returns:
             True if the prim references or payloads a conveyor asset from this selector's path.
         """
+        if not prim_path:
+            return False
         sel = self.stage.GetPrimAtPath(prim_path)
+        if not sel:
+            return False
         if sel.GetReferences():
             refs = []
             refs += omni.usd.get_composed_references_from_prim(sel, False)
@@ -270,20 +274,21 @@ class ConveyorBuilder:
         parent_pose = Gf.Matrix4d()
         if parent in self._tracks:
             world_prim = self.stage.GetPrimAtPath(parent).GetParent()
-            _prim_path = omni.usd.get_stage_next_free_path(
-                self.stage, str(world_prim.GetPath()) + "/ConveyorTrack", False
-            )
+            track_path = world_prim.GetPath().AppendChild("ConveyorTrack")
+            _prim_path = omni.usd.get_stage_next_free_path(self.stage, str(track_path), False)
             parent_pose = omni.usd.get_world_transform_matrix(world_prim)
         elif self.is_track(parent):
             parent_path = self.stage.GetPrimAtPath(parent).GetParent().GetPath()
-            _prim_path = omni.usd.get_stage_next_free_path(self.stage, str(parent_path) + "/ConveyorTrack", False)
+            track_path = parent_path.AppendChild("ConveyorTrack")
+            _prim_path = omni.usd.get_stage_next_free_path(self.stage, str(track_path), False)
         else:
-            parent_path = ""
-            if parent and parent != "/" and self.stage.GetPrimAtPath(parent):
-                parent_path = parent
-            else:
-                parent_path = self.stage.GetDefaultPrim().GetPath()
-            _prim_path = omni.usd.get_stage_next_free_path(self.stage, str(parent_path) + "/ConveyorTrack", False)
+            parent_prim = self.stage.GetPrimAtPath(parent) if parent and parent != "/" else None
+            if not parent_prim:
+                parent_prim = self.stage.GetDefaultPrim()
+            if not parent_prim:
+                parent_prim = self.stage.GetPseudoRoot()
+            track_path = parent_prim.GetPath().AppendChild("ConveyorTrack")
+            _prim_path = omni.usd.get_stage_next_free_path(self.stage, str(track_path), False)
         prim = self.stage.DefinePrim(_prim_path, "Xform")
         prim.GetReferences().AddReference(track.base_usd)
         part_stage = Stage.Open(track.base_usd)
@@ -330,9 +335,12 @@ class ConveyorBuilder:
             usd_path: Path of the track prim to remove.
 
         Returns:
-            Path of the track connected via the removed track's parent anchor, or empty string.
+            Path of the track connected via the removed track's parent anchor, or an empty string if the track has no
+            registered parent.
         """
         previous_track = ""
+        if usd_path not in self._tracks:
+            return previous_track
         parent_anchor = self._parent_anchor[usd_path]
         if parent_anchor in self._anchor_connections[usd_path]:
             previous_track = self._anchor_connections[usd_path][parent_anchor]

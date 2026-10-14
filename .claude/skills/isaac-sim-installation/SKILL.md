@@ -207,6 +207,10 @@ On Windows, the standalone and Python dry-run plans automatically include their 
 | Docker pull fails or GPU check fails | Docker, NVIDIA Container Toolkit, or registry access missing | Fix the Docker/toolkit setup, or select standalone binary or Python package instead |
 | `System checking result` not `PASSED` | Host fails Isaac Sim compatibility requirements | Stop the sequence; resolve the reported requirement before installing |
 
+## Related Skills
+
+- `isaac-sim-web-viewer` — stream a **prebuilt NGC image** to Chromium with Docker Compose and print an HTTP URL. Use that skill to launch containers / open a browser. This installation skill **never** `docker compose up`, never starts a container, and never prints a web-viewer URL. Image pull/inspect without launch stays here.
+
 ## References
 
 - Read `references/install-types.md` to select an install type.

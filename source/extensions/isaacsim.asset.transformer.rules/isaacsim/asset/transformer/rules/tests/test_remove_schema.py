@@ -23,7 +23,7 @@ import tempfile
 
 import omni.kit.test
 from isaacsim.asset.transformer.rules.core.remove_schema import RemoveSchemaRule
-from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 from .common import _TEST_DATA_DIR
 
@@ -64,6 +64,139 @@ class TestRemoveSchemaRule(omni.kit.test.AsyncTestCase):
             args={"params": params},
         )
 
+    def _author_flattened_prim(self, filename: str = "base.usda") -> tuple[Usd.Stage, str]:
+        """Export a prim carrying four applied API schemas as an explicit list op.
+
+        ``Usd.Stage.Flatten().Export()`` collapses the composed ``apiSchemas``
+        into an explicit ``SdfListOp``, which is the form every flattened asset
+        reaching the transformer has.
+
+        Args:
+            filename: Name of the exported layer inside the temp directory.
+
+        Returns:
+            Tuple of the opened stage and its layer path.
+
+        """
+        authoring_stage = Usd.Stage.CreateInMemory()
+        robot = UsdGeom.Xform.Define(authoring_stage, "/World/Robot").GetPrim()
+        UsdPhysics.ArticulationRootAPI.Apply(robot)
+        UsdPhysics.CollisionAPI.Apply(robot)
+        UsdShade.MaterialBindingAPI.Apply(robot)
+        UsdPhysics.DriveAPI.Apply(robot, "angular")
+
+        layer_path = os.path.join(self._tmpdir, filename)
+        authoring_stage.Flatten().Export(layer_path)
+        return Usd.Stage.Open(layer_path), layer_path
+
+    async def test_process_rule_keeps_untargeted_schemas_on_explicit_list_op(self) -> None:
+        """Removing one applied schema must leave the other schemas applied.
+
+        An ``SdfListOp`` is either explicit or composing; USD clears the
+        explicit vector on the mode transition. Authoring a deletion onto a
+        spec that already holds an explicit ``apiSchemas`` list therefore
+        discards every schema on the prim, not just the matched one.
+        """
+        working_stage, layer_path = self._author_flattened_prim()
+        prim_path = "/World/Robot"
+
+        list_op = working_stage.GetRootLayer().GetPrimAtPath(prim_path).GetInfo("apiSchemas")
+        self.assertTrue(list_op.isExplicit, "fixture must author an explicit list op for this test to mean anything")
+
+        before = [str(schema) for schema in working_stage.GetPrimAtPath(prim_path).GetAppliedSchemas()]
+        self.assertEqual(len(before), 4, f"fixture must start with four applied schemas: {before}")
+
+        rule = self._create_rule(
+            working_stage,
+            {"schema_patterns": [r"PhysicsDriveAPI.*"], "prim_path_patterns": [prim_path]},
+        )
+        rule.process_rule()
+        working_stage.GetRootLayer().Save()
+
+        reopened = Usd.Stage.Open(layer_path)
+        after = [str(schema) for schema in reopened.GetPrimAtPath(prim_path).GetAppliedSchemas()]
+
+        expected = [schema for schema in before if not schema.startswith("PhysicsDriveAPI")]
+        self.assertEqual(after, expected, f"schemas destroyed as collateral: {sorted(set(expected) - set(after))}")
+        self._success = True
+
+    async def test_process_rule_removes_schema_prepended_in_the_same_layer(self) -> None:
+        """A schema this layer itself prepends must not survive its own deletion.
+
+        Within one list op a deletion is applied before the prepended items are
+        re-added, so recording a delete without also dropping the token from
+        ``prependedItems`` leaves the schema applied and the removal silently
+        does nothing.
+        """
+        layer_path = os.path.join(self._tmpdir, "prepended.usda")
+        stage = Usd.Stage.CreateNew(layer_path)
+        robot = UsdGeom.Xform.Define(stage, "/World/Robot").GetPrim()
+        UsdPhysics.CollisionAPI.Apply(robot)
+        UsdPhysics.DriveAPI.Apply(robot, "angular")
+        stage.GetRootLayer().Save()
+
+        prim_path = "/World/Robot"
+        list_op = stage.GetRootLayer().GetPrimAtPath(prim_path).GetInfo("apiSchemas")
+        self.assertFalse(list_op.isExplicit, "fixture must author a composing list op for this test")
+
+        rule = self._create_rule(
+            stage,
+            {"schema_patterns": [r"PhysicsDriveAPI.*"], "prim_path_patterns": [prim_path]},
+        )
+        rule.process_rule()
+        stage.GetRootLayer().Save()
+
+        reopened = Usd.Stage.Open(layer_path)
+        after = [str(schema) for schema in reopened.GetPrimAtPath(prim_path).GetAppliedSchemas()]
+
+        self.assertNotIn("PhysicsDriveAPI:angular", after, "targeted schema must actually be removed")
+        self.assertIn("PhysicsCollisionAPI", after, "untargeted schema must survive")
+        self._success = True
+
+    async def test_process_rule_keeps_untargeted_schemas_in_legacy_added_list_op(self) -> None:
+        """Untargeted schemas in a legacy ``add apiSchemas`` list must survive.
+
+        ``add apiSchemas = [...]`` populates the list op's ``addedItems``
+        vector, which older authoring tools and hand-written layers still use.
+        Rebuilding the op from the other vectors alone silently discards every
+        token it held, so removing one schema destroys the rest.
+        """
+        layer_path = os.path.join(self._tmpdir, "added.usda")
+        layer = Sdf.Layer.CreateNew(layer_path)
+        layer.ImportFromString("""#usda 1.0
+
+def Xform "Robot" (
+    add apiSchemas = ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI"]
+)
+{
+}
+""")
+        layer.Save()
+
+        prim_path = "/Robot"
+        list_op = layer.GetPrimAtPath(prim_path).GetInfo("apiSchemas")
+        self.assertFalse(list_op.isExplicit, "fixture must author a composing list op for this test")
+        self.assertEqual(
+            list(list_op.addedItems),
+            ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI"],
+            "fixture must land its tokens in addedItems for this test to mean anything",
+        )
+
+        stage = Usd.Stage.Open(layer_path)
+        rule = self._create_rule(
+            stage,
+            {"schema_patterns": [r"PhysicsRigidBodyAPI"], "prim_path_patterns": [prim_path]},
+        )
+        rule.process_rule()
+        stage.GetRootLayer().Save()
+
+        reopened = Usd.Stage.Open(layer_path)
+        after = [str(schema) for schema in reopened.GetPrimAtPath(prim_path).GetAppliedSchemas()]
+
+        self.assertNotIn("PhysicsRigidBodyAPI", after, "targeted schema must actually be removed")
+        self.assertIn("PhysicsCollisionAPI", after, "untargeted schema must survive")
+        self._success = True
+
     async def test_process_rule_skips_without_patterns(self) -> None:
         """Verify rule skips when no patterns are provided."""
         stage = Usd.Stage.Open(_TEST_USD)
@@ -74,7 +207,12 @@ class TestRemoveSchemaRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(any("no schema or property patterns" in msg.lower() for msg in log))
 
     async def test_process_rule_writes_schema_properties(self) -> None:
-        """Verify schema properties are authored in the destination layer."""
+        """Verify targeted schemas and properties are dropped in the destination layer.
+
+        The fixture authors ``apiSchemas`` explicitly, so the removal has to
+        filter that list rather than record a deletion against it, and the
+        untargeted schema has to survive on the composed prim.
+        """
         temp_asset = os.path.join(self._tmpdir, "ur10e.usd")
         shutil.copy(_TEST_USD, temp_asset)
         stage = Usd.Stage.Open(temp_asset)
@@ -98,11 +236,12 @@ class TestRemoveSchemaRule(omni.kit.test.AsyncTestCase):
 
         prim_spec = output_layer.GetPrimAtPath(_TEST_PRIM_PATH)
         self.assertIsNotNone(prim_spec)
-        api_schemas = prim_spec.GetInfo("apiSchemas")
-        self.assertTrue(api_schemas)
-        deleted_items = list(api_schemas.deletedItems or [])
-        self.assertTrue(any("PhysicsDriveAPI:angular" in str(item) for item in deleted_items))
-        self.assertTrue(any("PhysicsJointStateAPI:angular" in str(item) for item in deleted_items))
+
+        output_stage = Usd.Stage.Open(output_path)
+        applied = [str(schema) for schema in output_stage.GetPrimAtPath(_TEST_PRIM_PATH).GetAppliedSchemas()]
+        self.assertNotIn("PhysicsDriveAPI:angular", applied)
+        self.assertNotIn("PhysicsJointStateAPI:angular", applied)
+        self.assertIn("PhysxJointAPI", applied, "untargeted schema must survive the removal")
 
         removed_props = [
             attr_spec.name for attr_spec in prim_spec.attributes if attr_spec.name.startswith("drive:angular:physics:")

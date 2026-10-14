@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Load OVStage from the declared `ovstage` Python dependency instead of embedding a second native runtime in the
+  Foundation wheel.
+
+## [7.0.0a1] - 2026-09-16
+
+### Added
+
+- Windows packages install the OVStage plugin and USD schema trees beside the module binary.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

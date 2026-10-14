@@ -1,0 +1,48 @@
+/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+Screen { background: #11151b; color: #f5f7fa; }
+#brand { height: 2; padding: 0 1; color: #76b900; text-style: bold; }
+#context { height: 1; padding: 0 1; color: #9aa4b2; text-overflow: ellipsis; }
+CatalogBrowser { height: 2fr; min-height: 6; }
+#catalog-content { height: 1fr; }
+#results-pane { width: 42%; min-width: 26; height: 1fr; border: solid #35404f; }
+#results-pane:focus-within { border: solid #76b900; }
+#detail-pane { width: 1fr; height: 1fr; border: solid #35404f; padding: 0 1; }
+#record-detail { height: auto; }
+.eyebrow { height: 1; color: #9aa4b2; padding: 0 1; }
+#actions { height: 3; }
+#actions Button { min-width: 9; width: auto; margin-right: 1; }
+#status { height: 2; padding: 0 1; }
+#output { height: 1fr; min-height: 6; border: solid #35404f; }
+ArgumentsScreen, SetupScreen { align: center middle; background: #000000 65%; }
+.dialog { width: 90%; max-width: 90; height: 85%; border: solid #76b900; padding: 1 2; background: #181e27; }
+.dialog-title { height: 2; text-style: bold; }
+.dialog-actions { align-horizontal: right; height: 3; }
+ArgumentsScreen .arguments-dialog {
+    width: 76; max-width: 94%; height: 26; max-height: 90%;
+    border: round #35404f; padding: 1 2; background: #181e27;
+}
+ArgumentsScreen .dialog-title { height: 1; color: #f5f7fa; text-style: bold; }
+#argument-example { height: 1; color: #76b900; margin-bottom: 1; text-overflow: ellipsis; }
+#argument-help { height: 1; color: #9aa4b2; }
+#argument-rows { height: 1fr; min-height: 3; max-height: 12; margin-top: 1; }
+#argument-empty { height: auto; padding: 1; color: #9aa4b2; background: #11151b; }
+.argument-row { height: 3; }
+.argument-number { width: 3; height: 3; content-align: center middle; color: #9aa4b2; }
+.argument-value { width: 1fr; background: #11151b; border: tall #35404f; }
+.argument-value:focus { border: tall #76b900; }
+.argument-tools { height: 3; margin-bottom: 1; }
+ArgumentsScreen Button {
+    min-width: 8; width: auto; height: 3; padding: 0 1;
+    background: #222b37; color: #cbd3df; border: solid #35404f;
+    text-style: none; background-tint: transparent;
+}
+ArgumentsScreen Button:hover { background: #2c3847; border: solid #566579; }
+ArgumentsScreen Button:focus {
+    text-style: bold; border: solid #76b900; background-tint: transparent;
+}
+ArgumentsScreen Button.-active { tint: transparent; }
+ArgumentsScreen #submit { color: #b6e77a; border: solid #557d24; margin-left: 1; }
+ArgumentsScreen #submit:focus { border: solid #a5df52; text-style: bold; }
+ArgumentsScreen .remove-argument { margin-left: 1; }

@@ -116,6 +116,9 @@ You are a senior Python developer with expertise in modern Python (3.10+), type 
 - Never use bare `except:` clauses; catch specific exceptions.
 - Use the logging facility selected by the owning component. Use `print` only for intentional command-line or
   result-style output.
+- Under `source/libraries`, production module diagnostics use `isaacsim.common.logging.Logger`; library Python must not
+  import `carb`. The logging bootstrap implementation and build/packaging tools are narrow exceptions. Under
+  `source/extensions`, use `carb.log_info`, `carb.log_warn`, and `carb.log_error` for extension diagnostics.
 - Use `assert` only for debugging, never for runtime validation.
 - Start print/log messages with a capital letter and continue in normal sentence case (for example,
   `print("Loading completed")` or `logger.info("Simulation started successfully")`). Identifiers that are naturally

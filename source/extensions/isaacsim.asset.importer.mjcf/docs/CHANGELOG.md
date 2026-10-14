@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.13.0] - 2026-09-24
+### Changed
+- Updated MuJoCo to 3.12.0, mujoco-usd-converter to 0.6.1, and newton-usd-schemas to 0.5.0.
+
+## [3.12.2] - 2026-09-19
+### Changed
+- Load `isaacsim.asset.importer.mjcf` from the independently built `isaacsim-asset` wheel.
+
 ## [3.12.1] - 2026-08-20
 ### Changed
 - Pin `usd-exchange` to version 2.3.0 for reproducible standalone installs.

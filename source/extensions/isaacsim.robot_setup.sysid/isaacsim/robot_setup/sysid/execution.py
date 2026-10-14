@@ -36,12 +36,13 @@ async def run_sysid(
     on_iteration: Callable[[OptimizationIterationStatus], None] | None = None,
     prepared_run: SysIdPreparedRun | None = None,
     provenance_sidecar_path: str | None = None,
+    instance_local_writeback: bool = False,
 ) -> SysIdRunResult:
     """Execute a complete SysID run from a run specification.
 
     Isaac Sim execution uses the active Kit stage, opening ``stage.input_path``
-    when supplied. Newton execution can instead open that USD directly with
-    ``usd-core`` in an ordinary Python process.
+    when supplied. Newton execution can instead open that USD directly without
+    using the Kit stage.
 
     Args:
         spec: SysID run specification.
@@ -49,13 +50,16 @@ async def run_sysid(
         on_iteration: Optional iteration callback.
         prepared_run: Optional prepared runtime state to reuse.
         provenance_sidecar_path: Optional override for the provenance sidecar destination.
+        instance_local_writeback: Author accepted parameters as overrides in the open stage root.
 
     Returns:
         Completed optimization result and generated artifacts.
     """
     if prepared_run is None:
         from .run_controller import SysIdRunController
+        from .runtime import ensure_required_runtime_extensions_async
 
+        await ensure_required_runtime_extensions_async(spec.simulation)
         engine = str(spec.simulation.engine)
         stage = await _resolve_stage(spec, engine)
         controller = SysIdRunController(spec)
@@ -70,6 +74,7 @@ async def run_sysid(
         spec,
         prepared_run,
         provenance_sidecar_path=provenance_sidecar_path,
+        instance_local_writeback=instance_local_writeback,
     )
     return await session.run_async(on_iteration=on_iteration, on_progress=on_progress)
 
@@ -79,6 +84,7 @@ def create_sysid_session(
     prepared: SysIdPreparedRun,
     *,
     provenance_sidecar_path: str | None = None,
+    instance_local_writeback: bool = False,
 ) -> SysIdRunSession:
     """Create the compatibility session used by advanced UI and CLI callers.
 
@@ -86,6 +92,7 @@ def create_sysid_session(
         spec: SysID run specification.
         prepared: Prepared SysID run state.
         provenance_sidecar_path: Optional override for the provenance sidecar destination.
+        instance_local_writeback: Author accepted parameters as overrides in the open stage root.
 
     Returns:
         Configured one-shot run session.
@@ -107,8 +114,11 @@ def create_sysid_session(
         validation_animation_path=outputs.validation_animation_path,
         validation_animation_fps=outputs.validation_animation_fps,
         validation_animation_max_frames=outputs.validation_animation_max_frames,
+        validation_relative_change_threshold=outputs.validation_relative_change_threshold,
+        validation_absolute_change_threshold=outputs.validation_absolute_change_threshold,
         compute_parameter_confidence=outputs.compute_parameter_confidence,
         parameter_confidence_rollout_budget=outputs.parameter_confidence_rollout_budget,
+        instance_local_writeback=instance_local_writeback,
     )
 
 
@@ -147,7 +157,7 @@ async def _resolve_stage(spec: SysIdRunSpec, engine: str) -> Any:
         if str(exc.name or "") not in {"pxr", "pxr.Usd"}:
             raise
         raise SysIdRuntimeUnavailableError(
-            "Standalone Newton SysID requires usd-core; install the 'newton' optional dependency group."
+            "Standalone Newton SysID requires OpenUSD from the Isaac Sim Python environment."
         ) from exc
     stage = Usd.Stage.Open(stage_path)
     if stage is None:

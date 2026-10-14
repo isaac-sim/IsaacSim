@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.0] - 2026-08-27
+### Changed
+- Deliver the controller implementation by staging selected packages from the `isaacsim-robot-motion` wheel in the Kit extension while retaining the existing tests and public import path.
+
 ## [0.3.2] - 2026-08-26
 ### Changed
 - Routed controller warnings through `isaacsim.common.logging` to remove the direct Carbonite dependency.

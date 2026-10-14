@@ -259,7 +259,7 @@ static std::optional<UsdTypeDescriptor> parseUsdTypeName(const std::string& name
         { "double", { { kDLFloat, 64, 1 }, OVSTAGE_SEMANTIC_NONE, false } },
         { "string", { { kDLUInt, 8, 1 }, OVSTAGE_SEMANTIC_STRING, true } },
         { "token", { { kDLUInt, 64, 1 }, OVSTAGE_SEMANTIC_TOKEN_ID, false } },
-        { "asset", { { kDLUInt, 8, 1 }, OVSTAGE_SEMANTIC_ASSET_STRING, true } },
+        { "asset", { { kDLUInt, 64, 2 }, OVSTAGE_SEMANTIC_ASSET_PATH_ID, false } },
         { "int2", { { kDLInt, 32, 2 }, OVSTAGE_SEMANTIC_NONE, false } },
         { "int3", { { kDLInt, 32, 3 }, OVSTAGE_SEMANTIC_NONE, false } },
         { "int4", { { kDLInt, 32, 4 }, OVSTAGE_SEMANTIC_NONE, false } },
@@ -308,7 +308,7 @@ static std::optional<UsdTypeDescriptor> parseUsdTypeName(const std::string& name
         { "double[]", { { kDLFloat, 64, 1 }, OVSTAGE_SEMANTIC_NONE, true } },
         { "string[]", { { kDLUInt, 8, 1 }, OVSTAGE_SEMANTIC_STRING, true } },
         { "token[]", { { kDLUInt, 64, 1 }, OVSTAGE_SEMANTIC_TOKEN_ID, true } },
-        { "asset[]", { { kDLUInt, 8, 1 }, OVSTAGE_SEMANTIC_ASSET_STRING, true } },
+        { "asset[]", { { kDLUInt, 64, 2 }, OVSTAGE_SEMANTIC_ASSET_PATH_ID, true } },
         { "int2[]", { { kDLInt, 32, 2 }, OVSTAGE_SEMANTIC_NONE, true } },
         { "int3[]", { { kDLInt, 32, 3 }, OVSTAGE_SEMANTIC_NONE, true } },
         { "int4[]", { { kDLInt, 32, 4 }, OVSTAGE_SEMANTIC_NONE, true } },
@@ -878,8 +878,29 @@ int64_t openStage(const std::string& usdPath)
     }
 
     const ovx_string_t path{ usdPath.c_str(), usdPath.size() };
-    const ovstage_population_enqueue_result_t populationEnqueue = ovstage_population_open_usd_from_file(
-        instance, path, /*ordinal=*/1, /*time=*/0.0, OVSTAGE_POPULATION_DOMAIN_ALL);
+    const ovx_string_t stageMetadata[]{ { "metersPerUnit", 13 }, { "upAxis", 6 } };
+    // The rendering domain owns lights, RenderProduct, and RenderVar properties;
+    // selecting them generically as well would create conflicting population results.
+    const ovx_string_t renderingTypes[]{ { "RenderProduct", 13 }, { "RenderVar", 9 } };
+    const ovstage_population_prim_predicate_t renderingTypePredicate =
+        ovstage_population_prim_predicate_has_type(renderingTypes, 2);
+    const ovx_string_t lightSchemas[]{ { "LightAPI", 8 } };
+    const ovstage_population_prim_predicate_t lightPredicate =
+        ovstage_population_prim_predicate_has_schema(lightSchemas, 1);
+    const ovstage_population_prim_predicate_t renderingPredicates[]{ renderingTypePredicate, lightPredicate };
+    const ovstage_population_prim_predicate_t renderingPredicate =
+        ovstage_population_prim_predicate_or(renderingPredicates, 2);
+    ovstage_population_selector_t genericPropertiesSelector{};
+    genericPropertiesSelector.prim_predicate = ovstage_population_prim_predicate_not(&renderingPredicate);
+    genericPropertiesSelector.property_predicate = ovstage_population_property_predicate_is_authored();
+    ovstage_population_desc_t populationDescription{};
+    populationDescription.domains = OVSTAGE_POPULATION_DOMAIN_ALL;
+    populationDescription.selectors = &genericPropertiesSelector;
+    populationDescription.selector_count = 1;
+    populationDescription.stage_metadata_paths = stageMetadata;
+    populationDescription.stage_metadata_path_count = 2;
+    const ovstage_population_enqueue_result_t populationEnqueue = ovstage_population_open_usd_from_file_with_desc(
+        instance, path, /*ordinal=*/1, /*time=*/0.0, &populationDescription, 1);
     if (populationEnqueue.status != OVSTAGE_OK ||
         ovstage_population_wait_op(instance, populationEnqueue.op_index, OVSTAGE_TIMEOUT_INFINITE, nullptr) != OVSTAGE_OK)
     {
@@ -930,8 +951,29 @@ int64_t importStageFromString(const std::string& usdString)
     }
 
     const ovx_string_t usda{ usdString.c_str(), usdString.size() };
-    const ovstage_population_enqueue_result_t populationEnqueue = ovstage_population_open_usd_from_string(
-        instance, usda, /*ordinal=*/1, /*time=*/0.0, OVSTAGE_POPULATION_DOMAIN_ALL);
+    const ovx_string_t stageMetadata[]{ { "metersPerUnit", 13 }, { "upAxis", 6 } };
+    // The rendering domain owns lights, RenderProduct, and RenderVar properties;
+    // selecting them generically as well would create conflicting population results.
+    const ovx_string_t renderingTypes[]{ { "RenderProduct", 13 }, { "RenderVar", 9 } };
+    const ovstage_population_prim_predicate_t renderingTypePredicate =
+        ovstage_population_prim_predicate_has_type(renderingTypes, 2);
+    const ovx_string_t lightSchemas[]{ { "LightAPI", 8 } };
+    const ovstage_population_prim_predicate_t lightPredicate =
+        ovstage_population_prim_predicate_has_schema(lightSchemas, 1);
+    const ovstage_population_prim_predicate_t renderingPredicates[]{ renderingTypePredicate, lightPredicate };
+    const ovstage_population_prim_predicate_t renderingPredicate =
+        ovstage_population_prim_predicate_or(renderingPredicates, 2);
+    ovstage_population_selector_t genericPropertiesSelector{};
+    genericPropertiesSelector.prim_predicate = ovstage_population_prim_predicate_not(&renderingPredicate);
+    genericPropertiesSelector.property_predicate = ovstage_population_property_predicate_is_authored();
+    ovstage_population_desc_t populationDescription{};
+    populationDescription.domains = OVSTAGE_POPULATION_DOMAIN_ALL;
+    populationDescription.selectors = &genericPropertiesSelector;
+    populationDescription.selector_count = 1;
+    populationDescription.stage_metadata_paths = stageMetadata;
+    populationDescription.stage_metadata_path_count = 2;
+    const ovstage_population_enqueue_result_t populationEnqueue = ovstage_population_open_usd_from_string_with_desc(
+        instance, usda, /*ordinal=*/1, /*time=*/0.0, &populationDescription, 1);
     if (populationEnqueue.status != OVSTAGE_OK ||
         ovstage_population_wait_op(instance, populationEnqueue.op_index, OVSTAGE_TIMEOUT_INFINITE, nullptr) != OVSTAGE_OK)
     {
@@ -1685,11 +1727,13 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
     details::waitAndRelease(instance, readEnqueueResult);
 
     std::vector<std::string> stringOutput(pathCount);
+    std::vector<std::vector<std::string>> stringArrayOutput(pathCount);
     std::vector<std::byte> fixedBuffer;
     std::vector<std::vector<std::byte>> raggedBuffers(pathCount);
     DLDataType columnDataType{};
     bool columnIsArray = false;
     bool columnIsString = false;
+    bool columnIsAsset = false;
     bool receivedMetadata = false;
 
     for (;;)
@@ -1707,8 +1751,8 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
             {
                 columnDataType = group.data.tensors[0].dtype;
                 columnIsArray = group.is_array;
-                columnIsString =
-                    (group.semantic == OVSTAGE_SEMANTIC_STRING || group.semantic == OVSTAGE_SEMANTIC_ASSET_STRING);
+                columnIsString = group.semantic == OVSTAGE_SEMANTIC_STRING;
+                columnIsAsset = group.semantic == OVSTAGE_SEMANTIC_ASSET_PATH_ID;
                 if (!columnIsArray)
                 {
                     const size_t elementByteCount = static_cast<size_t>(columnDataType.bits / 8) * columnDataType.lanes;
@@ -1730,7 +1774,39 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
 
                 const DLTensor& t = group.data.tensors[columnIsArray ? dataIndex : 0];
 
-                if (columnIsString)
+                if (columnIsAsset)
+                {
+                    const auto resolveAssetToken = [dictionary](uint64_t identifier)
+                    {
+                        const ovx_token_t token = static_cast<ovx_token_t>(identifier);
+                        ovx_string_t value{};
+                        if (identifier != 0 &&
+                            path_dictionary_get_strings_from_tokens(dictionary, &token, 1, &value).status ==
+                                OVX_API_SUCCESS &&
+                            value.ptr)
+                        {
+                            return std::string(value.ptr, value.length);
+                        }
+                        return std::string{};
+                    };
+                    const auto* identifiers = static_cast<const uint64_t*>(t.data);
+                    if (columnIsArray)
+                    {
+                        const int64_t elementCount = t.shape && t.ndim >= 1 ? t.shape[0] : 0;
+                        stringArrayOutput[outputIndex].reserve(static_cast<size_t>(elementCount));
+                        for (int64_t i = 0; identifiers && i < elementCount; ++i)
+                        {
+                            // ASSET_PATH_ID stores (authored, resolved); match the
+                            // OpenUSD backend by returning the authored asset path.
+                            stringArrayOutput[outputIndex].push_back(resolveAssetToken(identifiers[i * 2]));
+                        }
+                    }
+                    else if (identifiers)
+                    {
+                        stringOutput[outputIndex] = resolveAssetToken(identifiers[dataIndex * 2]);
+                    }
+                }
+                else if (columnIsString)
                 {
                     if (t.data && t.shape && t.shape[0] > 0)
                         stringOutput[outputIndex] =
@@ -1764,6 +1840,9 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
     if (!receivedMetadata)
         return {};
 
+    if (columnIsAsset)
+        return columnIsArray ? AttributeValues{ stringArrayOutput } : AttributeValues{ stringOutput };
+
     if (columnIsString)
         return stringOutput;
 
@@ -1774,7 +1853,8 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
     {
         auto buffer = std::shared_ptr<std::byte[]>(new std::byte[fixedBuffer.size()]());
         std::memcpy(buffer.get(), fixedBuffer.data(), fixedBuffer.size());
-        return array::Array::fromBuffer(buffer, array::Shape{ static_cast<int64_t>(pathCount), lanes }, dtype);
+        return array::Array::fromBuffer(
+            buffer, fixedBuffer.size(), array::Shape{ static_cast<int64_t>(pathCount), lanes }, dtype);
     }
 
     // Ragged: pack into {pathCount, maximumElementCount, lanes}
@@ -1794,7 +1874,8 @@ AttributeValues getPrimAttributeValues(int64_t stageId,
                         raggedBuffers[i].size());
     }
     return array::Array::fromBuffer(
-        buffer, array::Shape{ static_cast<int64_t>(pathCount), static_cast<int64_t>(maximumElementCount), lanes }, dtype);
+        buffer, totalBytes + 1,
+        array::Shape{ static_cast<int64_t>(pathCount), static_cast<int64_t>(maximumElementCount), lanes }, dtype);
 }
 
 std::vector<bool> setPrimAttributeValues(int64_t stageId,
@@ -1853,7 +1934,9 @@ std::vector<bool> setPrimAttributeValues(int64_t stageId,
     }
     else if (std::holds_alternative<array::Array>(values))
     {
-        const auto& arrayValue = std::get<array::Array>(values);
+        // The tensors below address the elements as one dense row-major block, so stage a CPU-resident,
+        // C-contiguous value first; a broadcast or strided input would otherwise be walked past its end.
+        const array::Array arrayValue = std::get<array::Array>(values).toDevice(array::Device::Cpu()).contiguous();
         const AttributeTypeInformation columnInformation =
             readAttributeTypeInformation(instance, dictionary, paths[0], attributeName);
         if (!columnInformation.found)
@@ -1865,6 +1948,16 @@ std::vector<bool> setPrimAttributeValues(int64_t stageId,
         if (!columnInformation.is_array)
         {
             // Fixed scalar: one element per prim, single tensor of shape {pathCount}
+            // Staging above fixes the layout but not the extent: the tensor declares pathCount elements of
+            // the column's type, so a shorter value would still be read past its allocation.
+            const size_t availableBytes = arrayValue.size() * arrayValue.dtype().size();
+            if (availableBytes < pathCount * elementByteCount)
+            {
+                throw std::invalid_argument("Attribute `" + attributeName + "` needs " +
+                                            std::to_string(pathCount * elementByteCount) + " bytes for " +
+                                            std::to_string(pathCount) + " prims, but the value holds " +
+                                            std::to_string(availableBytes));
+            }
             int64_t fixedShape = static_cast<int64_t>(pathCount);
             DLTensor tensor{};
             tensor.data = const_cast<void*>(arrayValue.data());

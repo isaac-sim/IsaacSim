@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, TypeVar
 
+from isaacsim.performance.benchmarking.impl.collector import _validate_resource_options
 from isaacsim.performance.benchmarking.impl.model import _ActiveMeasurement, _BenchmarkDefinition
 
 _Target = TypeVar("_Target", bound=Callable[..., Any] | type[Any])
@@ -494,6 +495,8 @@ class BenchmarkAuthoring:
         seed: int | None = None,
         output: str | Path | None = None,
         save: bool = True,
+        resource_backend: str = "auto",
+        capture_collector: bool = False,
     ) -> dict[str, Any]:
         """Execute the complete benchmark lifecycle and return its result.
 
@@ -503,13 +506,16 @@ class BenchmarkAuthoring:
             seed: Random seed override.
             output: Explicit result file. When omitted, use the configured or temporary output root.
             save: Whether to persist the returned result.
+            resource_backend: Resource provider: auto, ovperf, or builtin. Auto selects ovperf on Linux x86_64.
+            capture_collector: Save native observations beside the result. Requires save=True and ovperf.
 
         Returns:
             Structured benchmark result document.
 
         Raises:
-            TypeError: If ``target`` is not decorated or ``save`` is not Boolean.
-            ValueError: If ``output`` is provided while result persistence is disabled.
+            TypeError: If ``target`` is not decorated or a Boolean option has an invalid type.
+            ValueError: If the backend is invalid or output, capture, and persistence options conflict.
+            OSError: If a requested result or collector artifact cannot be written.
             RuntimeError: If called while an event loop is already running.
 
         Example:
@@ -521,7 +527,7 @@ class BenchmarkAuthoring:
             'isaacsim.example.increment'
 
         """
-        definition = self._validate_run_request(target, output, save)
+        definition = self._validate_run_request(target, output, save, resource_backend, capture_collector)
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -530,7 +536,17 @@ class BenchmarkAuthoring:
             raise RuntimeError(
                 "benchmark.run() cannot be called from a running event loop; use await benchmark.run_async() instead"
             )
-        return asyncio.run(self._run_definition(definition, parameters, seed=seed, output=output, save=save))
+        return asyncio.run(
+            self._run_definition(
+                definition,
+                parameters,
+                seed=seed,
+                output=output,
+                save=save,
+                resource_backend=resource_backend,
+                capture_collector=capture_collector,
+            )
+        )
 
     async def run_async(
         self,
@@ -540,6 +556,8 @@ class BenchmarkAuthoring:
         seed: int | None = None,
         output: str | Path | None = None,
         save: bool = True,
+        resource_backend: str = "auto",
+        capture_collector: bool = False,
     ) -> dict[str, Any]:
         """Execute a benchmark from an application that owns an event loop.
 
@@ -549,13 +567,16 @@ class BenchmarkAuthoring:
             seed: Random seed override.
             output: Explicit result file. When omitted, use the configured or temporary output root.
             save: Whether to persist the returned result.
+            resource_backend: Resource provider: auto, ovperf, or builtin. Auto selects ovperf on Linux x86_64.
+            capture_collector: Save native observations beside the result. Requires save=True and ovperf.
 
         Returns:
             Structured benchmark result document.
 
         Raises:
-            TypeError: If ``target`` is not decorated or ``save`` is not Boolean.
-            ValueError: If ``output`` is provided while result persistence is disabled.
+            TypeError: If ``target`` is not decorated or a Boolean option has an invalid type.
+            ValueError: If the backend is invalid or output, capture, and persistence options conflict.
+            OSError: If a requested result or collector artifact cannot be written.
 
         Example:
 
@@ -566,17 +587,33 @@ class BenchmarkAuthoring:
             True
 
         """
-        definition = self._validate_run_request(target, output, save)
-        return await self._run_definition(definition, parameters, seed=seed, output=output, save=save)
+        definition = self._validate_run_request(target, output, save, resource_backend, capture_collector)
+        return await self._run_definition(
+            definition,
+            parameters,
+            seed=seed,
+            output=output,
+            save=save,
+            resource_backend=resource_backend,
+            capture_collector=capture_collector,
+        )
 
     @staticmethod
-    def _validate_run_request(target: _Target, output: str | Path | None, save: bool) -> _BenchmarkDefinition:
+    def _validate_run_request(
+        target: _Target,
+        output: str | Path | None,
+        save: bool,
+        resource_backend: str,
+        capture_collector: bool,
+    ) -> _BenchmarkDefinition:
         """Validate public execution arguments that do not require the runner.
 
         Args:
             target: Decorated benchmark target.
             output: Explicit output path, if requested.
             save: Whether to persist the result.
+            resource_backend: Requested resource provider.
+            capture_collector: Whether to retain a native collector artifact.
 
         Returns:
             Benchmark definition attached to the target.
@@ -589,6 +626,9 @@ class BenchmarkAuthoring:
             raise TypeError("benchmark execution save must be a bool")
         if not save and output is not None:
             raise ValueError("benchmark execution cannot combine output with save=False")
+        _validate_resource_options(resource_backend, capture_collector)
+        if capture_collector and not save:
+            raise ValueError("capture_collector requires save=True")
         return definition
 
     @staticmethod
@@ -599,6 +639,8 @@ class BenchmarkAuthoring:
         seed: int | None,
         output: str | Path | None,
         save: bool,
+        resource_backend: str,
+        capture_collector: bool,
     ) -> dict[str, Any]:
         """Run and report one validated benchmark request.
 
@@ -608,6 +650,8 @@ class BenchmarkAuthoring:
             seed: Random seed override.
             output: Explicit output path, if requested.
             save: Whether to persist the result.
+            resource_backend: Requested resource provider.
+            capture_collector: Whether to retain a native collector artifact.
 
         Returns:
             Structured benchmark result document.
@@ -617,7 +661,13 @@ class BenchmarkAuthoring:
         from isaacsim.performance.benchmarking.impl.runner import run_definition
         from isaacsim.performance.benchmarking.impl.schema import result_document
 
-        result = await run_definition(definition, parameters, seed=seed)
+        result = await run_definition(
+            definition,
+            parameters,
+            seed=seed,
+            resource_backend=resource_backend,
+            capture_collector=capture_collector,
+        )
         output_path = resolve_output_path(result, output) if save else None
         document = write_result(result, output_path) if output_path is not None else result_document(result)
         print(format_summary(document))

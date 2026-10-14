@@ -52,7 +52,7 @@ includedirs {
     "%{root}/source/extensions/isaacsim.core.nodes/include",
     "%{kit_sdk_bin_dir}/dev/fabric/include/",
     "%{root}/_build/target-deps/python/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
 }
 libdirs {
     "%{root}/_build/target-deps/usd/%{cfg.buildcfg}/lib",

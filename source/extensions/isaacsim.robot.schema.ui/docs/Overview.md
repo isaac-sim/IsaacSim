@@ -19,6 +19,8 @@ The Robot Hierarchy Window presents robot joints in a tree structure where the p
 
 The extension renders visual connection lines between parent and child joints directly in the 3D viewport. These connections help users understand the robot's joint structure and kinematic chain visually.
 
+Use **Show connections** in the Robot Inspector toolbar to enable viewport lines. This preference is enabled by default and is independent of the physics debug visualization settings. Lines are hidden during playback and restored when simulation stops. Hiding the Inspector clears its connections.
+
 **Visualization features:**
 - Dynamic connection lines drawn between related joints in 3D space
 - Directional arrows indicating parent-child relationships

@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.0.1] - 2026-09-22
+### Changed
+- `StructuredLightCamera`: document the anti-aliasing modes that preserve projected pattern detail.
+
+## [2.0.0] - 2026-08-31
+### Added
+- `RtxCamera` can wrap or create multiple Camera prims from a path list or regex.
+- `TiledCameraSensor` accepts `tick_rate`, `schemas`, and `attributes` when authoring cameras from paths.
+
+### Changed
+- `TiledCameraSensor` authors cameras through `RtxCamera`; `authoring_object` now returns that wrapper.
+- Sensor authoring warns before replacing a different authored tick rate on a shared prim.
+- `TiledCameraSensor` warns when camera tick rates differ because the first camera controls the whole batch.
+
+### Fixed
+- Single-prim runtimes reject multi-prim inputs before authoring changes the stage.
+
+## [1.9.1] - 2026-09-15
+### Added
+- New golden images for Luxonis OAK-D ToF sensor.
+
+### Changed
+- Orbbec Gemini 335 now marked as not-a-depth-sensor, until asset is updated to use SingleViewDepthSensor APIs.
+- Depth-camera tests use fixed-range PNG goldens and writer callbacks to compare consecutive sensor emissions.
+
 ## [1.9.0] - 2026-08-24
 ### Added
 - `has_data()` on `SensorRuntime`, reporting render completion with annotator output while the render product still exists and annotators are attached. This lets callers bound an annotator warm-up wait without repeatedly fetching data when no render engine could be bound. It is a render-product-level gate, so it does not guarantee that a specific annotator has a frame ready.

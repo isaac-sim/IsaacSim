@@ -15,12 +15,15 @@
 
 """Test UCX clock publishing node functionality."""
 
+import time
+
+import carb.logging
 import numpy as np
 import omni
 import omni.graph.core as og
 import ucxx._lib.libucxx as ucx_api
 from isaacsim.ucx.core import add_listener
-from isaacsim.ucx.nodes.messages.isaac import Time
+from isaacsim.ucx.nodes.messages.holoscan.schema import Time
 from isaacsim.ucx.nodes.tests.common import UCXTestCase, find_available_port
 from ucxx._lib.arr import Array
 
@@ -29,7 +32,10 @@ CONNECTION_WAIT_FRAMES = 60
 CONNECTION_TIMEOUT_MS = 5000
 RECEIVE_TIMEOUT_FRAMES = 1000
 DEFAULT_TEST_TAG = 5
-CLOCK_MESSAGE_SIZE_BYTES = 24
+CLOCK_MESSAGE_SIZE_BYTES = 32
+# Substring of the one-shot warning UcxNode::publishMessage logs when it clamps an
+# unbounded (0) send timeout to a finite one.
+UNBOUNDED_TIMEOUT_WARNING_MARKER = "inputs:timeoutMs is 0"
 
 
 class TestUCXPublishClock(UCXTestCase):
@@ -293,6 +299,81 @@ class TestUCXPublishClock(UCXTestCase):
         self.assertGreater(timestamp1, 0.0)
         self.assertGreater(timestamp2, 0.0)
         self.assertAlmostEqual(timestamp1, timestamp2, delta=0.1)
+
+    async def test_unbounded_timeout_is_clamped_and_warned_about_once(self) -> None:
+        """Verify ``inputs:timeoutMs = 0`` is clamped to a finite send wait, warning exactly once.
+
+        Without the clamp the warning count is 0; without the latch it is one per frame.
+        """
+        timed_frames = 20
+        # Worst case is 20 frames each capped at the 100 ms substituted send timeout. Far below
+        # this budget when nothing stalls, unreachable if the send waits indefinitely.
+        budget_s = 5.0
+
+        warnings = []
+        kit_logging = carb.logging.acquire_logging()
+
+        def capture(source: str, level: int, filename: str, line_number: int, message: str) -> None:
+            if UNBOUNDED_TIMEOUT_WARNING_MARKER in message:
+                warnings.append(message)
+
+        # Installed before the graph exists so the very first publish is observed.
+        handle = kit_logging.add_logger(capture)
+        try:
+            og.Controller.edit(
+                {"graph_path": "/ActionGraph", "evaluator_name": "execution"},
+                {
+                    og.Controller.Keys.CREATE_NODES: [
+                        ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                        ("PublishClock", "isaacsim.ucx.nodes.UCXPublishClock"),
+                        ("ReadSimTime", "isaacsim.core.nodes.IsaacReadSimulationTime"),
+                    ],
+                    og.Controller.Keys.SET_VALUES: [
+                        ("PublishClock.inputs:port", self.port),
+                        ("PublishClock.inputs:tag", DEFAULT_TEST_TAG),
+                        ("PublishClock.inputs:timeoutMs", 0),
+                    ],
+                    og.Controller.Keys.CONNECT: [
+                        ("OnPlaybackTick.outputs:tick", "PublishClock.inputs:execIn"),
+                        ("ReadSimTime.outputs:simulationTime", "PublishClock.inputs:timeStamp"),
+                    ],
+                },
+            )
+
+            timeline = omni.timeline.get_timeline_interface()
+            timeline.play()
+
+            # No peer is connected yet, so the node short-circuits before publishing and
+            # cannot warn during setup.
+            await self.setup_ucx_client_with_listener()
+
+            start = time.perf_counter()
+            for _ in range(timed_frames):
+                await omni.kit.app.get_app().next_update_async()
+            elapsed = time.perf_counter() - start
+
+            # The clamped send must still deliver; nothing has drained the tag yet, so
+            # this picks up one of the messages published above.
+            timestamp = await self.receive_clock_message()
+        finally:
+            kit_logging.remove_logger(handle)
+
+        self.assertGreater(
+            timestamp, 0.0, "Publisher never delivered a clock message; the warning count is meaningless"
+        )
+
+        self.assertLess(
+            elapsed,
+            budget_s,
+            f"{timed_frames} app updates took {elapsed:.2f} s (budget {budget_s:.2f} s). "
+            f"The publisher node is blocking the Kit update thread inside its UCX send.",
+        )
+
+        self.assertEqual(
+            len(warnings),
+            1,
+            f"Expected exactly one unbounded-timeout warning, got {len(warnings)}: {warnings[:3]}",
+        )
 
     async def test_no_connection(self) -> None:
         """Test node behavior when no client is connected."""

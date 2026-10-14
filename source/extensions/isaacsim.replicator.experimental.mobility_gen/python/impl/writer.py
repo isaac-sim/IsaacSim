@@ -265,6 +265,36 @@ class MobilityGenWriter:
                 image = PIL.Image.fromarray(value)
                 image.save(image_path)
 
+    def write_state_dict_instance_id_segmentation(self, state_instance_id_segmentation: dict, step: int) -> None:
+        """Write instance ID segmentation frames to disk as lossless NumPy arrays.
+
+        Written under ``state/instance_id_segmentation`` rather than ``state/segmentation``, so
+        instance ID data is not mixed in with the semantic segmentation frames.
+
+        Args:
+            state_instance_id_segmentation: A dict mapping camera name to instance ID segmentation
+                numpy array.
+            step: The current step index used as the filename.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> import numpy as np
+
+            >>> instance_ids = np.zeros((480, 640), dtype=np.uint32)
+            >>> writer.write_state_dict_instance_id_segmentation(
+            ...     {"robot.front_camera.instance_id_segmentation_image": instance_ids},
+            ...     step=0,
+            ... )
+        """
+        for name, value in state_instance_id_segmentation.items():
+            if value is not None:
+                image_folder = os.path.join(self.path, "state", "instance_id_segmentation", name)
+                if not os.path.exists(image_folder):
+                    os.makedirs(image_folder)
+                np.save(os.path.join(image_folder, f"{step:08d}.npy"), value)
+
     def write_state_dict_depth(self, state_np: dict, step: int) -> None:
         """Write depth images to disk as 16-bit inverse depth PNGs.
 

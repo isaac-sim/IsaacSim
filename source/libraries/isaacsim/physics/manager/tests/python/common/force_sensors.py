@@ -97,7 +97,7 @@ def _create_pendulum_articulation(
     sphere.CreateRadiusAttr(root_radius)
     sphere.AddTranslateOp().Set(Gf.Vec3f(0.0))
     UsdPhysics.RigidBodyAPI.Apply(sphere.GetPrim())
-    UsdPhysics.MassAPI.Apply(sphere.GetPrim())
+    UsdPhysics.MassAPI.Apply(sphere.GetPrim()).CreateMassAttr(link_mass)
 
     fixed = UsdPhysics.FixedJoint.Define(stage, root_link_path.AppendChild("FixedJoint"))
     fixed.CreateBody1Rel().SetTargets([root_link_path])
@@ -426,6 +426,18 @@ class LinkIncomingJointForceCommon(GridTestBase):
         )
         self._ext_force_target.set_data("apply-forces", forces, self._force_indices)
 
+    def _validate_link_incoming_joint_forces(self) -> None:
+        """Compare reported incoming joint wrenches with the analytical reference."""
+        joint_forces = self.pendulums.get_data("link-incoming-joint-force").numpy().reshape(self.num_envs, 3, 6)
+        close = abs(joint_forces - self.reference_forces_rep) <= 0.05 * self.reference_forces_mag
+        mismatch = tuple(axis[0] for axis in (~close).nonzero()) if not close.all() else None
+        assert close.all(), (
+            f"link incoming joint forces (axis={self.revolute_joint_axis}, "
+            f"force_on_fixed={self.force_on_fixed_link}) match analytical reference\n"
+            f"first mismatch={mismatch}, actual={joint_forces[mismatch] if mismatch else None}, "
+            f"expected={self.reference_forces_rep[mismatch] if mismatch else None}"
+        )
+
     def on_physics_step(self, sim: SimulationEntities, stepno: int, dt: float) -> None:
         """Apply the force for one step and validate both incoming wrenches.
 
@@ -438,11 +450,7 @@ class LinkIncomingJointForceCommon(GridTestBase):
         if stepno == 0:
             self._apply_ext_force()
         if stepno == 1:
-            joint_forces = self.pendulums.get_data("link-incoming-joint-force").numpy().reshape(self.num_envs, 3, 6)
-            assert (abs(joint_forces - self.reference_forces_rep) <= 0.05 * self.reference_forces_mag).all(), (
-                f"link incoming joint forces (axis={self.revolute_joint_axis}, "
-                f"force_on_fixed={self.force_on_fixed_link}) match analytical reference"
-            )
+            self._validate_link_incoming_joint_forces()
             self.finish()
 
 

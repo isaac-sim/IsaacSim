@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.7] - 2026-10-06
+### Fixed
+- `Pose` annotator: emit an empty result for empty semantic types and accept extent records with trailing metadata.
+
 ## [1.5.6] - 2026-08-19
 ### Fixed
 - `PoseWriter`: write frames for non-`class` semantic types in `idToLabels` instead of aborting the capture.

@@ -13,6 +13,7 @@ requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
 dependencies = [
+    "ovstage==0.2.0.377349",
     "usd-exchange==2.3.0",
 ]
 classifiers = [

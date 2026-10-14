@@ -27,9 +27,9 @@ from newton.actuators import (
     ClampingDCMotor,
     ClampingMaxEffort,
     ClampingPositionBased,
-    ControllerPD,
-    ControllerPID,
     Delay,
+    DrivePD,
+    DrivePID,
 )
 from pxr import Sdf, Usd
 
@@ -103,19 +103,19 @@ class TestActuatorComponentParsing(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
 
     async def test_controller_pd_parses_and_runs(self) -> None:
-        """Verify that a `NewtonPDControlAPI` prim yields a `ControllerPD` and runs without error."""
+        """Verify that a `NewtonPDControlAPI` prim yields a `DrivePD` and runs without error."""
         target = Sdf.Path(_REVOLUTE_JOINT_PATH)
         self._author_pd_prim(f"{_ART_ROOT}/Actuators/act", target)
 
         actuated = ArticulationActuators(_ART_ROOT, auto_step_pre_physics=True)
         try:
-            self.assertIsInstance(actuated.actuators[0].controller, ControllerPD)
+            self.assertIsInstance(actuated.actuators[0].controller, DrivePD)
             await self._run_smoke_test(actuated)
         finally:
             actuated.close()
 
     async def test_controller_pid_parses_and_runs(self) -> None:
-        """Verify that a `NewtonPIDControlAPI` prim yields a `ControllerPID` and runs without error."""
+        """Verify that a `NewtonPIDControlAPI` prim yields a `DrivePID` and runs without error."""
         target = Sdf.Path(_REVOLUTE_JOINT_PATH)
         stage = stage_utils.get_current_stage(backend="usd")
         prim = stage.DefinePrim(f"{_ART_ROOT}/Actuators/act", "NewtonActuator")
@@ -127,12 +127,12 @@ class TestActuatorComponentParsing(omni.kit.test.AsyncTestCase):
 
         actuated = ArticulationActuators(_ART_ROOT, auto_step_pre_physics=True)
         try:
-            self.assertIsInstance(actuated.actuators[0].controller, ControllerPID)
+            self.assertIsInstance(actuated.actuators[0].controller, DrivePID)
             await self._run_smoke_test(actuated)
         finally:
             actuated.close()
 
-    # TODO: Add tests for `ControllerNeuralMLP` and `ControllerNeuralLSTM` once test checkpoint
+    # TODO: Add tests for `DriveNeuralMLP` and `DriveNeuralLSTM` once test checkpoint
     # files are available in the repo.  Both are parsed via `NewtonNeuralControlAPI` — the parser
     # reads `newton:modelPath` and inspects the `model_type` key in the checkpoint's metadata dict
     # to choose between the two classes.

@@ -1549,8 +1549,9 @@ def apply_link_forces_at_position(
 @wp.kernel(enable_backward=False)
 def sync_ctrl_direct_targets(
     dof_to_act: wp.array(dtype=wp.int32),
+    dof_to_target_q: wp.array(dtype=wp.int32),
     joint_target_pos: wp.array(dtype=wp.float32),
-    dofs_per_world: wp.int32,
+    targets_per_world: wp.int32,
     ctrls_per_world: wp.int32,
     # output
     mujoco_ctrl: wp.array(dtype=wp.float32),
@@ -1559,8 +1560,9 @@ def sync_ctrl_direct_targets(
 
     Args:
         dof_to_act: Template DOF -> mujoco:actuator index mapping (-1 = no mapping).
-        joint_target_pos: Per-DOF position targets (flat, all worlds).
-        dofs_per_world: Number of DOFs per world.
+        dof_to_target_q: Template DOF -> Newton position-target coordinate mapping.
+        joint_target_pos: Coordinate-layout position targets (flat, all worlds).
+        targets_per_world: Number of position-target coordinates per world.
         ctrls_per_world: Number of ctrl entries per world.
         mujoco_ctrl: Output control.mujoco.ctrl array (flat, all worlds).
 
@@ -1569,7 +1571,10 @@ def sync_ctrl_direct_targets(
     act_idx = dof_to_act[dof]
     if act_idx < 0:
         return
-    src = world * dofs_per_world + dof
+    target_idx = dof_to_target_q[dof]
+    if target_idx < 0:
+        return
+    src = world * targets_per_world + target_idx
     dst = world * ctrls_per_world + act_idx
     mujoco_ctrl[dst] = joint_target_pos[src]
 
@@ -1686,6 +1691,43 @@ def build_ctrl_direct_dof_mapping(model: newton.Model) -> wp.array | None:
     return wp.array(dof_to_act, dtype=wp.int32, device=model.device)
 
 
+def build_dof_target_q_mapping(model: newton.Model) -> wp.array | None:
+    """Build a template DOF-to-position-target-coordinate mapping.
+
+    Args:
+        model: Newton model containing joint start arrays.
+
+    Returns:
+        Per-template-DOF position-target indices, or None when the model has no degrees of freedom.
+    """
+    nworlds = max(int(getattr(model, "world_count", 1)), 1)
+    dofs_per_world = model.joint_dof_count // nworlds
+    targets_per_world = model.joint_target_q.shape[0] // nworlds
+    if dofs_per_world == 0 or targets_per_world == 0:
+        return None
+
+    dof_starts = model.joint_qd_start.numpy()
+    target_starts = model.joint_target_q_start.numpy()
+    dof_to_target_q = np.full(dofs_per_world, -1, dtype=np.int32)
+
+    joint_count = min(len(dof_starts), len(target_starts)) - 1
+    for joint_index in range(joint_count):
+        dof_start = int(dof_starts[joint_index])
+        target_start = int(target_starts[joint_index])
+        if dof_start >= dofs_per_world or target_start >= targets_per_world:
+            break
+
+        dof_end = min(int(dof_starts[joint_index + 1]), dofs_per_world)
+        target_end = min(int(target_starts[joint_index + 1]), targets_per_world)
+        mapped_count = min(dof_end - dof_start, target_end - target_start)
+        if mapped_count > 0:
+            dof_to_target_q[dof_start : dof_start + mapped_count] = np.arange(
+                target_start, target_start + mapped_count, dtype=np.int32
+            )
+
+    return wp.array(dof_to_target_q, dtype=wp.int32, device=model.device)
+
+
 @wp.kernel(enable_backward=False)
 def get_link_pose(
     body_q: wp.array(dtype=wp.transform),
@@ -1762,6 +1804,141 @@ def get_link_velocity(
         tensor[ti, tj, 3] = 0.0
         tensor[ti, tj, 4] = 0.0
         tensor[ti, tj, 5] = 0.0
+
+
+@wp.kernel(enable_backward=False)
+def get_link_incoming_joint_force(
+    body_parent_f: wp.array(dtype=wp.spatial_vector),
+    body_q: wp.array(dtype=wp.transform),
+    body_com: wp.array(dtype=wp.vec3),
+    joint_X_c: wp.array(dtype=wp.transform),
+    motion_subspaces: wp.array(dtype=wp.spatial_vector),
+    joint_tau: wp.array(dtype=float),
+    joint_qd_start: wp.array(dtype=int),
+    joint_dof_dim: wp.array2d(dtype=int),
+    body_indices: wp.array2d(dtype=int),
+    joint_indices: wp.array2d(dtype=int),
+    tensor: wp.array3d(dtype=float),
+) -> None:
+    """Convert Newton parent wrenches to child-joint-frame incoming wrenches.
+
+    Newton stores each wrench in the world frame at the child body's center of mass.
+    The tensor API reports it at the child joint and expressed in that joint frame.
+    Root and padded link slots contain zeros.
+
+    Args:
+        body_parent_f: Parent-joint wrenches at child centers of mass in the world frame.
+        body_q: World transforms of rigid bodies.
+        body_com: Body-frame center-of-mass offsets.
+        joint_X_c: Joint transforms relative to child bodies.
+        motion_subspaces: World-frame motion-subspace columns indexed by model DOF.
+        joint_tau: Optional net generalized force correction from the Featherstone forward-dynamics solve.
+        joint_qd_start: Model DOF start index for each joint.
+        joint_dof_dim: Linear and angular DOF counts for each joint.
+        body_indices: Model body indices for each link slot.
+        joint_indices: Model joint indices for each non-root link slot.
+        tensor: Output with shape ``(count, max_links, 6)`` in force-then-torque order.
+
+    """
+    ti, tj = wp.tid()
+    body_id = body_indices[ti, tj]
+    joint_id = joint_indices[ti, tj]
+    if body_id < 0 or joint_id < 0:
+        for component in range(6):
+            tensor[ti, tj, component] = 0.0
+        return
+
+    body_transform = body_q[body_id]
+    body_rotation = wp.transform_get_rotation(body_transform)
+    body_position = wp.transform_get_translation(body_transform)
+    joint_child_transform = joint_X_c[joint_id]
+    joint_child_rotation = wp.transform_get_rotation(joint_child_transform)
+    joint_child_position = wp.transform_get_translation(joint_child_transform)
+
+    parent_wrench = body_parent_f[body_id]
+    force_world = wp.spatial_top(parent_wrench)
+    torque_at_com_world = wp.spatial_bottom(parent_wrench)
+    center_of_mass_world = body_position + wp.quat_rotate(body_rotation, body_com[body_id])
+    joint_position_world = body_position + wp.quat_rotate(body_rotation, joint_child_position)
+    torque_at_joint_world = torque_at_com_world + wp.cross(center_of_mass_world - joint_position_world, force_world)
+    joint_rotation_world = body_rotation * joint_child_rotation
+    force_joint = wp.quat_rotate_inv(joint_rotation_world, force_world)
+    torque_joint = wp.quat_rotate_inv(joint_rotation_world, torque_at_joint_world)
+
+    # Featherstone's RNEA wrench contains the reaction component. Add the
+    # complementary accelerating component in the child joint frame so the
+    # reported wrench includes joint actuation and drives.
+    if joint_tau:
+        dof_start = joint_qd_start[joint_id]
+        linear_dof_count = joint_dof_dim[joint_id, 0]
+        angular_dof_count = joint_dof_dim[joint_id, 1]
+        for dof_offset in range(linear_dof_count):
+            model_dof_index = dof_start + dof_offset
+            axis_world = wp.spatial_top(motion_subspaces[model_dof_index])
+            force_joint += joint_tau[model_dof_index] * wp.quat_rotate_inv(joint_rotation_world, axis_world)
+        for dof_offset in range(angular_dof_count):
+            model_dof_index = dof_start + linear_dof_count + dof_offset
+            axis_world = wp.spatial_bottom(motion_subspaces[model_dof_index])
+            torque_joint += joint_tau[model_dof_index] * wp.quat_rotate_inv(joint_rotation_world, axis_world)
+
+    tensor[ti, tj, 0] = force_joint[0]
+    tensor[ti, tj, 1] = force_joint[1]
+    tensor[ti, tj, 2] = force_joint[2]
+    tensor[ti, tj, 3] = torque_joint[0]
+    tensor[ti, tj, 4] = torque_joint[1]
+    tensor[ti, tj, 5] = torque_joint[2]
+
+
+@wp.kernel(enable_backward=False)
+def get_dof_projected_joint_force(
+    body_parent_f: wp.array(dtype=wp.spatial_vector),
+    body_q: wp.array(dtype=wp.transform),
+    body_com: wp.array(dtype=wp.vec3),
+    motion_subspaces: wp.array(dtype=wp.spatial_vector),
+    joint_tau: wp.array(dtype=float),
+    body_indices: wp.array(dtype=int),
+    dof_indices: wp.array(dtype=int),
+    max_dofs: int,
+    tensor: wp.array2d(dtype=float),
+) -> None:
+    """Project incoming joint wrenches onto the corresponding DOF motion directions.
+
+    Args:
+        body_parent_f: Parent-joint wrenches at child centers of mass in the world frame.
+        body_q: World transforms of rigid bodies.
+        body_com: Body-frame center-of-mass offsets.
+        motion_subspaces: World-frame motion-subspace columns indexed by model DOF.
+        joint_tau: Optional net generalized force correction from the Featherstone forward-dynamics solve.
+        body_indices: Model child-body indices in dense view order.
+        dof_indices: Model DOF indices in dense view order.
+        max_dofs: Dense DOF row width.
+        tensor: Output with shape ``(count, max_dofs)``.
+
+    """
+    articulation_index, dof_index = wp.tid()
+    dense_index = articulation_index * max_dofs + dof_index
+    body_id = body_indices[dense_index]
+    model_dof_index = dof_indices[dense_index]
+    if body_id < 0 or model_dof_index < 0:
+        tensor[articulation_index, dof_index] = 0.0
+        return
+
+    body_transform = body_q[body_id]
+    center_of_mass_world = wp.transform_get_translation(body_transform) + wp.quat_rotate(
+        wp.transform_get_rotation(body_transform), body_com[body_id]
+    )
+    motion_subspace = motion_subspaces[model_dof_index]
+    angular_velocity = wp.spatial_bottom(motion_subspace)
+    linear_velocity_at_com = wp.spatial_top(motion_subspace) + wp.cross(angular_velocity, center_of_mass_world)
+    parent_wrench = body_parent_f[body_id]
+    projected_force = wp.dot(linear_velocity_at_com, wp.spatial_top(parent_wrench)) + wp.dot(
+        angular_velocity, wp.spatial_bottom(parent_wrench)
+    )
+    # Featherstone's RNEA wrench contains the reaction component. Its net
+    # generalized force supplies the complementary accelerating component.
+    if joint_tau:
+        projected_force += joint_tau[model_dof_index]
+    tensor[articulation_index, dof_index] = projected_force
 
 
 @wp.kernel(enable_backward=False)

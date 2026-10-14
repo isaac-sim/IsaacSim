@@ -458,6 +458,29 @@ class TestTeleopManagerInputRouting(omni.kit.test.AsyncTestCase):
 
             manager.destroy()
 
+    async def test_timeline_stop_keeps_the_input_session_connected(self) -> None:
+        """Pause controllers without tearing down OpenXR or its external runtime."""
+        frame = TeleopFrame(sequence_id=1, monotonic_time_ns=10, input_mode=TeleopInputMode.LIVE)
+        provider = _SequenceProvider(frame)
+        manager = TeleopManager()
+        with (
+            patch.object(manager, "_subscribe_xr_command_bus"),
+            patch(
+                "isaacsim.replicator.teleop.teleop_manager.app_utils.is_playing",
+                return_value=True,
+            ),
+            patch("isaacsim.replicator.teleop.teleop_manager.app_utils.stop") as stop,
+        ):
+            self.assertTrue(manager.connect_provider(provider))
+            self.assertEqual(manager._cmd_stop(), (True, "Timeline stopped"))
+
+        stop.assert_called_once_with(commit=False)
+        self.assertTrue(manager.is_connected)
+        self.assertEqual(provider.close_count, 0)
+
+        manager.destroy()
+        self.assertEqual(provider.close_count, 1)
+
     async def test_connect_rejects_unavailable_live_input_before_cloudxr(self) -> None:
         """Keep live connection attempts deterministic when Isaac Teleop is absent."""
         capabilities = SimpleNamespace(

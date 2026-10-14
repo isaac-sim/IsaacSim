@@ -143,11 +143,11 @@ DeviceGuard::DeviceGuard(int32_t ordinal) : DeviceGuard(Device(ordinal))
 {
 }
 
-DeviceGuard::~DeviceGuard()
+DeviceGuard::~DeviceGuard() noexcept
 {
     if (m_restore)
     {
-        CudaRuntime::getInstance().cudaSetDevice(m_previousOrdinal);
+        CudaRuntime::getInstance(false).cudaSetDevice(m_previousOrdinal, false);
     }
 }
 

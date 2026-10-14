@@ -372,6 +372,66 @@ class OptimizerBackendTests(omni.kit.test.AsyncTestCase):
 
         self.assertEqual(bridge.signal_requests, [(True, False, False)])
 
+    async def test_paired_validation_batches_parameter_sets_per_chunk(self) -> None:
+        trajectory = _trajectory(sample_count=2)
+        config = _config(trajectory=trajectory)
+        chunk = TrajectoryChunk(
+            spec=TelemetryChunkRunSpec(
+                name="validation",
+                role="validation",
+                start=0.0,
+                end=1.0,
+            ),
+            trajectory=trajectory,
+            sample_count=2,
+            duration_seconds=1.0,
+        )
+        bridge = _ThetaBridge()
+        optimizer = RolloutOptimizerBase()
+        optimizer.set_bridge(bridge)
+
+        with _patched_kit_app():
+            grouped = await optimizer.evaluate_validation_parameter_sets_with_rollouts(
+                config,
+                [chunk],
+                [[0.25], [0.75]],
+            )
+
+        self.assertEqual(len(bridge.batches), 1)
+        torch.testing.assert_close(bridge.batches[0], torch.tensor([[0.25], [0.75]]))
+        self.assertEqual([len(group) for group in grouped], [1, 1])
+
+    async def test_paired_validation_honors_optimizer_cancellation_before_rollout(self) -> None:
+        trajectory = _trajectory(sample_count=2)
+        config = _config(trajectory=trajectory)
+        chunk = TrajectoryChunk(
+            spec=TelemetryChunkRunSpec(
+                name="validation",
+                role="validation",
+                start=0.0,
+                end=1.0,
+            ),
+            trajectory=trajectory,
+            sample_count=2,
+            duration_seconds=1.0,
+        )
+        bridge = _ThetaBridge()
+        optimizer = RolloutOptimizerBase()
+        optimizer.set_bridge(bridge)
+
+        def cancel_during_progress(_message: str, _fraction: float) -> None:
+            optimizer.request_cancel()
+
+        with _patched_kit_app(), self.assertRaises(asyncio.CancelledError):
+            await optimizer.evaluate_validation_parameter_sets_with_rollouts(
+                config,
+                [chunk],
+                [[0.25], [0.75]],
+                on_progress=cancel_during_progress,
+            )
+
+        self.assertEqual(bridge.batches, [])
+
     async def test_sequential_rollout_rejects_partial_optional_signal_batches(self) -> None:
         """Do not broadcast one candidate's optional output onto another candidate."""
         trajectory = _trajectory(sample_count=2)
@@ -1064,6 +1124,23 @@ class OptimizerBackendTests(omni.kit.test.AsyncTestCase):
             await optimizer.compute_costs_for_theta_batch(config, theta)
 
         self.assertEqual(bridge.set_trajectory_calls, 2)
+
+    async def test_bridge_setup_rebinds_when_trajectory_tail_changes(self) -> None:
+        # The bridge derives its physics substep rate from every sample, so a
+        # chunk sharing the consumed prefix but not the tail must be rebound.
+        bridge = _ThetaBridge()
+        optimizer = RolloutOptimizerBase()
+        optimizer.set_bridge(bridge)
+        config = _config(trajectory=_trajectory(sample_count=4))
+        theta = torch.tensor([[0.5]], dtype=torch.float32)
+
+        with _patched_kit_app():
+            await optimizer.compute_costs_for_theta_batch(config, theta)
+            config.trajectory.times[3] = 7.0
+            await optimizer.compute_costs_for_theta_batch(config, theta)
+
+        self.assertEqual(bridge.set_trajectory_calls, 2)
+        self.assertEqual(float(bridge.trajectory.times[3]), 7.0)
 
     async def test_per_run_residual_config_does_not_mutate_optimizer_defaults(self) -> None:
         bridge = _ThetaBridge()

@@ -21,6 +21,7 @@ import asyncio
 import os
 import traceback
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Optional
 
 import carb
@@ -30,6 +31,7 @@ import omni.ui as ui
 import omni.usd
 from isaacsim.gui.components.element_wrappers import StateButton
 from isaacsim.gui.components.ui_utils import get_style
+from isaacsim.robot_setup.sysid.actuator_compatibility import resolve_simulation_compatibility
 
 from ..articulation_utils import collect_robot_link_and_joint_paths
 from ..execution import run_sysid
@@ -61,6 +63,7 @@ from ..run_spec import (
     TelemetryRunSpec,
     TimeWindowRunSpec,
 )
+from ..runtime import ensure_required_runtime_extensions_async
 from ..schema_validation import validate_sysid_run_spec_payload
 from ..settings import CarbOptimizerSettingsStore
 from ..telemetry_quality import build_telemetry_quality_report
@@ -147,6 +150,7 @@ class UIBuilder:
         self._active_parameter_space: Optional[ParameterSpace] = None
         self._active_link_paths: list[str] = []
         self._active_joint_paths: list[str] = []
+        self._active_physics_backend: str = ""
 
         # Optimizer (kept alive across runs for warm-start)
         backend_cfg = self._solver.get_backend_config()
@@ -226,11 +230,25 @@ class UIBuilder:
     def _on_engine_changed(self, _label: str) -> None:
         self._recipe_bar.mark_dirty()
         self._refresh_engine_backend_hint()
+        self._refresh_parameter_space_for_backend()
         self._update_run_button_state()
 
     def _on_newton_settings_changed(self) -> None:
         self._recipe_bar.mark_dirty()
+        self._refresh_parameter_space_for_backend()
         self._update_run_button_state()
+
+    def _resolved_physics_backend(self) -> str:
+        return resolve_simulation_compatibility(
+            SimpleNamespace(
+                engine=self._simulation.get_engine(),
+                physics_backend=self._simulation.get_physics_backend(),
+            )
+        ).physics_backend
+
+    def _refresh_parameter_space_for_backend(self) -> None:
+        if self._resolved_physics_backend() != self._active_physics_backend:
+            self._refresh_parameter_space()
 
     def _on_parameter_selection_changed(self) -> None:
         self._update_run_button_state()
@@ -241,7 +259,7 @@ class UIBuilder:
             chunk_specs = self._telemetry.get_chunk_specs() if trajectory is not None else []
         except Exception:  # noqa: BLE001
             # This runs on every field edit via _update_run_button_state, so an invalid
-            # input (e.g. an out-of-range auto-split Train fraction) must not raise into
+            # input (e.g. an out-of-range automatic-holdout training share) must not raise into
             # the callback. Fail closed with no chunks; the error surfaces when the user
             # actually runs Check or Solve.
             chunk_specs = []
@@ -275,11 +293,13 @@ class UIBuilder:
             robot_path=self._simulation.get_robot_path(),
             engine=self._simulation.get_engine(),
             simulation_settings=(
+                self._simulation.get_physics_backend(),
                 newton_spec.solver,
                 newton_spec.feedforward,
                 newton_spec.controller,
                 newton_spec.effort_clamp,
                 self._simulation.get_actuator_runtime(),
+                self._simulation.get_explicit_actuator_policy(),
             ),
             residual_settings=residual_settings,
             solver_settings=(
@@ -445,6 +465,10 @@ class UIBuilder:
             )
         if "actuator_runtime" in section:
             self._simulation.set_actuator_runtime(str(section["actuator_runtime"]))
+        if "physics_backend" in section:
+            self._simulation.set_physics_backend(str(section["physics_backend"]))
+        if "explicit_actuator_policy" in section:
+            self._simulation.set_explicit_actuator_policy(str(section["explicit_actuator_policy"]))
         feedforward = newton_section.get("feedforward")
         if feedforward is not None:
             self._simulation.set_feedforward_mode(str(feedforward).strip().lower() or "none")
@@ -535,19 +559,27 @@ class UIBuilder:
             except Exception as exc:
                 carb.log_warn(f"SysId: could not read USD parameter baselines: {exc}")
 
+        physics_backend = self._resolved_physics_backend()
+        baselines_read = False
         advanced = any(flags.values())
         if not advanced:
             space = ParameterSpace.for_robot(num_joints)
             if stage is not None and link_paths:
                 try:
-                    space.read_usd_baselines(stage, link_paths, joint_paths[:num_joints])
+                    space.read_usd_baselines(
+                        stage, link_paths, joint_paths[:num_joints], physics_backend=physics_backend
+                    )
+                    baselines_read = True
                 except Exception as exc:
                     carb.log_warn(f"SysId: could not read USD parameter baselines: {exc}")
         else:
             space = ParameterSpace.for_robot_extended(num_joints, max(1, len(link_paths)), include_basic=True, **flags)
             if stage is not None and link_paths:
                 try:
-                    space.read_usd_baselines(stage, link_paths, joint_paths[:num_joints])
+                    space.read_usd_baselines(
+                        stage, link_paths, joint_paths[:num_joints], physics_backend=physics_backend
+                    )
+                    baselines_read = True
                 except Exception as exc:
                     carb.log_warn(f"SysId: could not read all USD parameter baselines: {exc}")
 
@@ -557,6 +589,9 @@ class UIBuilder:
         self._parameters.set_parameter_space(space)
         if hasattr(self._optimizer, "set_parameter_space"):
             self._optimizer.set_parameter_space(space)
+        # Left unset after a failed read so the next backend callback retries
+        # instead of treating the fallback baselines as current.
+        self._active_physics_backend = physics_backend if baselines_read else ""
 
     # ---------------------------------------------------------------- run
 
@@ -638,9 +673,9 @@ class UIBuilder:
         self._workflow_shell.set_stage_titles(titles)
 
     def _on_run_clicked(self) -> None:
-        if self._running:
+        active_task = getattr(self, "_run_task", None)
+        if self._running or (active_task is not None and not active_task.done()):
             return
-        viewport_paused = False
         enabled, hint = self._evaluate_run_gate()
         if not enabled:
             carb.log_warn(f"SysId run blocked by the Check gate: {hint}")
@@ -650,9 +685,19 @@ class UIBuilder:
             self._update_run_button_state(preserve_status=True)
             return
 
+        self._run_task = asyncio.ensure_future(self._start_run_async())
+
+    async def _start_run_async(self) -> None:
+        """Activate optional runtime support and prepare an approved run."""
+        viewport_paused = False
+
         try:
             run_spec = self._build_run_spec()
             CarbOptimizerSettingsStore().save(self._solver.get_backend_config())
+
+            enabled_extensions = await ensure_required_runtime_extensions_async(run_spec.simulation)
+            if enabled_extensions:
+                carb.log_info(f"SysId: enabled required runtime extension(s): {', '.join(enabled_extensions)}")
 
             stage = omni.usd.get_context().get_stage()
             if stage is None:
@@ -829,10 +874,11 @@ class UIBuilder:
                 on_progress=on_progress,
                 prepared_run=prepared,
                 provenance_sidecar_path=provenance_path,
+                instance_local_writeback=True,
             )
 
             if self._ui_active(run_generation):
-                final = result.final_status
+                final = result.selected_status
                 writeback_failed = bool(run_spec.outputs.apply_parameters_to_usd) and not result.parameters_written
                 self._parameters.update_theta_values(final.theta)
                 self._results.add_cost_point(final.iteration, final.cost)
@@ -845,11 +891,20 @@ class UIBuilder:
 
                 status_parts = [f"Finished: iter={final.iteration}, cost={final.cost:.6e}"]
                 if result.parameters_written:
-                    status_parts.append("USD parameters authored (save stage to persist)")
+                    status_parts.append("instance-local USD parameters authored and verified")
+                    if result.live_parameters_applied:
+                        status_parts.append("live PhysX parameters refreshed")
+                    status_parts.append("save stage to persist")
                 elif writeback_failed:
                     status_parts.append("requested USD parameter writeback did not complete")
                 if result.validation_metrics:
-                    self._results.set_validation_results(self._format_validation_metrics(result.validation_metrics))
+                    self._results.set_validation_results(
+                        self._format_validation_metrics(
+                            result.validation_metrics,
+                            comparison=getattr(result, "validation_comparison", None),
+                            validation_source=getattr(result, "validation_artifact_source", "configured_chunks"),
+                        )
+                    )
                     status_parts.append(summarize_validation_metrics(result.validation_metrics))
                 else:
                     self._results.set_validation_results(
@@ -1014,7 +1069,9 @@ class UIBuilder:
                 co_locate_clones=self._simulation.is_co_locate_clones(),
                 fabric_clones=self._simulation.is_fabric_clones(),
                 offline_stepping=self._simulation.is_offline_stepping(),
+                physics_backend=self._simulation.get_physics_backend(),
                 actuator_runtime=self._simulation.get_actuator_runtime(),
+                explicit_actuator_policy=self._simulation.get_explicit_actuator_policy(),
                 newton=self._simulation.get_newton_spec(),
             ),
             parameters=ParametersRunSpec(
@@ -1077,13 +1134,49 @@ class UIBuilder:
         layer = stage.GetRootLayer()
         return getattr(layer, "realPath", "") or getattr(layer, "identifier", "") or ""
 
-    def _format_validation_metrics(self, metrics: list[ChunkValidationMetric]) -> str:
+    def _format_validation_metrics(
+        self,
+        metrics: list[ChunkValidationMetric],
+        *,
+        comparison: dict | None = None,
+        validation_source: str = "configured_chunks",
+    ) -> str:
         if not metrics:
             return "No validation chunks were configured."
-        lines = [summarize_validation_metrics(metrics)]
+        source_label = (
+            "Held-out validation"
+            if validation_source == "configured_chunks"
+            else "Training-data replay (not a holdout)"
+        )
+        lines = [source_label, summarize_validation_metrics(metrics)]
+        comparison = comparison or {}
+        if comparison.get("available"):
+            lines.append("Untuned -> tuned RMSE (native channel units; improvement):")
+            channel_labels = {
+                "position_rmse": "q [rad/m]",
+                "velocity_rmse": "dq [rad/s or m/s]",
+                "torque_rmse": "effort [N.m/N]",
+                "end_effector_pose_rmse": "EE pose",
+                "contact_force_rmse": "contact force [N]",
+            }
+            for row in comparison.get("chunks", []):
+                channel_parts = []
+                for key, label in channel_labels.items():
+                    delta = (row.get("channels") or {}).get(key) or {}
+                    before = delta.get("untuned")
+                    after = delta.get("tuned")
+                    if before is None or after is None:
+                        continue
+                    percent = delta.get("percent_improvement")
+                    percent_text = "n/a" if percent is None else f"{float(percent):+.1f}%"
+                    channel_parts.append(
+                        f"{label} {float(before):.3e} -> {float(after):.3e} ({percent_text}, {delta.get('status', '')})"
+                    )
+                if channel_parts:
+                    lines.append(f"{row.get('name', 'validation')}: " + "; ".join(channel_parts))
         for metric in metrics:
             lines.append(
-                f"{metric.name} [{metric.excitation}]: cost={metric.normalized_cost:.3e}, "
+                f"Tuned {metric.name} [{metric.excitation}]: cost={metric.normalized_cost:.3e}, "
                 f"qRMSE={metric.position_rmse:.3e}, dqRMSE={metric.velocity_rmse:.3e}"
             )
         return "\n".join(lines)
@@ -1091,7 +1184,9 @@ class UIBuilder:
     def _format_parameter_deltas(self, config: Any, final: Any) -> str:
         if not config.param_entries:
             return "No optimized parameters."
-        initial = config.theta_initial.detach().cpu().tolist()
+        authored_initial = getattr(config, "theta_authored_initial", None)
+        initial_tensor = authored_initial if authored_initial is not None else config.theta_initial
+        initial = initial_tensor.detach().cpu().tolist()
         final_theta = list(final.theta)
         lines = []
         for idx, entry in enumerate(config.param_entries[:8]):
@@ -1180,13 +1275,9 @@ class UIBuilder:
             prepared=self._last_prepared_run,
             result=self._last_run_result,
             schema_issues=validate_sysid_run_spec_payload(spec.to_dict()),
-            telemetry_quality=build_telemetry_quality_report(
-                self._last_prepared_run.raw_trajectory,
-                [
-                    chunk.spec
-                    for chunk in self._last_prepared_run.train_chunks + self._last_prepared_run.validation_chunks
-                ],
-            ),
+            # Reuse the assessment made during the pre-solve check; on high-rate
+            # telemetry, repeating it would stall the UI thread.
+            telemetry_quality=self._last_prepared_run.telemetry_quality,
             validation_artifact_dir=path.parent,
         )
         return str(path)

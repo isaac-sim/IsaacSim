@@ -442,7 +442,7 @@ if deltas:
     print(f"Zero-delta steps:   {zero_count}/{len(deltas)}")
     print(f"One-frame (~16ms):  {one_frame_count}/{len(deltas)}")
     print(f"Other:              {other_count}/{len(deltas)}")
-    print("Status:        ", "PASS ✅" if passed else "[fatal] ❌")
+    print("Status:        ", "PASS" if passed else "[fatal] FAIL")
 
     if not passed:
         if not settled:

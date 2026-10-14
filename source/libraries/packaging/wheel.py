@@ -32,6 +32,7 @@ import tempfile
 import tomllib
 import uuid
 import zipfile
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -46,6 +47,8 @@ _MANIFEST_CONTRACT_SPEC.loader.exec_module(_MANIFEST_CONTRACT)
 
 _DISTRIBUTION_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 _PIP_LICENSE_FILENAME = "isaacsim-libraries-PIP-LICENSES.txt"
+_WHEEL_SIZE_MANIFEST_FILENAME = "wheel_sizes.json"
+_MEBIBYTE = 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +162,10 @@ def _discover_groups(repo_root: Path) -> dict[str, Path]:
     modules_root = repo_root / "source" / "libraries"
     groups: dict[str, Path] = {}
     normalized_groups: dict[str, str] = {}
-    pyprojects = (*modules_root.glob("*/pyproject.toml"), *modules_root.glob("*/*/pyproject.toml"))
+    pyprojects = (
+        *modules_root.glob("*/pyproject.toml"),
+        *modules_root.glob("*/*/pyproject.toml"),
+    )
     for pyproject in sorted(pyprojects):
         metadata = tomllib.loads(pyproject.read_text(encoding="utf-8"))
         project_name = metadata.get("project", {}).get("name")
@@ -270,6 +276,45 @@ def _run_install(arguments: _WheelArguments, group: str, stage: Path, variant: s
         arguments.configuration.capitalize(),
     ]
     subprocess.run(command, check=True)
+
+
+def _strip_release_elf_files(arguments: _WheelArguments, stage: Path) -> tuple[Path, ...]:
+    """Remove debug and unused symbols from staged release-wheel ELF files.
+
+    Debug builds retain their symbols. The CMake-selected strip executable keeps
+    cross-compiled wheel assembly on the configured toolchain rather than using
+    an arbitrary host utility.
+
+    Args:
+        arguments: Parsed command-line arguments.
+        stage: CMake installation stage to optimize.
+
+    Returns:
+        Files that were stripped.
+    """
+    if arguments.configuration != "release":
+        return ()
+
+    elf_files: list[Path] = []
+    for path in sorted(stage.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open("rb") as stream:
+            if stream.read(4) == b"\x7fELF":
+                elf_files.append(path)
+    if not elf_files:
+        return ()
+
+    strip_value = _read_cmake_cache(arguments.build_directory).get("CMAKE_STRIP")
+    if not strip_value:
+        raise RuntimeError("Release wheel assembly requires CMAKE_STRIP in the configured build")
+    strip = Path(strip_value)
+    if not strip.is_file():
+        raise RuntimeError(f"Release wheel strip executable does not exist: {strip}")
+
+    for path in elf_files:
+        subprocess.run([str(strip), "--strip-unneeded", str(path)], check=True)
+    return tuple(elf_files)
 
 
 def _load_package_manifest(path: Path, group: str) -> dict[str, object]:
@@ -547,6 +592,94 @@ def _publish_wheel(source: Path, output_directory: Path) -> Path:
     return destination
 
 
+def _build_wheel_size_manifest(output_directory: Path, configuration: str) -> dict[str, object]:
+    """Build size metadata from the completed wheel artifacts.
+
+    Args:
+        output_directory: Directory containing wheel artifacts.
+        configuration: Wheel build configuration.
+
+    Returns:
+        Versioned wheel size manifest.
+
+    Raises:
+        RuntimeError: If the output directory contains no wheels.
+    """
+    wheels = sorted(output_directory.glob("*.whl"))
+    if not wheels:
+        raise RuntimeError(f"No wheels found in {output_directory}")
+
+    rows: list[dict[str, int | str]] = []
+    content_groups: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for path in wheels:
+        with zipfile.ZipFile(path) as wheel:
+            entries = [entry for entry in wheel.infolist() if not entry.is_dir()]
+        rows.append(
+            {
+                "filename": path.name,
+                "size_bytes": path.stat().st_size,
+                "installed_size_bytes": sum(entry.file_size for entry in entries),
+                "file_count": len(entries),
+            }
+        )
+        for entry in entries:
+            content_groups[(entry.file_size, entry.CRC)].append(entry.compress_size)
+
+    duplicate_compressed_size = sum(sum(sizes) - min(sizes) for sizes in content_groups.values() if len(sizes) > 1)
+    return {
+        "schema_version": 1,
+        "configuration": configuration,
+        "wheels": rows,
+        "totals": {
+            "size_bytes": sum(int(row["size_bytes"]) for row in rows),
+            "installed_size_bytes": sum(int(row["installed_size_bytes"]) for row in rows),
+            "file_count": sum(int(row["file_count"]) for row in rows),
+            "duplicate_compressed_size_bytes": duplicate_compressed_size,
+        },
+    }
+
+
+def _write_wheel_size_manifest(output_directory: Path, configuration: str) -> dict[str, object]:
+    """Write wheel size metadata beside the artifacts.
+
+    Args:
+        output_directory: Directory containing wheel artifacts.
+        configuration: Wheel build configuration.
+
+    Returns:
+        Written wheel size manifest.
+    """
+    manifest = _build_wheel_size_manifest(output_directory, configuration)
+    destination = output_directory / _WHEEL_SIZE_MANIFEST_FILENAME
+    temporary = destination.with_suffix(f"{destination.suffix}.tmp")
+    temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(destination)
+    return manifest
+
+
+def _print_wheel_sizes(manifest: dict[str, object]) -> None:
+    """Print the wheel size manifest in a human-readable table.
+
+    Args:
+        manifest: Wheel size manifest to print.
+    """
+    wheels = manifest["wheels"]
+    totals = manifest["totals"]
+    if not isinstance(wheels, list) or not isinstance(totals, dict):
+        raise RuntimeError("Wheel size manifest has an invalid structure")
+    print(f"{'Wheel':48} {'Compressed':>14} {'Installed':>14} {'Files':>7}")
+    for row in sorted(wheels, key=lambda item: int(item["size_bytes"]), reverse=True):
+        print(
+            f"{str(row['filename']):48} "
+            f"{int(row['size_bytes']) / _MEBIBYTE:>11.2f} MiB "
+            f"{int(row['installed_size_bytes']) / _MEBIBYTE:>11.2f} MiB "
+            f"{int(row['file_count']):>7}"
+        )
+    print(f"Total compressed: {int(totals['size_bytes']) / _MEBIBYTE:.2f} MiB")
+    print(f"Total installed: {int(totals['installed_size_bytes']) / _MEBIBYTE:.2f} MiB")
+    print("Duplicate compressed content: " f"{int(totals['duplicate_compressed_size_bytes']) / _MEBIBYTE:.2f} MiB")
+
+
 def _assemble_group(
     arguments: _WheelArguments,
     group: str,
@@ -575,6 +708,7 @@ def _assemble_group(
 
         variant = _select_wheel_variant(arguments, group, project_directory)
         _run_install(arguments, group, stage, variant)
+        _strip_release_elf_files(arguments, stage)
         manifest = _load_staged_manifest(stage, group)
         command = [
             sys.executable,
@@ -608,6 +742,8 @@ def _main() -> int:
     internal_groups = frozenset(discovered_groups)
     for group in groups:
         print(_assemble_group(arguments, group, discovered_groups[group], internal_groups))
+    manifest = _write_wheel_size_manifest(arguments.output_directory, arguments.configuration)
+    _print_wheel_sizes(manifest)
     return 0
 
 

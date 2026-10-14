@@ -27,7 +27,9 @@ import numpy as np
 
 from .parameter_types import SysIdParameterType
 
-TUNING_ASSESSMENT_SCHEMA_VERSION = 1
+# 2: `validation_improvement` gained `unpaired_channels`, and each overall
+#    channel gained `unpaired_chunks`.
+TUNING_ASSESSMENT_SCHEMA_VERSION = 2
 
 ASSESSMENT_PASS = "pass"
 ASSESSMENT_WARN = "warn"
@@ -113,8 +115,8 @@ def build_tuning_assessment_report(
 
     parameter_summary = _parameter_summary(config, selected)
     train_norm = _training_normalized_cost(config, selected)
-    # Only a genuine holdout can credibly bound generalization. The full-telemetry
-    # fallback is evaluated on the training trajectory (tagged holdout=False), so it
+    # Only a genuine holdout can credibly bound generalization. The training-chunk
+    # fallback is evaluated on the fitted data (tagged holdout=False), so it
     # must not feed the train-vs-validation gap -- otherwise the gap reads ~1.0 and
     # masquerades as a clean pass on data the model was fit to.
     holdout_metrics = [m for m in validation_metrics if _is_holdout_metric(m)]
@@ -130,6 +132,8 @@ def build_tuning_assessment_report(
         checks, issues, config, parameter_summary, getattr(prepared, "resampling_diagnostics", [])
     )
     _check_validation_holdout(checks, issues, prepared, result, validation_metrics)
+    validation_comparison = dict(getattr(result, "validation_comparison", {}) or {})
+    _check_validation_improvement(checks, issues, validation_comparison)
     _check_train_validation_gap(checks, issues, train_norm, validation_norm, validation_ratio)
     _check_excitation_coverage(checks, issues, prepared)
     _check_resampling(checks, issues, getattr(prepared, "resampling_diagnostics", []))
@@ -149,6 +153,7 @@ def build_tuning_assessment_report(
             "validation_normalized_cost": validation_norm,
             "validation_to_training_cost_ratio": validation_ratio,
             "validation_metric_count": len(validation_metrics),
+            "validation_comparison": validation_comparison,
         },
         parameter_summary=parameter_summary,
         recommended_next_parameters=recommended_next_parameters,
@@ -313,6 +318,83 @@ def _check_validation_holdout(
     }
     if issue is not None:
         issues.append(issue)
+
+
+def _check_validation_improvement(
+    checks: dict[str, dict[str, Any]],
+    issues: list[TuningAssessmentIssue],
+    comparison: dict[str, Any],
+) -> None:
+    """Warn when any available held-out channel regresses from authored values.
+
+    Args:
+        checks: Assessment checks updated with the comparison outcome.
+        issues: Assessment issues updated when a regression is found.
+        comparison: Paired untuned and tuned validation comparison.
+    """
+    if comparison.get("holdout") is False:
+        checks["validation_improvement"] = {
+            "status": ASSESSMENT_UNAVAILABLE,
+            "reason": "paired comparison uses training-data replay rather than an independent holdout",
+            "reason_code": "training_data_replay",
+            "regressed_channels": [],
+        }
+        return
+    if not comparison.get("available"):
+        checks["validation_improvement"] = {
+            "status": ASSESSMENT_UNAVAILABLE,
+            "reason": comparison.get("reason", "paired validation is unavailable"),
+            "reason_code": "comparison_unavailable",
+            "regressed_channels": [],
+        }
+        return
+    overall = dict(comparison.get("overall") or {})
+    regressed = sorted(
+        name for name, payload in overall.items() if isinstance(payload, dict) and payload.get("status") == "regressed"
+    )
+    # A channel whose RMSE is finite in only one pass diverged on at least one
+    # chunk. That is a failure to surface, not a clean pass.
+    unpaired = sorted(
+        name for name, payload in overall.items() if isinstance(payload, dict) and payload.get("unpaired_chunks")
+    )
+    if regressed:
+        status = ASSESSMENT_WARN
+        reason = ""
+        reason_code = "regressed_channels"
+    elif unpaired:
+        status = ASSESSMENT_WARN
+        reason = "one or more channels diverged on a validation chunk in exactly one pass"
+        reason_code = "unpaired_channels"
+    else:
+        status = ASSESSMENT_PASS
+        reason = ""
+        reason_code = ""
+    checks["validation_improvement"] = {
+        "status": status,
+        "reason_code": reason_code,
+        "reason": reason,
+        "regressed_channels": regressed,
+        "unpaired_channels": unpaired,
+        "overall": overall,
+    }
+    if regressed:
+        issues.append(
+            TuningAssessmentIssue(
+                "validation_rmse_regression",
+                "warning",
+                "Accepted parameters increase one or more validation RMSE channels relative to authored values.",
+                {"channels": regressed},
+            )
+        )
+    if unpaired:
+        issues.append(
+            TuningAssessmentIssue(
+                "validation_rmse_unpaired",
+                "warning",
+                "One or more validation RMSE channels are non-finite in exactly one pass, so no verdict is possible.",
+                {"channels": unpaired},
+            )
+        )
 
 
 def _check_train_validation_gap(
@@ -707,7 +789,7 @@ def _diagnostic_reason(item) -> str:  # noqa: ANN001
 def _is_holdout_metric(metric) -> bool:  # noqa: ANN001
     """Return True unless a metric is explicitly flagged as a non-holdout fallback.
 
-    Validation metrics derived from the full-telemetry fallback carry
+    Validation metrics derived from the training-chunk fallback carry
     ``extra["holdout"] = False`` because they are evaluated on the training
     trajectory; configured holdout chunks leave the flag unset (treated as True).
 

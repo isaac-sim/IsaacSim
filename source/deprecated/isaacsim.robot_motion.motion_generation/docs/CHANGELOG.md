@@ -1,5 +1,9 @@
 # Changelog
 
+## [9.0.0] - 2026-09-22
+### Removed
+- Remove obsolete decision-framework motion-policy registrations and their dedicated configuration files.
+
 ## [8.2.9] - 2026-06-09
 ### Fixed
 - Fix linter errors and missing or incomplete docstrings, and update `python_api.md`.

@@ -15,28 +15,14 @@
 
 """Generate synthetic video clips in a warehouse using the CosmosWriter."""
 
-from isaacsim import SimulationApp
-
-simulation_app = SimulationApp(launch_config={"headless": False})
-
 import argparse
 import os
 from typing import Any
 
-import carb
-import isaacsim.core.experimental.utils.app as app_utils
-import isaacsim.core.experimental.utils.stage as stage_utils
-import omni.replicator.core as rep
-import omni.timeline
-from isaacsim.core.experimental.prims import XformPrim
-from isaacsim.core.experimental.utils.prim import get_prim_at_path
-from isaacsim.core.experimental.utils.stage import add_reference_to_stage, open_stage
-from isaacsim.storage.native import get_assets_root_path
-
 # Capture parameters
 START_DELAY = 0.1  # Timeline duration delay before capturing the first clip
-NUM_CLIPS = 2  # Number of video clips to capture with the CosmosWriter
-NUM_FRAMES_PER_CLIP = 10  # Number of frames for each clip
+NUM_CLIPS = 3  # Number of video clips to capture with the CosmosWriter
+NUM_FRAMES_PER_CLIP = 30  # Number of frames for each clip
 CAPTURE_INTERVAL = 2  # Capture interval between frames (capture every N simulation steps)
 
 # Stage and asset paths
@@ -48,6 +34,7 @@ CARTER_CAMERA_PATH = f"{CARTER_NAV_PATH}/chassis_link/sensors/front_hawk/left/ca
 CARTER_NAV_POSITION = (-6, 4, 0)
 CARTER_NAV_TARGET_POSITION = (3, 3, 0)
 OUT_DIR = "_out_cosmos_warehouse"
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-clips", type=int, default=NUM_CLIPS, help="Number of video clips to capture.")
@@ -67,6 +54,22 @@ parser.add_argument(
     help="Timeline duration delay before capturing the first clip.",
 )
 args, _ = parser.parse_known_args()
+if args.num_clips < 1 or args.num_frames_per_clip < 1 or args.capture_interval < 1:
+    parser.error("--num-clips, --num-frames-per-clip, and --capture-interval must be > 0")
+
+from isaacsim import SimulationApp
+
+simulation_app = SimulationApp(launch_config={"headless": False})
+
+import carb
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
+import omni.replicator.core as rep
+import omni.timeline
+from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.experimental.utils.prim import get_prim_at_path
+from isaacsim.core.experimental.utils.stage import add_reference_to_stage, open_stage
+from isaacsim.storage.native import get_assets_root_path
 
 
 def advance_timeline_by_duration(duration: float, max_updates: int = 1000) -> None:

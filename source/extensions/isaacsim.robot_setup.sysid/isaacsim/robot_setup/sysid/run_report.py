@@ -33,7 +33,7 @@ from .schema_validation import (
 from .telemetry_quality import TelemetryQualityReport, build_telemetry_quality_report
 from .tuning_assessment import build_tuning_assessment_report
 
-SYSID_RUN_REPORT_SCHEMA_VERSION = 3
+SYSID_RUN_REPORT_SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -49,8 +49,13 @@ class SysIdRunReport:
     newton_config: dict[str, Any] | None
     robot_prim_path: str
     train_chunks: list[dict[str, Any]]
+    untuned_validation_metrics: list[dict[str, Any]]
+    tuned_validation_metrics: list[dict[str, Any]]
     validation_metrics: list[dict[str, Any]]
+    untuned_validation_summary: dict[str, Any]
+    tuned_validation_summary: dict[str, Any]
     validation_summary: dict[str, Any]
+    validation_comparison: dict[str, Any]
     validation_artifacts: dict[str, Any]
     resampling_diagnostics: list[dict[str, Any]]
     tuning_assessment: dict[str, Any]
@@ -137,6 +142,9 @@ def build_sysid_run_report(  # noqa: D103
         telemetry_quality=telemetry_quality,
     )
     report_extra = dict(extra or {})
+    report_extra["writeback"] = {
+        "live_parameters_applied": bool(getattr(result, "live_parameters_applied", False)),
+    }
     actuator_metadata = getattr(getattr(prepared, "bridge", None), "actuator_metadata", None)
     if isinstance(actuator_metadata, dict) and actuator_metadata:
         report_extra["actuator"] = actuator_metadata
@@ -152,8 +160,17 @@ def build_sysid_run_report(  # noqa: D103
         newton_config=getattr(prepared, "newton_config", None),
         robot_prim_path=spec.simulation.robot_prim_path,
         train_chunks=_chunk_payloads(getattr(prepared, "train_chunks", [])),
+        untuned_validation_metrics=_metric_payloads(getattr(result, "untuned_validation_metrics", [])),
+        tuned_validation_metrics=_metric_payloads(
+            getattr(result, "tuned_validation_metrics", getattr(result, "validation_metrics", []))
+        ),
         validation_metrics=_metric_payloads(getattr(result, "validation_metrics", [])),
+        untuned_validation_summary=validation_summary(getattr(result, "untuned_validation_metrics", [])),
+        tuned_validation_summary=validation_summary(
+            getattr(result, "tuned_validation_metrics", getattr(result, "validation_metrics", []))
+        ),
         validation_summary=validation_summary(getattr(result, "validation_metrics", [])),
+        validation_comparison=dict(getattr(result, "validation_comparison", {}) or {}),
         validation_artifacts=validation_artifacts or empty_validation_artifacts(result),
         resampling_diagnostics=_diagnostic_payloads(getattr(prepared, "resampling_diagnostics", []) or []),
         tuning_assessment=tuning_assessment.to_dict(),
@@ -199,7 +216,10 @@ def write_validation_artifacts(result, output_dir: str | Path) -> dict[str, Any]
     output = empty_validation_artifacts(result)
     output_dir = Path(output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    rollouts = list(getattr(result, "validation_rollouts", []) or [])
+    rollouts = list(
+        getattr(result, "tuned_validation_rollouts", None) or getattr(result, "validation_rollouts", []) or []
+    )
+    untuned_rollouts = list(getattr(result, "untuned_validation_rollouts", []) or [])
     output["source"] = getattr(result, "validation_artifact_source", "configured_chunks")
     path, skip = save_validation_series_overlay_png(
         rollouts,
@@ -208,6 +228,7 @@ def write_validation_artifacts(result, output_dir: str | Path) -> dict[str, Any]
         simulated_attr="simulated_positions",
         title="SysId validation joint positions",
         ylabel_prefix="q",
+        untuned_rollouts=untuned_rollouts,
     )
     output["joint_position_overlay_png"] = path
     output["joint_position_overlay_skipped_reason"] = skip
@@ -218,6 +239,7 @@ def write_validation_artifacts(result, output_dir: str | Path) -> dict[str, Any]
         simulated_attr="simulated_velocities",
         title="SysId validation joint velocities",
         ylabel_prefix="dq",
+        untuned_rollouts=untuned_rollouts,
     )
     output["joint_velocity_overlay_png"] = path
     output["joint_velocity_overlay_skipped_reason"] = skip
@@ -234,12 +256,14 @@ def write_validation_artifacts(result, output_dir: str | Path) -> dict[str, Any]
         simulated_attr="simulated_efforts",
         title="SysId validation joint efforts",
         ylabel_prefix="tau",
+        untuned_rollouts=untuned_rollouts,
     )
     output["joint_effort_overlay_png"] = path
     output["joint_effort_overlay_skipped_reason"] = skip
     path, skip = save_validation_rmse_bar_png(
         getattr(result, "validation_metrics", []),
         output_dir / "sysid_validation_rmse_by_channel.png",
+        untuned_metrics=getattr(result, "untuned_validation_metrics", []),
     )
     output["rmse_bar_png"] = path
     output["rmse_bar_skipped_reason"] = skip
@@ -264,8 +288,10 @@ def save_validation_series_overlay_png(  # noqa: D103
     simulated_attr: str,
     title: str,
     ylabel_prefix: str,
+    untuned_rollouts=None,  # noqa: ANN001
 ) -> tuple[str, str]:
     rollouts = list(rollouts or [])
+    untuned_rollouts = list(untuned_rollouts or [])
     if not rollouts:
         return "", "no validation rollout data available"
     num_series = 0
@@ -301,7 +327,26 @@ def save_validation_series_overlay_png(  # noqa: D103
                     continue
                 prefix = "validation" if len(rollouts) == 1 else f"validation {rollout_i + 1}"
                 ax.plot(x_values, meas, linewidth=1.1, linestyle="--", label=f"{prefix} measured")
-                ax.plot(x_values, sim, linewidth=1.0, label=f"{prefix} simulated")
+                if rollout_i < len(untuned_rollouts):
+                    baseline = untuned_rollouts[rollout_i]
+                    baseline_series = getattr(baseline, simulated_attr, None) or []
+                    if series_i < len(baseline_series):
+                        baseline_times = getattr(baseline, "times", []) or []
+                        baseline_count = min(count, len(baseline_times), len(baseline_series[series_i]))
+                        baseline_values = [float(value) for value in baseline_series[series_i][:baseline_count]]
+                        if baseline_count >= 2 and _all_finite(baseline_values):
+                            # The untuned pass can diverge onto its own timebase,
+                            # so plot it against its own timestamps.
+                            baseline_x, _ = _x_values(baseline_times[:baseline_count])
+                            ax.plot(
+                                baseline_x,
+                                baseline_values,
+                                linewidth=0.9,
+                                alpha=0.85,
+                                label=f"{prefix} untuned",
+                            )
+                tuned_label = f"{prefix} tuned" if untuned_rollouts else f"{prefix} simulated"
+                ax.plot(x_values, sim, linewidth=1.0, label=tuned_label)
                 wrote_any = True
             ax.set_ylabel(f"{ylabel_prefix}{series_i}")
             ax.grid(True, alpha=0.25)
@@ -374,13 +419,20 @@ def save_validation_joint_angle_delta_png(rollouts, path: Path) -> tuple[str, st
             plt.close(fig)
 
 
-def save_validation_rmse_bar_png(metrics, path: Path) -> tuple[str, str]:  # noqa: ANN001, D103
+def save_validation_rmse_bar_png(  # noqa: D103
+    metrics,  # noqa: ANN001
+    path: Path,
+    *,
+    untuned_metrics=None,  # noqa: ANN001
+) -> tuple[str, str]:
     metrics = list(metrics or [])
     if not metrics:
         return "", "no validation metrics available"
     summary = validation_summary(metrics).get("overall", {})
+    untuned_summary = validation_summary(untuned_metrics).get("overall", {})
     names = []
-    values = []
+    tuned_values = []
+    untuned_values = []
     for key, label in (
         ("position_rmse", "position"),
         ("velocity_rmse", "velocity"),
@@ -389,10 +441,16 @@ def save_validation_rmse_bar_png(metrics, path: Path) -> tuple[str, str]:  # noq
         ("contact_force_rmse", "contact"),
     ):
         value = summary.get(key)
+        untuned_value = untuned_summary.get(key)
         if value is not None and math.isfinite(float(value)):
             names.append(label)
-            values.append(float(value))
-    if not values:
+            tuned_values.append(float(value))
+            untuned_values.append(
+                float(untuned_value)
+                if untuned_value is not None and math.isfinite(float(untuned_value))
+                else float("nan")
+            )
+    if not tuned_values:
         return "", "validation metrics had no finite RMSE values"
     plt, skip = _matplotlib_pyplot()
     if plt is None:
@@ -400,9 +458,30 @@ def save_validation_rmse_bar_png(metrics, path: Path) -> tuple[str, str]:  # noq
     fig = None
     try:
         fig, ax = plt.subplots(1, 1, figsize=(8.0, 4.0))
-        ax.bar(names, values, color="#4F83CC")
+        x_values = list(range(len(names)))
+        have_untuned = any(math.isfinite(value) for value in untuned_values)
+        if have_untuned:
+            width = 0.38
+            ax.bar(
+                [value - width / 2 for value in x_values],
+                untuned_values,
+                width=width,
+                color="#A0A0A0",
+                label="untuned",
+            )
+            ax.bar(
+                [value + width / 2 for value in x_values],
+                tuned_values,
+                width=width,
+                color="#4F83CC",
+                label="tuned",
+            )
+            ax.set_xticks(x_values, names)
+            ax.legend(loc="upper right")
+        else:
+            ax.bar(names, tuned_values, color="#4F83CC")
         ax.set_ylabel("RMSE")
-        ax.set_title("SysId validation RMSE by channel")
+        ax.set_title("SysId validation RMSE by channel (native channel units)")
         ax.grid(True, axis="y", alpha=0.25)
         fig.tight_layout()
         fig.savefig(path, dpi=140)
@@ -590,7 +669,9 @@ def _parameter_rows(prepared, result) -> list[dict[str, Any]]:  # noqa: ANN001
     selected = getattr(result, "selected_status", None)
     if config is None or selected is None:
         return []
-    initial = config.theta_initial.detach().cpu().tolist()
+    authored_initial = getattr(config, "theta_authored_initial", None)
+    initial_tensor = authored_initial if authored_initial is not None else config.theta_initial
+    initial = initial_tensor.detach().cpu().tolist()
     final = list(getattr(selected, "theta", []) or [])
     confidence_by_index = {
         int(entry.get("index", -1)): entry
@@ -885,29 +966,74 @@ def _metrics_by_excitation(metrics) -> dict[str, list[Any]]:  # noqa: ANN001
     return grouped
 
 
-def _validation_metric_group_summary(metrics) -> dict[str, float | None]:  # noqa: ANN001
+def _validation_metric_group_summary(metrics) -> dict[str, Any]:  # noqa: ANN001
+    metrics = list(metrics or [])
+    channels = (
+        "position_rmse",
+        "velocity_rmse",
+        "torque_rmse",
+        "end_effector_pose_rmse",
+        "contact_force_rmse",
+    )
     return {
-        "normalized_cost": _mean_metric(metrics, "normalized_cost"),
-        "position_rmse": _mean_metric(metrics, "position_rmse"),
-        "velocity_rmse": _mean_metric(metrics, "velocity_rmse"),
-        "torque_rmse": _mean_metric(metrics, "torque_rmse"),
-        "end_effector_pose_rmse": _mean_metric(metrics, "end_effector_pose_rmse"),
-        "contact_force_rmse": _mean_metric(metrics, "contact_force_rmse"),
+        "normalized_cost": _weighted_mean_metric(metrics, "normalized_cost"),
+        "position_rmse": _weighted_pooled_rmse(metrics, "position_rmse"),
+        "velocity_rmse": _weighted_pooled_rmse(metrics, "velocity_rmse"),
+        "torque_rmse": _weighted_pooled_rmse(metrics, "torque_rmse"),
+        "end_effector_pose_rmse": _weighted_pooled_rmse(metrics, "end_effector_pose_rmse"),
+        "contact_force_rmse": _weighted_pooled_rmse(metrics, "contact_force_rmse"),
+        # Pooling silently skips non-finite chunks, so the untuned and tuned
+        # summaries can cover different data. Publish what each pool actually
+        # weighed to make that difference visible.
+        "pooled_sample_counts": {name: _pooled_sample_count(metrics, name) for name in channels},
     }
 
 
-def _mean_metric(metrics, name: str) -> float | None:  # noqa: ANN001
-    values = []
+def _weighted_mean_metric(metrics, name: str) -> float | None:  # noqa: ANN001
+    weighted_sum = 0.0
+    total_weight = 0
     for metric in metrics:
         value = getattr(metric, name, None)
         if value is None:
             continue
         value = float(value)
         if math.isfinite(value):
-            values.append(value)
-    if not values:
+            weight = max(0, int(getattr(metric, "sample_count", 0)))
+            weighted_sum += weight * value
+            total_weight += weight
+    if total_weight < 1:
         return None
-    return float(sum(values) / len(values))
+    return float(weighted_sum / total_weight)
+
+
+def _pooled_sample_count(metrics, name: str) -> int:  # noqa: ANN001
+    """Return the sample count that actually contributed to one pooled channel."""
+    total_weight = 0
+    for metric in metrics:
+        value = getattr(metric, name, None)
+        if value is None:
+            continue
+        weight = max(0, int(getattr(metric, "sample_count", 0)))
+        if math.isfinite(float(value)) and weight:
+            total_weight += weight
+    return total_weight
+
+
+def _weighted_pooled_rmse(metrics, name: str) -> float | None:  # noqa: ANN001
+    weighted_square_sum = 0.0
+    total_weight = 0
+    for metric in metrics:
+        value = getattr(metric, name, None)
+        if value is None:
+            continue
+        value = float(value)
+        weight = max(0, int(getattr(metric, "sample_count", 0)))
+        if math.isfinite(value) and weight:
+            weighted_square_sum += weight * value * value
+            total_weight += weight
+    if total_weight < 1:
+        return None
+    return math.sqrt(weighted_square_sum / total_weight)
 
 
 def _matplotlib_pyplot():  # noqa: ANN202

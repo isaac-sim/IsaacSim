@@ -24,10 +24,20 @@ framework. Those packages are declared as pip dependencies in this extension's
 tier validators discover themselves through ``usd_validation_nvidia`` entry
 points.
 
-This extension also provides the RGB sensor USD validation rule.
+This extension also provides requirement-addressable authored sensor asset
+capabilities and validators.
 """
 
 from .extension import IsaacSimAssetValidationExtension  # noqa: F401
-from .sensor_rules import RGBSensorUsdRule as RGBSensorUsdRule
+from .sensor_capabilities import CAPABILITIES as SENSOR_CAPABILITIES
+from .sensor_capabilities import FEATURES as SENSOR_FEATURES
+from .sensor_capabilities import REQUIREMENTS as SENSOR_REQUIREMENTS
+from .sensor_rules import RULES_BY_REQUIREMENT_ID as SENSOR_RULES_BY_REQUIREMENT_ID
 
-__all__ = ["IsaacSimAssetValidationExtension", "RGBSensorUsdRule"]
+__all__ = [
+    "IsaacSimAssetValidationExtension",
+    "SENSOR_CAPABILITIES",
+    "SENSOR_FEATURES",
+    "SENSOR_REQUIREMENTS",
+    "SENSOR_RULES_BY_REQUIREMENT_ID",
+]

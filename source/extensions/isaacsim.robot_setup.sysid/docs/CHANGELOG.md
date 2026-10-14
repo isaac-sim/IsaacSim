@@ -1,5 +1,102 @@
 # Changelog
 
+## [3.2.0] - 2026-10-02
+
+### Added
+- `default_bounds_for_type`: expose default parameter search bounds.
+- `simulation.newton.mujoco_substeps`: support MuJoCo substeps for stiff drives.
+
+### Changed
+- Differentiable runs automatically increase Featherstone substeps up to 16 and report friction adjustments or failures with remediation guidance.
+
+### Fixed
+- Keep differentiable Featherstone gradients finite with high joint friction and varying link mass, centre of mass, and inertia.
+- Preserve Newton friction and armature on USD reload and avoid applying drive damping twice.
+- Reset diverged MuJoCo worlds to prevent CUDA crashes and report a failure with substep guidance when all worlds diverge.
+- Support fully locked D6 root joints in gravity and inverse-dynamics feedforward and clarify unsupported-joint errors.
+- Return nonzero exit statuses from headless tools when runs fail.
+
+## [3.1.0] - 2026-10-01
+### Fixed
+
+- Report no validation verdict when a solve diverges on a held-out chunk. Each RMSE channel is now pooled over the chunks that both the untuned and tuned passes completed, so a chunk that blows up only after tuning can no longer drop out of one pool and leave a confident improvement.
+- Warn in the tuning assessment when a validation channel diverged on a chunk in exactly one pass, instead of reporting a clean pass.
+- Stop overwriting authored USD joint friction with a fabricated value of 1.0 when joint friction is not a selected parameter.
+- Preserve multi-physics USD composition when persisting promoted actuators, and stop discarding the only copy when the promotions already live in the write-target layer.
+- Protect the session layer during writeback rollback when it is the write target, and fail the run when a target layer cannot be snapshotted rather than leaving the write silently unprotected.
+- Keep the "no selected parameter was written" diagnostic visible when the follow-up rollback also fails.
+- Stop reusing a cached bridge setup between trajectory chunks that share a leading prefix but differ later, which could replay a chunk at the wrong physics substep rate.
+- Honor the minimum chunk duration when splitting pre-tagged excitation phases, and return chunks in start order from both split paths.
+- Resolve differently-cased engine, physics-backend, actuator-runtime, and solver selections to the same backend.
+- Plot the untuned validation overlay against its own timestamps rather than the tuned pass's.
+- Remove the emptied temporary actuator scope when promotions are discarded.
+
+### Added
+
+- Publish the sample count each pooled validation channel actually weighed, so an untuned and tuned summary covering different data is visible.
+- Note during quick-start synthesis when backend capabilities are unknown and parameter support could not be checked.
+- Accept run reports written at schema version 3 as readable, reporting a warning instead of rejecting them. Such a report is held to the key set of its own version, so the fields added in version 4 are not required of it.
+
+### Changed
+
+- Evaluate the paired validation comparison before USD writeback. A regression is logged and remains advisory; it does not block the write.
+- Bumped the tuning-assessment payload to schema version 2, which adds unpaired-channel reporting.
+
+## [3.0.2] - 2026-10-01
+### Fixed
+- Use coordinate-layout position targets for standalone Newton rollouts with floating-base robots.
+- Recognize Newton 1.6 neural-drive metadata and prefer `Drive*` classes in standalone rollouts.
+
+## [3.0.1] - 2026-10-01
+### Fixed
+
+- Mapped explicit PD actuators to DOFs from their target indices so grouped `ArticulationActuators` batches resolve correctly.
+
+## [3.0.0] - 2026-10-01
+### Removed
+
+- The standalone pip wheel and its standalone tests. The backend now requires the Isaac Sim Python environment.
+- `runtime.CarbLogHandler`, `runtime.install_carb_logging`, and `runtime.remove_carb_logging`. The backend logs through Carbonite directly.
+
+### Added
+
+- `SysIdPreparedRun.telemetry_quality` exposes the assessment made during preparation.
+- Headless jobs report their stage, telemetry, preflight, and preparation phases through the progress callback.
+- The pre-solve check logs the elapsed time of each phase.
+
+### Changed
+
+- Headless job outcomes, solve and analysis outputs report telemetry quality for the chunks the solve used.
+- Backend diagnostics are logged through `carb.log_*` under each module's channel instead of standard Python logging.
+
+### Fixed
+
+- Headless solves no longer stall before the first optimizer iteration on high-rate telemetry.
+- Command-lag estimation no longer slows down as the telemetry rate increases.
+- Headless solves and `headless_sysid_analyze.py` assess telemetry quality only once per run.
+
+## [2.3.0] - 2026-09-10
+### Added
+
+- Paired authored/untuned and accepted/tuned validation replays with sample-weighted RMSE comparisons and grouped report plots.
+- Configurable relative and absolute validation-verdict thresholds in the RunSpec.
+- Validation-regression assessment and report schema version 4 fields.
+- Parameter and residual capability contracts for PhysX, Isaac-hosted Newton, standalone Newton MuJoCo, and differentiable Featherstone, enforced during preflight and quick-start synthesis.
+
+### Changed
+
+- Made USD and live PhysX writeback transactional, so a late failure no longer leaves partially authored parameters.
+- Deferred USD parameter and promoted-actuator persistence until validation succeeds.
+- Made interactive USD writeback instance-local and verified accepted joint stiffness and damping against composed USD before refreshing the live articulation.
+- Made Featherstone recipes select Newton with automatic explicit-actuator resolution.
+- Distinguished successful USD authoring from verified live-articulation application, and documented the fresh-process save/reopen evidence boundary.
+- Speeded up paired validation by batching it on clone-capable bridges and reducing rollout-cache hashing and tensor transfer work.
+
+### Fixed
+
+- Stopped training-data replay from passing the holdout assessment.
+- Kept authored launch parameters separate from analytical-presolve optimizer seeds.
+
 ## [2.2.3] - 2026-08-31
 ### Fixed
 

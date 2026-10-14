@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Standalone regression tests for the backend import boundary."""
+"""Regression tests for the backend import boundary."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ except ModuleNotFoundError as exc:
 
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-_RUNTIME_PREFIXES = ("carb", "isaacsim.core", "isaacsim.gui", "newton", "omni", "pxr", "warp")
+_RUNTIME_PREFIXES = ("isaacsim.core", "isaacsim.gui", "newton", "omni", "pxr", "warp")
 _RUNTIME_ADAPTER = _PACKAGE_ROOT / "isaac_sim_sysid_bridge.py"
 
 

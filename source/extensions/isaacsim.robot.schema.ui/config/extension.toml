@@ -1,5 +1,5 @@
 [package]
-version = "0.3.7"
+version = "0.4.1"
 category = "Simulation"
 title = "Isaac Sim Schema UI"
 description = "UI components to display and work with Robot assets, following the Robot schema definition"

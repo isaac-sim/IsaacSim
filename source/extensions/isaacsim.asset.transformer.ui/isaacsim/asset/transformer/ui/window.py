@@ -351,6 +351,24 @@ class AssetTransformerWindow(MenuHelperWindow):
                 f"{len(failed)} of {len(report.results)} actions failed:\n" + "\n".join(lines),
             )
 
+        # A structurally successful PhysX-to-MuJoCo conversion can still
+        # create actuators without controller gains. Surface that distinction
+        # in the execution result, where users see failures and completion.
+        readiness_warnings = [
+            entry.get("message", "")
+            for result in report.results
+            for entry in result.log
+            if entry.get("message", "").startswith("Control readiness warning:")
+        ]
+        if readiness_warnings:
+            for warning in readiness_warnings:
+                carb.log_warn(warning)
+            if not failed:
+                self._show_error_dialog(
+                    "Conversion Needs Gain Review",
+                    "\n".join(readiness_warnings) + f"\n\nFull report: {report_path}",
+                )
+
         if self._file_data.autoload_option.model.get_value_as_bool():
             output_path = report.output_stage_path
             if output_path and Path(output_path).exists():
@@ -1130,8 +1148,7 @@ class AssetTransformerWindow(MenuHelperWindow):
             self._last_preset_dir = str(Path(filepath).parent)
             self._update_profile_name_label()
             carb.log_info(
-                f"Loaded {len(profile.rules)} rules from preset"
-                f" (output_package_root={profile.output_package_root!r})"
+                f"Loaded {len(profile.rules)} rules from preset (output_package_root={profile.output_package_root!r})"
             )
 
         except FileNotFoundError:

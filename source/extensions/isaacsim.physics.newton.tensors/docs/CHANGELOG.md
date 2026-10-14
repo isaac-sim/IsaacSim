@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.8.1] - 2026-10-02
+### Fixed
+- Rigid body, articulation and rigid contact views report `check() == False` and fail their queries once Newton re-initializes and rebuilds its model and `state_0`, instead of reading released buffers; recreate the views.
+
+## [0.8.0] - 2026-09-28
+### Changed
+- Updated Newton to 1.6.1rc1.
+
+### Fixed
+- Use coordinate-layout indices for Newton position targets, including floating-base robots.
+
+## [0.7.2] - 2026-09-28
+### Fixed
+- Honor boolean masks in articulation and rigid-body masked setters.
+
+## [0.7.1] - 2026-09-25
+### Fixed
+- Added set/get joint friction properties to the articulation view.
+
+## [0.7.0] - 2026-09-22
+### Added
+- Compute articulation gravity and Coriolis compensation forces using Newton inverse dynamics on CPU and GPU.
+
+### Fixed
+- Preserve articulation indices when gathering batched dynamics tensors.
+
+## [0.6.5] - 2026-09-21
+### Fixed
+- Transform body-local Newton rigid-contact points into world space correctly on CPU and GPU.
+
 ## [0.6.4] - 2026-08-21
 ### Fixed
 - Apply off-center and local-frame rigid-body and articulation wrenches correctly on CPU and GPU.

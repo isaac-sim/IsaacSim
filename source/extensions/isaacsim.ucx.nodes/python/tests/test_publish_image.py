@@ -125,6 +125,7 @@ class TestUCXPublishImage(UCXTestCase):
         # Verify data size
         expected_size = test_height * step
         self.assertEqual(len(image_data), expected_size)
+        self.assertEqual(image_data, test_image.tobytes())
 
         # Verify Tensor.shape contract: [height, width, bytes_per_pixel].
         self.assertEqual(shape, (test_height, test_width, test_channels))

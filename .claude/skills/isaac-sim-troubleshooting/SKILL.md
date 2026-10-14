@@ -1,12 +1,12 @@
 ---
 name: isaac-sim-troubleshooting
-description: "Reference for Isaac Sim hangs, freezes, and performance stalls. Use when startup, MDL, physics, or Replicator blocks progress."
+description: "Diagnose standalone library import/load/link failures and Kit hangs, freezes, or performance stalls."
 license: Apache-2.0
 metadata:
   author: Renato Gasoto <info@nvidia.com>
 ---
 
-# Isaac Sim 6 Troubleshooting — Large USD Scene Hangs
+# Isaac Sim Troubleshooting
 
 ## Purpose
 
@@ -14,9 +14,8 @@ Diagnose Isaac Sim startup hangs, stage-load stalls, MDL/shader compilation free
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- Library failures need the configured build or installed package environment.
+- Kit/GPU prerequisites apply only to the Kit workload being diagnosed.
 
 ## Limitations
 
@@ -35,6 +34,13 @@ Diagnose Isaac Sim startup hangs, stage-load stalls, MDL/shader compilation free
 Diagnosis and resolution for Isaac Sim 6.0 (Kit 110) hangs, freezes, and perf degradation on large USD scenes (10K-150K+ prims, factory/warehouse twins).
 
 Upstream debugging docs: `docs/isaacsim/utilities/debugging/` (profiling, Python debugging tutorials). Pair this skill with `profile-isaac-sim` for Tracy-based diagnosis.
+
+## Standalone library diagnosis
+
+Reproduce in a normal process without Kit. Inspect the installed distribution,
+wheel/native closure, loader paths, and relocation. Use
+`isaacsim.common.logging.Logger` for library diagnostics, `carb.log_*` for Kit,
+and `print()` only for an intentional stdout result.
 
 ## Quick Diagnosis Flowchart
 

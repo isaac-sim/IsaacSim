@@ -38,6 +38,7 @@
 #include "isaacsim/foundation/objects/shapes/Sphere.hpp"
 
 #include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
@@ -45,6 +46,7 @@
 #include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
+#include <memory>
 #include <stdexcept>
 #include <variant>
 
@@ -213,10 +215,13 @@ Args:
     nb::class_<shapes::Shape, Xform>(m, "Shape", "Base wrapper for batched geometric-shape prims.")
         .def_static("are_of_type", &shapes::Shape::areOfType, nb::arg("paths"),
                     "Check whether the resolved paths identify geometric-shape prims.")
-        .def("set_display_colors", &shapes::Shape::setDisplayColors, nb::arg("colors"), nb::kw_only(),
-             nb::arg("indices") = nb::none(), "Set display colors on the selected shapes.")
         .def("get_display_colors", &shapes::Shape::getDisplayColors, nb::kw_only(), nb::arg("indices") = nb::none(),
-             "Get display colors for the selected shapes.")
+             "Return the legacy placeholder colors; authored color readback is not implemented.")
+        .def("set_display_colors", &shapes::Shape::setDisplayColors, nb::arg("colors"), nb::kw_only(),
+             nb::arg("indices") = nb::none(),
+             "Set the display colors of the selected shapes. Colors are normalized RGB triples (shape (N, 3)) "
+             "or tokens (hex codes, X11/CSS4 names, or any other format supported by Matplotlib). "
+             "Broadcast rules apply.")
         .def("update_extents", &shapes::Shape::updateExtents, "Recompute the authored extents of all wrapped shapes.");
 
     // shapes/Cube.h
@@ -232,7 +237,7 @@ Args:
         .def(
             "__init__",
             [](shapes::Cube* self, const std::variant<std::string, std::vector<std::string>>& paths,
-               const std::optional<array::Array>& sizes, const std::optional<shapes::ColorType>& colors,
+               const std::optional<array::Array>& sizes, const std::optional<ColorType>& colors,
                bool resetXformOpProperties) { new (self) shapes::Cube(paths, sizes, colors, resetXformOpProperties); },
             nb::arg("paths"), nb::kw_only(), nb::arg("sizes") = nb::none(), nb::arg("colors") = nb::none(),
             nb::arg("reset_xform_op_properties") = true)
@@ -256,7 +261,7 @@ Args:
         .def(
             "__init__",
             [](shapes::Sphere* self, const std::variant<std::string, std::vector<std::string>>& paths,
-               const std::optional<array::Array>& radii, const std::optional<shapes::ColorType>& colors,
+               const std::optional<array::Array>& radii, const std::optional<ColorType>& colors,
                bool resetXformOpProperties) { new (self) shapes::Sphere(paths, radii, colors, resetXformOpProperties); },
             nb::arg("paths"), nb::kw_only(), nb::arg("radii") = nb::none(), nb::arg("colors") = nb::none(),
             nb::arg("reset_xform_op_properties") = true)
@@ -284,7 +289,7 @@ Args:
             [](shapes::Cylinder* self, const std::variant<std::string, std::vector<std::string>>& paths,
                const std::optional<array::Array>& radii, const std::optional<array::Array>& heights,
                const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
-               const std::optional<shapes::ColorType>& colors, bool resetXformOpProperties)
+               const std::optional<ColorType>& colors, bool resetXformOpProperties)
             { new (self) shapes::Cylinder(paths, radii, heights, axes, colors, resetXformOpProperties); },
             nb::arg("paths"), nb::kw_only(), nb::arg("radii") = nb::none(), nb::arg("heights") = nb::none(),
             nb::arg("axes") = nb::none(), nb::arg("colors") = nb::none(), nb::arg("reset_xform_op_properties") = true)
@@ -320,7 +325,7 @@ Args:
             [](shapes::Capsule* self, const std::variant<std::string, std::vector<std::string>>& paths,
                const std::optional<array::Array>& radii, const std::optional<array::Array>& heights,
                const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
-               const std::optional<shapes::ColorType>& colors, bool resetXformOpProperties)
+               const std::optional<ColorType>& colors, bool resetXformOpProperties)
             { new (self) shapes::Capsule(paths, radii, heights, axes, colors, resetXformOpProperties); },
             nb::arg("paths"), nb::kw_only(), nb::arg("radii") = nb::none(), nb::arg("heights") = nb::none(),
             nb::arg("axes") = nb::none(), nb::arg("colors") = nb::none(), nb::arg("reset_xform_op_properties") = true)
@@ -356,7 +361,7 @@ Args:
             [](shapes::Cone* self, const std::variant<std::string, std::vector<std::string>>& paths,
                const std::optional<array::Array>& radii, const std::optional<array::Array>& heights,
                const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
-               const std::optional<shapes::ColorType>& colors, bool resetXformOpProperties)
+               const std::optional<ColorType>& colors, bool resetXformOpProperties)
             { new (self) shapes::Cone(paths, radii, heights, axes, colors, resetXformOpProperties); },
             nb::arg("paths"), nb::kw_only(), nb::arg("radii") = nb::none(), nb::arg("heights") = nb::none(),
             nb::arg("axes") = nb::none(), nb::arg("colors") = nb::none(), nb::arg("reset_xform_op_properties") = true)
@@ -392,7 +397,7 @@ Args:
             [](shapes::Plane* self, const std::variant<std::string, std::vector<std::string>>& paths,
                const std::optional<array::Array>& widths, const std::optional<array::Array>& lengths,
                const std::optional<std::variant<std::string, std::vector<std::string>>>& axes,
-               const std::optional<shapes::ColorType>& colors, bool resetXformOpProperties)
+               const std::optional<ColorType>& colors, bool resetXformOpProperties)
             { new (self) shapes::Plane(paths, widths, lengths, axes, colors, resetXformOpProperties); },
             nb::arg("paths"), nb::kw_only(), nb::arg("widths") = nb::none(), nb::arg("lengths") = nb::none(),
             nb::arg("axes") = nb::none(), nb::arg("colors") = nb::none(), nb::arg("reset_xform_op_properties") = true)
@@ -673,10 +678,26 @@ Args:
              "Set subdivision schemes, boundary modes, and triangle rules on the selected meshes.")
         .def("get_subdivision_specs", &Mesh::getSubdivisionSpecifications, nb::kw_only(), nb::arg("indices") = nb::none(),
              "Get subdivision schemes, boundary modes, and triangle rules for the selected meshes.")
+        .def(
+            "get_display_colors",
+            [](Mesh& self, const std::optional<array::Array>& indices)
+            {
+                // Warp cannot consume a rank-zero DLPack tensor. Preserve the C++ scalar placeholder
+                // as a NumPy array whose capsule retains the native storage.
+                auto result = std::make_unique<array::Array>(self.getDisplayColors(indices));
+                void* data = result->data();
+                nb::capsule owner(
+                    result.get(), [](void* pointer) noexcept { delete static_cast<array::Array*>(pointer); });
+                result.release();
+                return nb::ndarray<nb::numpy, int32_t>(data, 0, nullptr, owner);
+            },
+            nb::kw_only(), nb::arg("indices") = nb::none(),
+            "Return the legacy zero-dimensional int32 NumPy placeholder; authored color readback is not implemented.")
         .def("set_display_colors", &Mesh::setDisplayColors, nb::arg("colors"), nb::kw_only(),
-             nb::arg("indices") = nb::none(), "Set display colors on the selected meshes.")
-        .def("get_display_colors", &Mesh::getDisplayColors, nb::kw_only(), nb::arg("indices") = nb::none(),
-             "Get display colors for the selected meshes.")
+             nb::arg("indices") = nb::none(),
+             "Set the display colors of the selected meshes. Colors are normalized RGB triples (shape (N, 3)) "
+             "or tokens (hex codes, X11/CSS4 names, or any other format supported by Matplotlib). "
+             "Broadcast rules apply.")
         .def("update_extents", &Mesh::updateExtents, "Recompute the authored extents of all wrapped meshes.");
 
     // Camera.h

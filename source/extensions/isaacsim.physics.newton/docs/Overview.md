@@ -24,6 +24,30 @@ The {func}`acquire_stage <isaacsim.physics.newton.acquire_stage>` function provi
 - **USD Integration**: Fabric synchronization, PhysX tracker coordination, and joint processing options  
 - **Contact Parameters**: Stiffness, damping, friction coefficients, and restitution settings
 - **Joint Settings**: Limit parameters, armature values, and PD controller scaling
+- **Solver Outputs**: Opt-in computation of articulation joint wrenches and their projected DOF forces
+
+Solver-computed outputs must be enabled before physics initialization because they affect Newton state allocation and
+per-step solver work:
+
+```python
+from isaacsim.physics.newton import NewtonConfig, NewtonSolverOutputConfig, configure_newton
+
+configure_newton(
+    NewtonConfig(
+        solver_outputs=NewtonSolverOutputConfig(
+            contact_forces=True,
+            link_incoming_joint_force=True,
+        ),
+    )
+)
+```
+
+Contact forces remain enabled by default for compatibility and can be disabled when contact tensor queries are not
+needed. Joint wrench output remains disabled by default because it adds state storage and per-step solver work. The
+`link_incoming_joint_force` option enables both link incoming joint force and projected DOF force tensor queries. Joint
+wrench output is available with XPBD and MuJoCo Warp. VBD and native MuJoCo CPU emit a warning during
+initialization, and tensor queries emit a warning if the output was not enabled before the Newton state and tensor views
+were created.
 
 ### Solver Configurations
 

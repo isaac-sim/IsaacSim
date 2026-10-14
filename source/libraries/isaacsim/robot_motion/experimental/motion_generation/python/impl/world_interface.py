@@ -53,7 +53,7 @@ class WorldInterface:
         Args:
             prim_paths: USD prim paths for each sphere.
             radii: Sphere radii.
-            scales: Local scale factors for each sphere.
+            scales: World scale factors for each sphere.
             safety_tolerances: Safety margin around each sphere.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each sphere.
@@ -77,7 +77,7 @@ class WorldInterface:
         Args:
             prim_paths: USD prim paths for each cube.
             sizes: Cube side lengths.
-            scales: Local scale factors for each cube.
+            scales: World scale factors for each cube.
             safety_tolerances: Safety margin around each cube.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each cube.
@@ -105,7 +105,7 @@ class WorldInterface:
             axes: Orientation axis for each cone.
             radii: Cone base radii.
             lengths: Cone heights.
-            scales: Local scale factors for each cone.
+            scales: World scale factors for each cone.
             safety_tolerances: Safety margin around each cone.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each cone.
@@ -133,7 +133,7 @@ class WorldInterface:
             axes: Normal axis for each plane.
             lengths: Plane lengths.
             widths: Plane widths.
-            scales: Local scale factors for each plane.
+            scales: World scale factors for each plane.
             safety_tolerances: Safety margin around each plane.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each plane.
@@ -161,7 +161,7 @@ class WorldInterface:
             axes: Orientation axis for each capsule.
             radii: Capsule radii.
             lengths: Capsule heights (excluding hemispherical caps).
-            scales: Local scale factors for each capsule.
+            scales: World scale factors for each capsule.
             safety_tolerances: Safety margin around each capsule.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each capsule.
@@ -189,7 +189,7 @@ class WorldInterface:
             axes: Orientation axis for each cylinder.
             radii: Cylinder radii.
             lengths: Cylinder heights.
-            scales: Local scale factors for each cylinder.
+            scales: World scale factors for each cylinder.
             safety_tolerances: Safety margin around each cylinder.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each cylinder.
@@ -219,7 +219,7 @@ class WorldInterface:
             face_vertex_indices: Face vertex indices for each mesh.
             face_vertex_counts: Number of vertices per face for each mesh.
             normals: Face normals for each mesh.
-            scales: Local scale factors for each mesh.
+            scales: World scale factors for each mesh.
             safety_tolerances: Safety margin around each mesh.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each mesh.
@@ -245,7 +245,7 @@ class WorldInterface:
             prim_paths: USD prim paths for each mesh.
             points: Vertex positions for each mesh.
             face_vertex_indices: Triangle vertex indices for each mesh.
-            scales: Local scale factors for each mesh.
+            scales: World scale factors for each mesh.
             safety_tolerances: Safety margin around each mesh.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each mesh.
@@ -285,7 +285,7 @@ class WorldInterface:
             centers: Local center positions for each bounding box.
             rotations: Local rotations as quaternions (w, x, y, z) for each bounding box.
             half_side_lengths: Half extents along each axis for each bounding box.
-            scales: Local scale factors for each bounding box.
+            scales: World scale factors for each bounding box.
             safety_tolerances: Safety margin around each bounding box.
             poses: Tuple of (positions, orientations) arrays.
             enabled_array: Collision enabled state for each bounding box.

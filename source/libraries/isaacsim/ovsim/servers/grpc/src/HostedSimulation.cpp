@@ -1,5 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "HostedSimulation.hpp"
 
@@ -8,7 +20,7 @@
 #include <isaacsim/ovsim/clients/local/data/Data.hpp>
 
 #include <algorithm>
-#include <array>
+#include <cmath>
 #include <exception>
 #include <utility>
 
@@ -63,9 +75,10 @@ public:
         return local::control::authoring::importStageFromString(usdContent);
     }
 
-    void initialize() override
+    void initialize(double timeStep) override
     {
         local::control::simulation::setParameter("physics", "physics-engine", std::string("ovphysx"));
+        local::control::simulation::setParameter("physics", "time-step", timeStep);
         local::control::simulation::initialize();
     }
 
@@ -124,11 +137,16 @@ HostedSimulation::~HostedSimulation()
     (void)shutdown();
 }
 
-::grpc::Status HostedSimulation::createSimulation(std::string simulationId, std::string usdContent)
+::grpc::Status HostedSimulation::createSimulation(std::string simulationId, std::string usdContent, double timeStep)
 {
     if (simulationId.empty() || usdContent.empty())
     {
         return { ::grpc::StatusCode::INVALID_ARGUMENT, "simulation_id and usd_content must be non-empty." };
+    }
+    if (!std::isfinite(timeStep) || timeStep < 1e-9 || timeStep * 1e9 >= 0x1p63)
+    {
+        return { ::grpc::StatusCode::INVALID_ARGUMENT,
+                 "time_step must be at least 1 ns and fit in an int64 nanosecond timestamp." };
     }
     {
         std::lock_guard<std::mutex> lock(m_stateMutex);
@@ -148,7 +166,8 @@ HostedSimulation::~HostedSimulation()
         m_simulationInitialized = false;
         m_simulationTimeNs = 0;
         m_latestVisibleTimeNs = 0;
-        m_timePhase = 0;
+        m_stepCount = 0;
+        m_timeStep = timeStep;
         m_latestWriteTimes.clear();
         _enqueue([this, simulationId = std::move(simulationId), usdContent = std::move(usdContent)]() mutable
                  { _initializeOnWorker(std::move(simulationId), std::move(usdContent)); });
@@ -265,6 +284,11 @@ HostedSimulation::~HostedSimulation()
             }
 
             const int64_t expected = _getCurrentTime();
+            if (expected < 0)
+            {
+                return ::grpc::Status(::grpc::StatusCode::OUT_OF_RANGE,
+                                      "The next simulation timestamp cannot advance within int64 nanoseconds.");
+            }
             if (simulationTimeNs <= m_simulationTimeNs)
             {
                 return ::grpc::Status(
@@ -272,8 +296,8 @@ HostedSimulation::~HostedSimulation()
             }
             if (simulationTimeNs != expected)
             {
-                return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
-                                      "The minimal server only supports the next drift-free 1/60-second timestamp.");
+                return ::grpc::Status(
+                    ::grpc::StatusCode::INVALID_ARGUMENT, "Expected the next timestamp at the configured time step.");
             }
             for (const auto& path : paths)
             {
@@ -323,10 +347,15 @@ HostedSimulation::~HostedSimulation()
                 return ::grpc::Status::OK;
             }
             const int64_t expected = _getCurrentTime();
+            if (expected < 0)
+            {
+                return ::grpc::Status(::grpc::StatusCode::OUT_OF_RANGE,
+                                      "The next simulation timestamp cannot advance within int64 nanoseconds.");
+            }
             if (simulationTimeNs != expected)
             {
-                return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
-                                      "The minimal server only supports the next drift-free 1/60-second timestamp.");
+                return ::grpc::Status(
+                    ::grpc::StatusCode::INVALID_ARGUMENT, "Expected the next timestamp at the configured time step.");
             }
             try
             {
@@ -464,7 +493,7 @@ void HostedSimulation::_initializeOnWorker(std::string simulationId, std::string
 
         if (initializationStatus.ok())
         {
-            m_nativeSimulation->initialize();
+            m_nativeSimulation->initialize(m_timeStep);
             {
                 std::lock_guard<std::mutex> lock(m_stateMutex);
                 if (!m_hasSimulation || m_simulationId != simulationId)
@@ -585,14 +614,18 @@ void HostedSimulation::_initializeOnWorker(std::string simulationId, std::string
 
 int64_t HostedSimulation::_getCurrentTime() const
 {
-    static constexpr std::array<int64_t, 3> s_kStepNanoseconds{ 16'666'667, 16'666'667, 16'666'666 };
-    return m_simulationTimeNs + s_kStepNanoseconds.at(m_timePhase % s_kStepNanoseconds.size());
+    const double timestamp = std::ceil((static_cast<double>(m_stepCount) + 1.0) * (m_timeStep * 1e9));
+    if (timestamp >= 0x1p63 || timestamp <= static_cast<double>(m_simulationTimeNs))
+    {
+        return -1;
+    }
+    return static_cast<int64_t>(timestamp);
 }
 
 void HostedSimulation::_incrementTime()
 {
     m_simulationTimeNs = _getCurrentTime();
-    m_timePhase = (m_timePhase + 1) % 3;
+    ++m_stepCount;
     for (auto iterator = m_latestWriteTimes.begin(); iterator != m_latestWriteTimes.end();)
     {
         if (iterator->second <= m_simulationTimeNs)

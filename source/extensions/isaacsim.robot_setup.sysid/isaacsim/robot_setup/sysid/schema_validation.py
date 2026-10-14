@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -86,6 +86,7 @@ _NEWTON_KEYS = {
     "actuator_dt_mode",
     "solver",
     "featherstone_substeps",
+    "mujoco_substeps",
     "feedforward",
     "cuda_graph_capture",
 }
@@ -153,6 +154,8 @@ _OUTPUTS_KEYS = {
     "validation_animation_path",
     "validation_animation_fps",
     "validation_animation_max_frames",
+    "validation_relative_change_threshold",
+    "validation_absolute_change_threshold",
     "compute_parameter_confidence",
     "parameter_confidence_rollout_budget",
 }
@@ -202,8 +205,13 @@ _RUN_REPORT_REQUIRED_KEYS = {
     "newton_config",
     "robot_prim_path",
     "train_chunks",
+    "untuned_validation_metrics",
+    "tuned_validation_metrics",
     "validation_metrics",
+    "untuned_validation_summary",
+    "tuned_validation_summary",
     "validation_summary",
+    "validation_comparison",
     "validation_artifacts",
     "resampling_diagnostics",
     "tuning_assessment",
@@ -217,6 +225,18 @@ _RUN_REPORT_REQUIRED_KEYS = {
     "selected_status",
     "parameter_confidence",
     "extra",
+}
+# Keys added by run-report version 4. A version-3 artifact predates them, so
+# requiring them would reject a report the validator declares readable.
+_RUN_REPORT_V4_ADDED_KEYS = {
+    "untuned_validation_metrics",
+    "tuned_validation_metrics",
+    "untuned_validation_summary",
+    "tuned_validation_summary",
+    "validation_comparison",
+}
+_RUN_REPORT_REQUIRED_KEYS_BY_VERSION = {
+    3: _RUN_REPORT_REQUIRED_KEYS - _RUN_REPORT_V4_ADDED_KEYS,
 }
 
 
@@ -247,7 +267,7 @@ def validate_sysid_check_report_payload(payload: dict[str, Any]) -> list[SysIdSc
 
 
 def validate_sysid_run_report_payload(payload: dict[str, Any]) -> list[SysIdSchemaIssue]:
-    """Validate the stable top-level SysID run-report version 3 contract.
+    """Validate the stable top-level SysID run-report version 4 contract.
 
     Args:
         payload: Serialized run-report payload.
@@ -259,8 +279,9 @@ def validate_sysid_run_report_payload(payload: dict[str, Any]) -> list[SysIdSche
         payload,
         required_keys=_RUN_REPORT_REQUIRED_KEYS,
         version_key="report_schema_version",
-        version=3,
+        version=4,
         report_name="run report",
+        readable_versions=_RUN_REPORT_REQUIRED_KEYS_BY_VERSION,
     )
 
 
@@ -271,21 +292,40 @@ def _validate_report_envelope(
     version_key: str,
     version: int,
     report_name: str,
+    readable_versions: Mapping[int, set[str]] | None = None,
 ) -> list[SysIdSchemaIssue]:
     issues: list[SysIdSchemaIssue] = []
     if not isinstance(payload, dict):
         return [SysIdSchemaIssue("$", f"SysID {report_name} must be a JSON object.", "error")]
-    for key in sorted(required_keys - payload.keys()):
-        issues.append(SysIdSchemaIssue(f"$.{key}", f"{key} is required.", "error"))
     actual_version = payload.get(version_key)
+    readable = readable_versions or {}
+    # A superseded payload is held to the key set of its own version; requiring
+    # the current keys would reject the very artifacts declared readable. A
+    # malformed version value is not a dict key, so fall back to the current set.
+    superseded = isinstance(actual_version, int) and actual_version != version and actual_version in readable
+    expected_keys = readable[actual_version] if superseded else required_keys
+    for key in sorted(expected_keys - payload.keys()):
+        issues.append(SysIdSchemaIssue(f"$.{key}", f"{key} is required.", "error"))
     if actual_version is not None and actual_version != version:
-        issues.append(
-            SysIdSchemaIssue(
-                f"$.{version_key}",
-                f"{version_key} must be {version}, got {actual_version!r}.",
-                "error",
+        if superseded:
+            # An artifact written by an older release is still readable; the
+            # newer keys are simply absent. Reject only unknown versions.
+            issues.append(
+                SysIdSchemaIssue(
+                    f"$.{version_key}",
+                    f"{report_name} uses superseded {version_key} {actual_version!r}; "
+                    f"fields added in version {version} are absent.",
+                    "warning",
+                )
             )
-        )
+        else:
+            issues.append(
+                SysIdSchemaIssue(
+                    f"$.{version_key}",
+                    f"{version_key} must be {version}, got {actual_version!r}.",
+                    "error",
+                )
+            )
     return issues
 
 
@@ -453,6 +493,18 @@ def validate_sysid_run_spec_payload(payload: dict[str, Any]) -> list[SysIdSchema
             "$.outputs.validation_animation_max_frames",
             issues,
         )
+        _validate_nonnegative_number(
+            outputs,
+            "validation_relative_change_threshold",
+            "$.outputs.validation_relative_change_threshold",
+            issues,
+        )
+        _validate_nonnegative_number(
+            outputs,
+            "validation_absolute_change_threshold",
+            "$.outputs.validation_absolute_change_threshold",
+            issues,
+        )
         _validate_boolean(
             outputs,
             "compute_parameter_confidence",
@@ -576,6 +628,12 @@ def validate_sysid_run_spec_payload(payload: dict[str, Any]) -> list[SysIdSchema
                 newton,
                 "featherstone_substeps",
                 "$.simulation.newton.featherstone_substeps",
+                issues,
+            )
+            _validate_positive_int(
+                newton,
+                "mujoco_substeps",
+                "$.simulation.newton.mujoco_substeps",
                 issues,
             )
     parameters = _mapping(payload.get("parameters"), "$.parameters", issues)

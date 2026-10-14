@@ -15,12 +15,11 @@
 
 # ovphysx simulation backend module.
 #
-# Wraps the ovphysx C++ SDK behind isaacsim.physics.manager. ovstage comes either from
-# the SDK (older packages bundled it) or from an app-supplied ovstage wheel, selected
-# with ISAACSIM_OVSTAGE_ROOT.
-# The SDK's private, namespaced USD and ovstage runtime is bundled under an
-# OvPhysX-owned directory so the physics distribution remains independent from
-# isaacsim.foundation and the two packages cannot overwrite one another.
+# Wraps the ovphysx C++ SDK behind isaacsim.physics.manager. Native SDK artifacts
+# remain self-contained; Python wheels use the matching ovphysx and ovstage wheels
+# as their single runtime owners instead of copying those payloads into Isaac Sim.
+# ovstage comes either from the SDK (older packages bundled it) or from an app-supplied
+# ovstage wheel, selected with ISAACSIM_OVSTAGE_ROOT.
 
 set(ISAACSIM_OVPHYSX_ROOT "" CACHE PATH
     "ovphysx SDK root. Empty uses the Pixi-locked public release archive.")
@@ -90,10 +89,39 @@ if(_ovstage_root)
     # libovphysx.so RPATHs $ORIGIN for its libovstage.so sibling, which an app-supplied
     # package no longer is; stubgen has to be able to find it at import time.
     set(ISAACSIM_BINDING_EXTRA_LIBRARY_PATH "${_ovstage_root}/bin")
+
+    # ovstage 0.2 splits its public CMake target (the dynamic loader) from the
+    # implementation library that loader opens at runtime. Register the latter
+    # as an imported runtime-only target so both libraries are staged and
+    # packaged together. It must not be linked directly by consumers.
+    if(WIN32)
+        set(_ovstage_implementation_library "${_ovstage_runtime_dir}/ovstage.dll")
+    else()
+        set(_ovstage_implementation_library "${_ovstage_runtime_dir}/libovstage.so")
+    endif()
+    if(NOT EXISTS "${_ovstage_implementation_library}")
+        message(FATAL_ERROR
+            "The selected ovstage package is missing its implementation library: "
+            "${_ovstage_implementation_library}"
+        )
+    endif()
+    if(NOT TARGET isaacsim-ovstage-implementation)
+        add_library(isaacsim-ovstage-implementation SHARED IMPORTED GLOBAL)
+        set_target_properties(isaacsim-ovstage-implementation PROPERTIES
+            IMPORTED_LOCATION "${_ovstage_implementation_library}"
+        )
+    endif()
 else()
     set(_ovstage_target ovphysx::ovstage)
     set(_ovstage_runtime_dir "${_ovphysx_dep}/bin")
     set(_ovstage_plugins_dir "${_ovphysx_dep}/lib/plugins")
+endif()
+
+if(NOT IS_DIRECTORY "${_ovphysx_dep}/schemas/physx")
+    message(FATAL_ERROR
+        "The selected ovphysx SDK is missing its codeless PhysX schemas: "
+        "${_ovphysx_dep}/schemas/physx"
+    )
 endif()
 
 if(NOT TARGET ovphysx::ovphysx)
@@ -124,6 +152,9 @@ set(_ovphysx_private_dependencies
 set(_ovphysx_runtime_dependencies
     ovphysx::ovphysx
     ${_ovstage_target})
+if(TARGET isaacsim-ovstage-implementation)
+    list(APPEND _ovphysx_runtime_dependencies isaacsim-ovstage-implementation)
+endif()
 set(_ovphysx_system_includes
     "${ISAACSIM_PUBLIC_DEPS_INCLUDE_DIR}"
     "${_ovphysx_dep}/include"
@@ -153,38 +184,56 @@ isaacsim_add_module(
 set(_ovphysx_target isaacsim-physics_engines-ovphysx)
 
 # USD headers emit #warning directives (backward_warning.h); -Wno-cpp keeps them
-# from tripping the module's warnings. DLPack comes from the locked Pixi build prefix.
+# from tripping the module's warnings.
 if(NOT WIN32)
     target_compile_options(${_ovphysx_target} PRIVATE -Wno-cpp)
 endif()
 target_include_directories(${_ovphysx_target} SYSTEM PRIVATE ${_ovphysx_system_includes})
 
-# Preserve the SDK's two-root loader layout below a physics-owned directory:
-# lib/ovphysx/bin contains the SDK libraries and OVStage plugins, while
-# lib/ovphysx/plugins contains the engine plugins resolved through ../plugins.
+# Preserve the SDK's two-root loader layout. Windows keeps linked DLLs beside the Isaac module in
+# bin, with the engine plugins at ../plugins. Other platforms keep the equivalent two roots below
+# lib/ovphysx because their loader paths can encode the nested location.
+get_target_property(_ovphysx_group ${_ovphysx_target} ISAACSIM_GROUP_NAME)
+_isaacsim_get_group_component("${_ovphysx_group}" runtime _ovphysx_runtime_component)
+# Older ovphysx SDKs ship a config.toml beside their libraries, while 0.6.3 no longer includes one.
+# Preserve it when present without making it part of the package contract.
+set(_ovphysx_config_file "")
+foreach(_ovphysx_config_candidate IN ITEMS
+    "${_ovphysx_dep}/bin/config.toml"
+    "${_ovphysx_dep}/lib/config.toml")
+    if(EXISTS "${_ovphysx_config_candidate}")
+        set(_ovphysx_config_file "${_ovphysx_config_candidate}")
+        break()
+    endif()
+endforeach()
 if(WIN32)
     isaacsim_install_runtime_dependencies(MODULE isaacsim.physics_engines.ovphysx
-        TARGETS ${_ovphysx_runtime_dependencies})
+        TARGETS ${_ovphysx_runtime_dependencies}
+        NATIVE_ONLY)
     isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
         SOURCE "${_ovstage_plugins_dir}"
         DESTINATION plugins
-        WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/plugins")
+        WINDOWS_BESIDE_MODULE
+        NATIVE_ONLY)
     if(EXISTS "${_ovstage_runtime_dir}/ovstage_usd_schemas")
         isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
             SOURCE "${_ovstage_runtime_dir}/ovstage_usd_schemas"
             DESTINATION ovstage_usd_schemas
-            WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/ovstage_usd_schemas")
+            WINDOWS_BESIDE_MODULE
+            NATIVE_ONLY)
     endif()
-    get_target_property(_ovphysx_group ${_ovphysx_target} ISAACSIM_GROUP_NAME)
-    _isaacsim_get_group_component("${_ovphysx_group}" runtime _ovphysx_runtime_component)
-    # Preserve the SDK's two-root Windows layout. OvPhysX requires config.toml
-    # beside its DLL and derives engine plugins from the sibling ../plugins
-    # directory, while OVStage keeps its private tree under bin/plugins. The
-    # physics-engine distribution owns both so it remains usable without
-    # isaacsim.foundation.
-    install(FILES
-        "${_ovphysx_dep}/bin/config.toml"
-        "${_ovphysx_dep}/bin/ovphysx_internal.dll"
+    isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
+        SOURCE "${_ovphysx_dep}/schemas/physx"
+        DESTINATION "schemas/physx"
+        WINDOWS_BESIDE_MODULE
+        NATIVE_ONLY)
+    # Keep the linked runtime DLLs beside the Isaac module so the Windows loader can resolve them
+    # before application code has an opportunity to register additional search directories.
+    set(_ovphysx_windows_runtime_files "${_ovphysx_dep}/bin/ovphysx_internal.dll")
+    if(_ovphysx_config_file)
+        list(APPEND _ovphysx_windows_runtime_files "${_ovphysx_config_file}")
+    endif()
+    install(FILES ${_ovphysx_windows_runtime_files}
         DESTINATION "${CMAKE_INSTALL_BINDIR}"
         COMPONENT "${_ovphysx_runtime_component}")
     install(DIRECTORY "${_ovphysx_dep}/plugins/"
@@ -195,10 +244,12 @@ else()
         INSTALL_RPATH "${ISAACSIM_LOADER_ORIGIN}/ovphysx/bin")
     isaacsim_install_runtime_dependencies(MODULE isaacsim.physics_engines.ovphysx
         TARGETS ${_ovphysx_runtime_dependencies}
-        DESTINATION "ovphysx/bin")
+        DESTINATION "ovphysx/bin"
+        NATIVE_ONLY)
     isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
         SOURCE "${_ovstage_plugins_dir}"
-        DESTINATION "ovphysx/bin/plugins")
+        DESTINATION "ovphysx/bin/plugins"
+        NATIVE_ONLY)
     # ovstage resolves its USD schema tree beside the library it was loaded from, so it
     # follows the library rather than staying in the Python package. Only an
     # app-supplied ovstage ships one; an SDK that bundled ovstage carried its schemas
@@ -206,73 +257,34 @@ else()
     if(EXISTS "${_ovstage_runtime_dir}/ovstage_usd_schemas")
         isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
             SOURCE "${_ovstage_runtime_dir}/ovstage_usd_schemas"
-            DESTINATION "ovphysx/bin/ovstage_usd_schemas")
+            DESTINATION "ovphysx/bin/ovstage_usd_schemas"
+            NATIVE_ONLY)
     endif()
-endif()
-if(NOT WIN32)
-    get_target_property(_ovphysx_group ${_ovphysx_target} ISAACSIM_GROUP_NAME)
-    _isaacsim_get_group_component("${_ovphysx_group}" runtime _ovphysx_runtime_component)
+    isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
+        SOURCE "${_ovphysx_dep}/schemas/physx"
+        DESTINATION "ovphysx/schemas/physx"
+        NATIVE_ONLY)
     file(GLOB _ovphysx_api_libraries CONFIGURE_DEPENDS
         "${_ovphysx_dep}/lib/libovphysx.so*")
     file(GLOB _ovphysx_internal_libraries CONFIGURE_DEPENDS
         "${_ovphysx_dep}/lib/libovphysx_internal.so*")
-    install(FILES
-        "${_ovphysx_dep}/lib/config.toml"
+    set(_ovphysx_install_files
         ${_ovphysx_api_libraries}
-        ${_ovphysx_internal_libraries}
+        ${_ovphysx_internal_libraries})
+    if(_ovphysx_config_file)
+        list(APPEND _ovphysx_install_files "${_ovphysx_config_file}")
+    endif()
+    install(FILES ${_ovphysx_install_files}
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/ovphysx/bin"
         COMPONENT "${_ovphysx_runtime_component}")
     install(DIRECTORY "${_ovphysx_dep}/plugins/"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/ovphysx/plugins"
         COMPONENT "${_ovphysx_runtime_component}")
-
-    if(ISAACSIM_ENABLE_PYTHON_BINDINGS)
-        _isaacsim_get_group_component("${_ovphysx_group}" python _ovphysx_python_component)
-        # libovphysx resolves its SDK plugin tree through $ORIGIN/../plugins,
-        # while libovstage resolves the smaller tree through $ORIGIN/plugins.
-        # Preserve both layouts in the standalone Python distribution.
-        install(FILES
-            "${_ovphysx_dep}/lib/config.toml"
-            ${_ovphysx_api_libraries}
-            ${_ovphysx_internal_libraries}
-            DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/lib/ovphysx/bin"
-            COMPONENT "${_ovphysx_python_component}")
-        install(DIRECTORY "${_ovphysx_dep}/plugins/"
-            DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/lib/ovphysx/plugins"
-            COMPONENT "${_ovphysx_python_component}")
-    endif()
-endif()
-
-if(ISAACSIM_ENABLE_PYTHON)
-    # Bundle the ovstage Python data-plane package (used to build/attach USD stages).
-    # isaacsim.physics_engines.ovstage.setup() adds ovstage_py/ to sys.path. The native
-    # payload is dropped either way: ovstage is a runtime dependency of the backend, so
-    # the library and its plugin tree are already staged beside libovphysx under
-    # ovphysx/bin, which is where the loader hint points. Keeping a second copy here
-    # would ship the same 5 MB library twice.
-    set(_ovstage_py_curated "${CMAKE_CURRENT_BINARY_DIR}/ovstage_py")
-    file(REMOVE_RECURSE "${_ovstage_py_curated}")
-    if(_ovstage_root)
-        set(_ovstage_py_source "${_ovstage_root}")
-    else()
-        set(_ovstage_py_source "${_ovphysx_dep}/python/ovstage")
-    endif()
-    file(COPY "${_ovstage_py_source}"
-        DESTINATION "${_ovstage_py_curated}"
-        PATTERN "bin" EXCLUDE
-        PATTERN "include" EXCLUDE
-        PATTERN "lib" EXCLUDE
-        PATTERN "__pycache__" EXCLUDE)
-    isaacsim_add_runtime_directory(MODULE isaacsim.physics_engines.ovphysx
-        SOURCE "${_ovstage_py_curated}"
-        DESTINATION "ovstage_py"
-        WINDOWS_PYTHON_SHARED)
 endif()
 
 isaacsim_add_nanobind(
     MODULE isaacsim.physics_engines.ovphysx
     SOURCE bindings/python/BindingsOvPhysxPython.cpp
-    WINDOWS_RUNTIME_SIBLING_DIRECTORY "${_ovphysx_dep}/plugins"
 )
 # Stubgen imports the binding through the public package, whose import activates the
 # backend and calls `isaacsim.physics_engines.ovstage.setup()`. Ensure that package is
@@ -281,84 +293,16 @@ if(ISAACSIM_ENABLE_PYTHON_BINDINGS)
     add_dependencies(generate-${_ovphysx_target}-python-stub
         stage-isaacsim-physics_engines-ovstage-python-package)
 endif()
-if(WIN32 AND TARGET ${_ovphysx_target}-python)
-    ovphysx_copy_runtime_dlls(${_ovphysx_target}-python)
-    add_custom_command(TARGET ${_ovphysx_target}-python POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:${_ovstage_target}>"
-            "$<TARGET_FILE_DIR:${_ovphysx_target}-python>"
-        COMMENT "ovphysx: copy binding-local ovstage runtime for standalone Python"
-    )
-    # Recreate the SDK's two-root layout exactly:
-    #   bindings/         == ovstage runtime root (ovstage.dll and config)
-    #   bindings/plugins/ == ovstage plugin tree
-    #   plugins/          == SDK plugins (ovphysx; staged by isaacsim_add_nanobind)
-    add_custom_command(TARGET ${_ovphysx_target}-python POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E remove_directory
-            "$<TARGET_FILE_DIR:${_ovphysx_target}-python>/plugins"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${_ovstage_runtime_dir}/plugins"
-            "$<TARGET_FILE_DIR:${_ovphysx_target}-python>/plugins"
-        COMMENT "ovphysx: restore distinct ovstage bin/plugins runtime"
-    )
-    if(_ovstage_root)
-        # A bundled ovstage arrives with ovphysx_copy_runtime_dlls; an app-supplied one
-        # does not, so put ovstage.dll beside ovphysx.dll (Windows resolves the import by
-        # basename from the loading module's directory).
-        add_custom_command(TARGET ${_ovphysx_target}-python POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${_ovstage_runtime_dir}/ovstage.dll"
-                "$<TARGET_FILE_DIR:${_ovphysx_target}-python>"
-            COMMENT "ovphysx: stage the app-supplied ovstage runtime beside the bindings"
-        )
-    endif()
-    # The schema tree follows the library wherever it came from, and only some packages
-    # ship one -- an SDK that bundled ovstage carried its schemas inside the plugin tree.
-    if(EXISTS "${_ovstage_runtime_dir}/ovstage_usd_schemas")
-        add_custom_command(TARGET ${_ovphysx_target}-python POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${_ovstage_runtime_dir}/ovstage_usd_schemas"
-                "$<TARGET_FILE_DIR:${_ovphysx_target}-python>/ovstage_usd_schemas"
-            COMMENT "ovphysx: stage the ovstage USD schema tree beside the bindings"
-        )
-    endif()
-    get_target_property(_ovphysx_group ${_ovphysx_target} ISAACSIM_GROUP_NAME)
-    _isaacsim_get_group_component("${_ovphysx_group}" python _ovphysx_python_component)
-    # ovstage's plugin tree carries USD codegen templates, one of which is named
-    # __init__.py. `pip install --target` byte-compiles it, so an app-supplied
-    # package arrives with a __pycache__ inside the tree; copying that into the
-    # Python package trips the install contract (no __pycache__ / *.pyc in an
-    # installed package). Nothing here is importable, so drop the bytecode.
-    install(DIRECTORY "${_ovstage_runtime_dir}/plugins/"
-        DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/physics_engines/ovphysx/bindings/plugins"
-        COMPONENT "${_ovphysx_python_component}"
-        PATTERN "__pycache__" EXCLUDE
-        PATTERN "*.pyc" EXCLUDE
-        PATTERN "*.pyo" EXCLUDE)
-    if(_ovstage_root)
-        install(FILES "${_ovstage_runtime_dir}/ovstage.dll"
-            DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/physics_engines/ovphysx/bindings"
-            COMPONENT "${_ovphysx_python_component}")
-    endif()
-    if(EXISTS "${_ovstage_runtime_dir}/ovstage_usd_schemas")
-        install(DIRECTORY "${_ovstage_runtime_dir}/ovstage_usd_schemas/"
-            DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/physics_engines/ovphysx/bindings/ovstage_usd_schemas"
-            COMPONENT "${_ovphysx_python_component}")
-    endif()
-    install(FILES
-        "$<TARGET_FILE:${_ovstage_target}>"
-        "${_ovphysx_dep}/bin/config.toml"
-        "${_ovphysx_dep}/bin/ovphysx_internal.dll"
-        DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/physics_engines/ovphysx/bindings"
-        COMPONENT "${_ovphysx_python_component}")
-endif()
-
 isaacsim_add_python_tests(
     MODULE isaacsim.physics_engines.ovphysx
     REQUIRES_BINDINGS
     TEST_SUPPORT isaacsim.physics.manager
     RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../physics/manager/resources/tests"
 )
+set(_ovphysx_python_test tests-python-isaacsim-physics_engines-ovphysx)
+if(TEST ${_ovphysx_python_test})
+    set_property(TEST ${_ovphysx_python_test} PROPERTY RESOURCE_LOCK physics_backend)
+endif()
 
 # C++ tests: ovphysx SDK smoke + ovstage attach + tensor-helpers. They link the
 # ovphysx SDK directly (the module lib's ovphysx dep is PRIVATE, non-transitive) and
@@ -394,6 +338,7 @@ if(TARGET ${_ovphysx_test_target})
     # TestOvPhysxTensorHelpers.cpp includes the module's private OvPhysxTensorHelpers.hpp.
     target_include_directories(${_ovphysx_test_target} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/tensors")
+    set_property(TEST ${_ovphysx_test_target} PROPERTY RESOURCE_LOCK physics_backend)
 endif()
 # TestOvPhysxOvstage.cpp loads CartPole.usda from the manager-owned shared test resources.
 # The ovstage attach test loads the monolithic USD at runtime; the SDK libs self-locate

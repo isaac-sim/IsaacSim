@@ -13,10 +13,13 @@ requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
 dependencies = [
-    "newton>=1.5.0",
-    "ovnewton>=0.1.1",
-    "physx-usd-schemas>=25.11.1",
-    "warp-lang>=1.16.0",
+    "newton[sim]==1.6.1",
+    "newton-usd-schemas>=0.5.0,<0.6",
+    "ovnewton==0.1.1",
+    "ovphysx==0.6.3",
+    "ovstage==0.2.0.377349",
+    "physx-usd-schemas>=25.11.1,<26",
+    "warp-lang>=1.17.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

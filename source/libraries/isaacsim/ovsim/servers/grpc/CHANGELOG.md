@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The standalone gRPC server honors appended `--help` and uses the last `--listen-address` value.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added
 
+- Hosted simulations accept a physics time step in seconds, preserving the default 60 Hz behavior.
 - A synchronous OV SIM lifecycle and world-state gRPC server with `getEndpoint` endpoint inspection.
 - A standalone insecure server executable with an explicit listen address.
 - Generic single-attribute writes for protocol-supported values.

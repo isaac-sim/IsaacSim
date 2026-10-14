@@ -290,7 +290,8 @@ class TestSDGUsefulSnippets(omni.kit.test.AsyncTestCase):
                 timeline.set_ticks_per_frame(SUBSAMPLE_RATE)
 
                 # Time codes per second for the stage
-                # NOTE: same as `stage.SetTimeCodesPerSecond(STAGE_FPS)` and `carb.settings.get_settings().set("/app/stage/timeCodesPerSecond", STAGE_FPS)`
+                # NOTE: same as `stage.SetTimeCodesPerSecond(STAGE_FPS)` and `carb.settings.get_settings().set("/app/stage/timeCodesPerSecond", STAGE_FPS)`,
+                # except the timeline's write-back reaches the stage on the next app update instead of immediately
                 timeline.set_time_codes_per_second(STAGE_FPS)
 
             # Create a PhysX scene to set the physics time step

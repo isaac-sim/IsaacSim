@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "falling_cube.render_cube.python"
+title = "Render a Cube"
+summary = "Render every simulated frame of the falling cube with ovrtx."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.foundation.prims",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+]
+topics = ["physics", "python", "rendering", "usd"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics_engines"
+surfaces = ["python"]
+
+[[test]]
+name = "default"
+# The renderer compiles its shaders on the first run against a cold cache, which takes several
+# minutes more than the steady-state run this example otherwise completes in.
+timeout_seconds = 600
+stdout_contains = ["The cube fell.", "The render followed the simulation."]

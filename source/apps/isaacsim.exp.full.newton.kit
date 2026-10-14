@@ -1,7 +1,7 @@
 [package]
 title = "Isaac Sim Full (Newton Physics)"
 description = "Full Omniverse Isaac Sim Application with Newton Physics Engine"
-version = "6.1.0"
+version = "6.2.0"
 execFile = "isaac-sim.newton"
 keywords = ["experience", "app", "usd", "isaacsim", "newton"]
 
@@ -78,7 +78,7 @@ fabricUpdateJointStates = false
 
 [settings.app]
 name = "Isaac-Sim Full (Newton)"
-version = "6.1.0"
+version = "6.2.0"
 window.title = "Isaac Sim Full (Newton Physics)"
 vulkan = true
 fastShutdown = true
@@ -105,3 +105,6 @@ isaac.startup.ros_bridge_extension = "isaacsim.ros2.bridge"
     "${app}/../extsUser",
     "${app}/../extsDeprecated",
 ]
+
+[settings.exts."omni.kit.registry.nucleus"]
+postToSlack = false

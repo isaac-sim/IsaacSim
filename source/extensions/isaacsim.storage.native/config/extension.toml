@@ -1,5 +1,5 @@
 [package]
-version = "1.11.0"
+version = "1.12.2"
 category = "Simulation"
 title = "Isaac Sim Native Storage"
 description = "Provides utilities for accessing Isaac Sim assets from Nucleus servers or S3 buckets, including path resolution, asset downloading, and version verification."
@@ -22,9 +22,9 @@ name = "isaacsim.storage.native.tests"
 
 [settings]
 # Default asset root path for Isaac Sim.
-persistent.isaac.asset_root.default = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1"
+persistent.isaac.asset_root.default = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2"
 # Timeout in seconds for resolving the asset root path.
-persistent.isaac.asset_root.timeout = 5.0
+persistent.isaac.asset_root.timeout = 10.0
 # Number of retries for transient asset root connectivity checks.
 persistent.isaac.asset_root.retry_attempts = 3
 # Initial retry delay in seconds using exponential backoff.
@@ -33,7 +33,7 @@ persistent.isaac.asset_root.retry_base_delay = 0.5
 # Asset region profiles, selected at startup by the `ISAACSIM_ASSET_REGION_PROFILE`
 # environment variable. The extension's default asset root is used when no profile is selected.
 # Default asset root for the primary profile.
-exts."isaacsim.storage.native".asset_region_profiles.us.asset_root = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1"
+exts."isaacsim.storage.native".asset_region_profiles.us.asset_root = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2"
 
 # S3-compatible endpoint hostname for the regional storage profile.
 exts."isaacsim.storage.native".asset_region_profiles.china.endpoint = "simready-cn.s3.oss-cn-shanghai.aliyuncs.com"
@@ -49,7 +49,7 @@ exts."isaacsim.storage.native".asset_region_profiles.china.cdn_url = "https://as
 # Use the bucket endpoint rather than the CDN for object listings.
 exts."isaacsim.storage.native".asset_region_profiles.china.cdn_for_list = false
 # Default Isaac Sim asset root for the regional profile.
-exts."isaacsim.storage.native".asset_region_profiles.china.asset_root = "https://simready-cn.s3.oss-cn-shanghai.aliyuncs.com/Assets/Isaac/6.1"
+exts."isaacsim.storage.native".asset_region_profiles.china.asset_root = "https://simready-cn.s3.oss-cn-shanghai.aliyuncs.com/Assets/Isaac/6.2"
 # USD asset search service for the regional profile.
 exts."isaacsim.storage.native".asset_region_profiles.china.usd_search_endpoint = "https://search.simready.cn/"
 

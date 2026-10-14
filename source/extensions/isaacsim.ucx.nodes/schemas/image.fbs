@@ -1,40 +1,40 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 include "tensor.fbs";
 include "header.fbs";
 
-namespace isaac;
+namespace holoscan.schema;
 
+// Encoding defines plane order, dimensions, component layout, and sample width (except Bayer,
+// which uses Tensor dtype). Non-CUSTOM encodings require scalar elements (lanes=1); interleaved
+// channels use a trailing shape axis. Round subsampled dimensions up: half of N is (N+1)/2.
 enum ImageEncoding : byte {
-  // Specifies a custom image encoding.
+  // Producer-defined layout; no plane count, dimensions, or sample organization is implied.
   CUSTOM = 0,
 
-  // Specifies a three-component, 24-bit unsigned normalized format with 8-bit R, G, B in bytes 0,
-  // 1, 2 respectively.
+  // Interleaved unsigned normalized 8-bit R, G, B.
   RGB8 = 1,
 
-  // Specifies a four-component, 32-bit unsigned normalized format with 8-bit R, G, B, A in bytes
-  // 0, 1, 2, 3 respectively.
+  // Interleaved unsigned normalized 8-bit R, G, B, A.
   RGBA8 = 2,
 
-  // Specifies a three-component, 24-bit unsigned normalized format with 8-bit B, G, R in bytes 0, 1, 2
-  // respectively.
+  // Interleaved unsigned normalized 8-bit B, G, R.
   BGR8 = 3,
 
-  // Specifies a four-component, 32-bit unsigned normalized format with 8-bit B, G, R, A in bytes
-  // 0, 1, 2, 3 respectively.
+  // Interleaved unsigned normalized 8-bit B, G, R, A.
   BGRA8 = 4,
 
-  // Specifies a multiplanar, three-component, 24-bit unsigned normalized format with 8-bit R, G, B
-  // in separate planes.
+  // Separate unsigned normalized 8-bit R, G, B planes.
   R8_G8_B8 = 5,
 
-  // Specifies a multiplanar, three-component, 24-bit unsigned normalized format with 8-bit B, G, R
-  // in separate planes.
+  // Separate unsigned normalized 8-bit B, G, R planes.
   B8_G8_R8 = 6,
 
-  // Specifies a one-component, 8-bit unsigned integer format.
+  // Specifies a one-component, 8-bit unsigned integer format. Equivalent to GRAY8.
   MONO8 = 7,
 
-  // Specifies a one-component, 16-bit unsigned integer format.
+  // Specifies a one-component, 16-bit unsigned integer format. Equivalent to GRAY16.
   MONO16 = 8,
 
   // Specifies a one-component, 32-bit unsigned integer format.
@@ -42,6 +42,82 @@ enum ImageEncoding : byte {
 
   // Specifies a one-component, 32-bit floating point format.
   MONO32F = 10,
+
+  // Specifies a packed 4:2:2 format with 8-bit Y, U, Y, V in bytes 0, 1, 2, 3 respectively. Two
+  // horizontally adjacent pixels share one chroma pair.
+  YUYV = 11,
+
+  // Specifies a packed 4:2:2 format with 8-bit U, Y, V, Y in bytes 0, 1, 2, 3 respectively.
+  UYVY = 12,
+
+  // 4:2:0: 8-bit Y plane, then interleaved U,V at half width and height, rounded up. Each chroma
+  // column uses two bytes; plane_layouts locates both planes.
+  NV12 = 13,
+
+  // 4:2:0: separate 8-bit Y, U, V planes; chroma dimensions are half size, rounded up.
+  // plane_layouts locates all three planes.
+  I420 = 14,
+
+  // Specifies a three-component, 96-bit floating point format with 32-bit R, G, B.
+  RGB32F = 15,
+
+  // Specifies a four-component, 128-bit floating point format with 32-bit R, G, B, A.
+  RGBA32F = 16,
+
+  // Specifies a three-component, 96-bit floating point format with 32-bit Y, U, V.
+  YUV32F = 17,
+
+  // NV12 layout with 10-bit samples in the high bits of 16-bit words. significant_bits reports
+  // precision; plane_layouts locates both planes.
+  P010 = 18,
+
+  // Specifies a four-component, 32-bit format with 10-bit R, G, B and 2-bit A.
+  RGBA1010102 = 19,
+
+  // Bayer suffix gives the 2x2 filter order from left to right, top to bottom, starting at the ROI
+  // origin. Tensor dtype gives sample width; significant_bits gives precision.
+  BAYER_RGGB = 20,
+  BAYER_BGGR = 21,
+  BAYER_GRBG = 22,
+  BAYER_GBRG = 23,
+}
+
+// Color primaries and transfer function used to encode samples.
+enum ColorSpace : byte {
+  // The producer did not state a color space. Consumers must not assume one.
+  UNSPECIFIED = 0,
+
+  // sRGB primaries with the sRGB transfer function.
+  SRGB = 1,
+
+  // ITU-R BT.601 primaries, standard definition video.
+  REC601 = 2,
+
+  // ITU-R BT.709 primaries, high definition video.
+  REC709 = 3,
+
+  // ITU-R BT.2020 primaries with the BT.2020 transfer function.
+  REC2020 = 4,
+
+  // ITU-R BT.2020 primaries with the BT.2100 perceptual quantizer transfer function.
+  REC2020_PQ = 5,
+
+  // ITU-R BT.2020 primaries with the BT.2100 hybrid log-gamma transfer function.
+  REC2020_HLG = 6,
+}
+
+// One plane inside the single allocation backing Image.data. Separate allocations are unsupported;
+// gather them before publishing. All offsets and extents must fit within the Tensor addressable
+// span.
+struct ImagePlaneLayout {
+  // Byte offset of this plane's first row from the start of Image.data's Tensor backing.
+  offset_bytes: uint64;
+
+  // Byte distance between rows; at least the packed row width.
+  row_stride_bytes: uint32;
+
+  // Reserved byte extent, including final-row padding; must cover all addressed rows.
+  size_bytes: uint64;
 }
 
 // Image data.
@@ -58,8 +134,41 @@ table Image {
   // Image data encoding.
   encoding: ImageEncoding (id: 3);
 
-  // Image data, interpreted according to the encoding.
+  // Pixels interpreted using encoding; Tensor supplies dtype, device, and strides. Single-plane
+  // non-CUSTOM encodings must address at least one complete frame, including any row padding. Use
+  // the encoding dtype or an opaque uint8 buffer; Bayer uses Tensor dtype. Multi-planar encodings
+  // use a byte-addressed backing described by plane_layouts.
   data: Tensor (id: 4);
+
+  // Color primaries and transfer function for the samples in data.
+  color_space: ColorSpace (id: 5);
+
+  // Precision per component; zero means container width. Must not exceed the encoding container
+  // width: 8, 16, or 32 bits as appropriate; 10 for RGBA1010102. P010 permits 10 bits even with
+  // uint8 backing. Bayer uses Tensor dtype as the bound; CUSTOM uses the widest component
+  // supported by element types.
+  significant_bits: uint8 (id: 6);
+
+  // Column of the first pixel in the full sensor frame; Bayer phase follows this ROI origin.
+  roi_offset_x: int32 (id: 7);
+
+  // Row of this image's first pixel within the full sensor frame.
+  roi_offset_y: int32 (id: 8);
+
+  // Required for multi-planar encodings, with one entry per plane in encoding order. Must be empty
+  // for single-plane encodings; CUSTOM permits up to four planes. Each stride must cover the
+  // packed row width, each extent must cover all rows, and offset plus extent must fit the Tensor
+  // addressable span (including strides).
+  plane_layouts: [ImagePlaneLayout] (id: 9);
+
+  // Integration duration in nanoseconds for a single-exposure frame; zero means unavailable.
+  // Header.capture_timestamp_ns is the start; midpoint = start + duration/2. Per-exposure HDR
+  // timing is not represented.
+  exposure_time_ns: int64 (id: 10);
+
+  // Combined linear sensor gain, or zero if unavailable; not a separate analog-stage gain.
+  gain: float (id: 11);
 }
 
 root_type Image;
+file_identifier "HSIG";

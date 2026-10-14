@@ -14,10 +14,10 @@
 -- limitations under the License.
 
 local ext = get_current_extension_info()
-dofile(root .. "/tools/isaac_build/module_carrier.lua")
+dofile(root .. "/tools/isaac_build/extension_wheel.lua")
 
 project_ext(ext)
-stage_isaacsim_module_carrier(ext, "isaacsim.asset.importer.utils")
+stage_isaacsim_extension_wheel(ext, "isaacsim.asset.importer.utils")
 
 repo_build.prebuild_link {
     { "docs", ext.target_dir .. "/docs" },

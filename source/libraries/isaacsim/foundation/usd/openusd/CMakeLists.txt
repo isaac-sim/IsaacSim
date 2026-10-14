@@ -80,11 +80,19 @@ else()
     set(PXR_FIND_TBB_IN_CONFIG OFF CACHE BOOL "" FORCE)
     if(NOT TARGET TBB::tbb)
         add_library(TBB::tbb SHARED IMPORTED)
-        set_target_properties(TBB::tbb PROPERTIES
-            IMPORTED_LOCATION             "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/libtbb.so.2"
-            IMPORTED_SONAME               "libtbb.so.2"
-            INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/include"
-        )
+        if(WIN32)
+            set_target_properties(TBB::tbb PROPERTIES
+                IMPORTED_LOCATION "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/bin/tbb.dll"
+                IMPORTED_IMPLIB "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/tbb.lib"
+                INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/include"
+            )
+        else()
+            set_target_properties(TBB::tbb PROPERTIES
+                IMPORTED_LOCATION "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/libtbb.so.2"
+                IMPORTED_SONAME "libtbb.so.2"
+                INTERFACE_INCLUDE_DIRECTORIES "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/include"
+            )
+        endif()
     endif()
     find_package(pxr CONFIG REQUIRED
         PATHS "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python"
@@ -180,11 +188,15 @@ if(ISAACSIM_ENABLE_PYTHON_BINDINGS)
         TARGETS ${_isaacsim_openusd_runtime_targets}
         NATIVE_ONLY
     )
+    # Each plugInfo.json names its own library relative to the registry root, so the registry has
+    # to stay beside the OpenUSD libraries. isaacsim_install_runtime_dependencies puts those in the
+    # binary directory on Windows, which the registry has to follow or the recorded paths resolve
+    # into the library directory, where no OpenUSD binary is installed.
     isaacsim_add_runtime_directory(
         MODULE isaacsim.foundation.usd.openusd
         SOURCE "${ISAACSIM_TARGET_DEPS_DIR}/openusd/lib/usd"
         DESTINATION usd
-        WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/usd"
+        WINDOWS_BESIDE_MODULE
         NATIVE_ONLY
     )
 
@@ -209,56 +221,78 @@ else()
         "$<TARGET_FILE_DIR:isaacsim-foundation-usd-openusd>"
     )
     target_link_libraries(isaacsim-foundation-usd-openusd PRIVATE
-        tbb
+        TBB::tbb
         usd_ms
     )
-    # Copy USD shared libraries and plugin descriptors alongside the module .so.
-    file(GLOB isaacsim_openusd_shared_libs
-        "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/libusd*.so*"
-        "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/libtbb.so*"
-    )
-    if(NOT isaacsim_openusd_shared_libs)
-        message(FATAL_ERROR
-            "isaacsim.foundation.usd.openusd: OpenUSD libraries not found in "
-            "'${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/'"
+    if(WIN32)
+        # Native executables need the monolithic OpenUSD DLL and its TBB dependency beside every
+        # module or test binary that reaches this module. Publishing the imported-target closure
+        # lets the shared staging helpers carry those DLLs through private module dependencies.
+        _isaacsim_collect_imported_runtime_targets(
+            _isaacsim_openusd_runtime_targets
+            usd_ms
+        )
+        isaacsim_install_runtime_dependencies(
+            MODULE isaacsim.foundation.usd.openusd
+            TARGETS ${_isaacsim_openusd_runtime_targets}
+        )
+        isaacsim_add_runtime_directory(
+            MODULE isaacsim.foundation.usd.openusd
+            SOURCE "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/usd"
+            DESTINATION usd
+            WINDOWS_BESIDE_MODULE
+        )
+    else()
+        # Copy USD shared libraries and plugin descriptors alongside the module .so.
+        file(GLOB isaacsim_openusd_shared_libs
+            "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/libusd*.so*"
+            "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/libtbb.so*"
+        )
+        if(NOT isaacsim_openusd_shared_libs)
+            message(FATAL_ERROR
+                "isaacsim.foundation.usd.openusd: OpenUSD libraries not found in "
+                "'${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/'"
+            )
+        endif()
+        set(isaacsim_openusd_copy_commands)
+        foreach(isaacsim_openusd_lib ${isaacsim_openusd_shared_libs})
+            get_filename_component(isaacsim_openusd_lib_name "${isaacsim_openusd_lib}" NAME)
+            list(APPEND isaacsim_openusd_copy_commands
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${isaacsim_openusd_lib}"
+                    "$<TARGET_FILE_DIR:isaacsim-foundation-usd-openusd>/${isaacsim_openusd_lib_name}"
+            )
+        endforeach()
+        add_custom_command(TARGET isaacsim-foundation-usd-openusd PRE_BUILD
+            ${isaacsim_openusd_copy_commands}
+        )
+        install(FILES ${isaacsim_openusd_shared_libs}
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+            COMPONENT "isaacsim_foundation-runtime"
+        )
+        isaacsim_add_runtime_directory(
+            MODULE isaacsim.foundation.usd.openusd
+            SOURCE "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/usd"
+            DESTINATION usd
         )
     endif()
-    set(isaacsim_openusd_copy_commands)
-    foreach(isaacsim_openusd_lib ${isaacsim_openusd_shared_libs})
-        get_filename_component(isaacsim_openusd_lib_name "${isaacsim_openusd_lib}" NAME)
-        list(APPEND isaacsim_openusd_copy_commands
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${isaacsim_openusd_lib}"
-                "$<TARGET_FILE_DIR:isaacsim-foundation-usd-openusd>/${isaacsim_openusd_lib_name}"
-        )
-    endforeach()
-    add_custom_command(TARGET isaacsim-foundation-usd-openusd PRE_BUILD
-        ${isaacsim_openusd_copy_commands}
-    )
-    install(FILES ${isaacsim_openusd_shared_libs}
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        COMPONENT "isaacsim_foundation-runtime"
-    )
-    isaacsim_add_runtime_directory(
-        MODULE isaacsim.foundation.usd.openusd
-        SOURCE "${ISAACSIM_TARGET_DEPS_DIR}/openusd_no_python/lib/usd"
-        DESTINATION usd
-    )
 endif()
 
 # The native library registers these codeless schemas from a path beside itself in both Python-enabled and native-only
 # builds. The Python component additionally installs the importable schema packages used by Python applications.
+# Windows installs the library into the binary directory, so the schemas follow it there rather than to the library
+# directory the other platforms share.
 isaacsim_add_runtime_directory(
     MODULE isaacsim.foundation.usd.openusd
     SOURCE "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR}/physx_usd_schemas"
     DESTINATION third-party-schemas/physx_usd_schemas
-    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/third-party-schemas/physx_usd_schemas"
+    WINDOWS_BESIDE_MODULE
 )
 isaacsim_add_runtime_directory(
     MODULE isaacsim.foundation.usd.openusd
     SOURCE "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR}/newton_usd_schemas"
     DESTINATION third-party-schemas/newton_usd_schemas
-    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/third-party-schemas/newton_usd_schemas"
+    WINDOWS_BESIDE_MODULE
 )
 isaacsim_add_cpp_tests(
     MODULE isaacsim.foundation.usd.openusd
@@ -286,7 +320,7 @@ if(BUILD_TESTING AND NOT ISAACSIM_ENABLE_PYTHON_BINDINGS)
         tests-isaacsim-foundation-usd-openusd
         PRIVATE "$<TARGET_FILE_DIR:isaacsim-foundation-usd-openusd>"
     )
-    target_link_libraries(tests-isaacsim-foundation-usd-openusd PRIVATE tbb usd_ms)
+    target_link_libraries(tests-isaacsim-foundation-usd-openusd PRIVATE TBB::tbb usd_ms)
 endif()
 
 isaacsim_add_python_module(

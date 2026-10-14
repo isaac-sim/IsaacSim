@@ -78,7 +78,8 @@ def convert_json_to_usd(json_path: Union[str, Path], usd_path: Union[str, Path],
 
     prim_creation_kwargs = {}
     for i in range(emitter_state_count):
-        if i < 2:
+        # OmniSensorGenericLidarCoreAPI already applies the s001 emitter state API.
+        if i < 1:
             continue
         # Get first provided field in emitter state
         emitter_state_key = next(iter(profile["emitterStates"][i]))

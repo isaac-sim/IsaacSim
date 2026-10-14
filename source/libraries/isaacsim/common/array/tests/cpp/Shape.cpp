@@ -16,6 +16,7 @@
 #include <doctest/doctest.h>
 #include <isaacsim/common/array/Shape.hpp>
 
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 
@@ -101,6 +102,41 @@ TEST_SUITE("Shape")
             ListInitializerConstructorTest<uint16_t>({ 1, 2, 3, 4, 5, 6 });
             ListInitializerConstructorTest<uint32_t>({ 1, 2, 3, 4, 5, 6, 7 });
             ListInitializerConstructorTest<uint64_t>({ 1, 2, 3, 4, 5, 6, 7, 8 });
+        }
+    }
+
+    TEST_CASE("Shape::size()")
+    {
+        SUBCASE("Dimensions multiply to the element count")
+        {
+            CHECK_EQ(Shape({ 2, 3, 4 }).size(), 24);
+        }
+
+        SUBCASE("A zero dimension yields an empty shape")
+        {
+            CHECK_EQ(Shape({ 8, 0, 4 }).size(), 0);
+        }
+
+        SUBCASE("A zero after an overflowing prefix is empty")
+        {
+            CHECK_EQ(Shape({ std::numeric_limits<int64_t>::max(), int64_t{ 3 }, int64_t{ 0 } }).size(), 0);
+            CHECK_THROWS_AS(Shape({ int64_t{ 0 }, int64_t{ -1 } }).size(), std::invalid_argument);
+        }
+
+        SUBCASE("A negative dimension is rejected")
+        {
+            CHECK_THROWS_AS(Shape({ 2, -1, 4 }).size(), std::invalid_argument);
+        }
+
+        SUBCASE("A product that exceeds size_t is rejected")
+        {
+            CHECK_THROWS_AS(Shape({ std::numeric_limits<int64_t>::max(), int64_t{ 3 } }).size(), std::overflow_error);
+        }
+
+        SUBCASE("A product that exactly fits size_t is accepted")
+        {
+            const int64_t half = static_cast<int64_t>(std::numeric_limits<size_t>::max() / 2);
+            CHECK_EQ(Shape({ half, int64_t{ 2 } }).size(), static_cast<size_t>(half) * 2);
         }
     }
 

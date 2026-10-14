@@ -21,9 +21,9 @@ isaacsim-asset
 ==============
 
 The ``isaacsim-asset`` distribution (CMake group ``isaacsim_asset``) provides Python
-tools for transforming Universal Scene Description (USD) assets and implementing asset
-importers. Use its transformation rules to apply repeatable changes to USD assets and
-its importer utilities to share common importer behavior.
+tools for importing, exporting, and transforming Universal Scene Description (USD)
+assets. It includes URDF and MJCF importers, a URDF exporter, the asset transformer,
+and shared importer utilities.
 
 The distribution keeps reusable asset processing separate from application-specific
 workflows. Its modules can be installed and used independently of the legacy Isaac Sim

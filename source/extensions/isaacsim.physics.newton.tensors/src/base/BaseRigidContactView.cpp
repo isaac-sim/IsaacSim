@@ -124,6 +124,7 @@ BaseRigidContactView::BaseRigidContactView(py::object newtonStage,
     py::gil_scoped_acquire gil;
 
     m_model = m_newtonStage.attr("model");
+    m_contactForcesEnabled = m_newtonStage.attr("cfg").attr("solver_outputs").attr("contact_forces").cast<bool>();
 
     m_physicsDt = m_newtonStage.attr("sim_dt").cast<float>();
     try
@@ -215,6 +216,16 @@ BaseRigidContactView::~BaseRigidContactView()
 {
 }
 
+bool BaseRigidContactView::_hasContactForces() const
+{
+    if (m_contactForcesEnabled)
+        return true;
+    CARB_LOG_WARN_ONCE(
+        "Newton contact force reporting is disabled. Set NewtonConfig.solver_outputs.contact_forces=True before "
+        "initializing physics, then recreate the simulation and tensor views.");
+    return false;
+}
+
 void BaseRigidContactView::_cacheStaticPointers()
 {
     py::gil_scoped_acquire gil;
@@ -304,13 +315,27 @@ void BaseRigidContactView::_refreshContactPointers() const
 
     try
     {
+        if (!m_valid)
+            return;
+        py::object model = m_newtonStage.attr("model");
+        if (!model.is(m_model))
+        {
+            // The Newton stage rebuilt or released its model: the cached mappings and pointers are stale.
+            m_valid = false;
+            m_model = py::none();
+            CARB_LOG_WARN("Rigid contact view: the Newton model was rebuilt or released; recreate the view");
+            return;
+        }
+
         uint64_t gen = m_newtonStage.attr("simulation_timestamp").cast<uint64_t>();
         if (gen == m_lastRefreshedGeneration)
             return;
         m_lastRefreshedGeneration = gen;
     }
-    catch (...)
+    catch (py::error_already_set& e)
     {
+        CARB_LOG_ERROR("Rigid contact view: failed to read the Newton model: %s", e.what());
+        return;
     }
 
     auto ptr = [](py::object arr) -> float* { return warpArrayFromPython<float>(arr).data; };
@@ -411,10 +436,13 @@ uint32_t BaseRigidContactView::getMaxContactDataCount() const
 
 bool BaseRigidContactView::check() const
 {
-    return true;
+    _refreshContactPointers();
+    return m_valid;
 }
 void BaseRigidContactView::release()
 {
+    // Native callers may not hold the GIL; keep it through destruction of the Python members.
+    py::gil_scoped_acquire gil;
     delete this;
 }
 
@@ -442,6 +470,7 @@ const char* BaseRigidContactView::getFilterUsdPrimName(uint32_t sensorIdx, uint3
 bool BaseRigidContactView::getFrictionData(
     const TensorDesc*, const TensorDesc*, const TensorDesc*, const TensorDesc*, float) const
 {
+    _hasContactForces();
     return false;
 }
 

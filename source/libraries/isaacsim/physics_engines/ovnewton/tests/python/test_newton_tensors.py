@@ -98,7 +98,8 @@ class TestNewtonArticulationShapeContracts:
 
         assert backend.max_links == 4
 
-    def test_variable_dof_width_does_not_advertise_dense_row_operations(self) -> None:
+    @pytest.mark.parametrize("coordinate_layout", [False, True])
+    def test_variable_dof_width_does_not_advertise_dense_row_operations(self, coordinate_layout: bool) -> None:
         """Verify heterogeneous DOF counts disable dense DOF-row operations.
 
         Link-level inverse-mass reads remain available because their shape does
@@ -145,6 +146,7 @@ class TestNewtonArticulationShapeContracts:
             get_inv_inertias=lambda: None,
             get_link_transforms=lambda: None,
             get_link_velocities=lambda: None,
+            get_link_incoming_joint_force=lambda: None,
             get_jacobians=lambda: None,
             get_generalized_mass_matrices=lambda: None,
             get_root_transforms=lambda: None,
@@ -152,15 +154,20 @@ class TestNewtonArticulationShapeContracts:
             _newton_stage=SimpleNamespace(solver_is_maximal=True),
         )
 
+        legacy._dof_target_indices = (
+            legacy._backend.dof_position_indices if coordinate_layout else legacy._backend.dof_velocity_indices
+        )
         view = _NewtonArticulationViewAdapter(legacy, legacy.prim_paths)
 
         assert view._warp_dispatch_attached
         assert not (view.has_impl("dof-positions", t.ImplKind.Get))
         assert not (view.has_impl("dof-velocities", t.ImplKind.Get))
         assert not (view.has_impl("dof-stiffnesses", t.ImplKind.Get))
+        assert not view.has_impl("dof-position-targets", t.ImplKind.Get)
         assert view.has_impl("inv-masses", t.ImplKind.Get)
 
-    def test_each_dense_dof_operation_checks_its_actual_map_width(self) -> None:
+    @pytest.mark.parametrize("coordinate_layout", [False, True])
+    def test_each_dense_dof_operation_checks_its_actual_map_width(self, coordinate_layout: bool) -> None:
         """Verify each dense DOF operation checks its own index-map width.
 
         An oversized position map disables position access without suppressing
@@ -192,6 +199,7 @@ class TestNewtonArticulationShapeContracts:
             set_dof_velocity_targets=lambda data, indices: None,
             get_dof_actuation_forces=lambda: None,
             set_dof_actuation_forces=lambda data, indices: None,
+            get_dof_projected_joint_forces=lambda: None,
             get_dof_stiffnesses=lambda: None,
             set_dof_stiffnesses=lambda data, indices: None,
             get_dof_dampings=lambda: None,
@@ -214,6 +222,7 @@ class TestNewtonArticulationShapeContracts:
             get_inv_inertias=lambda: None,
             get_link_transforms=lambda: None,
             get_link_velocities=lambda: None,
+            get_link_incoming_joint_force=lambda: None,
             get_jacobians=lambda: None,
             get_generalized_mass_matrices=lambda: None,
             get_root_transforms=lambda: None,
@@ -221,6 +230,9 @@ class TestNewtonArticulationShapeContracts:
             _newton_stage=SimpleNamespace(solver_is_maximal=True),
         )
 
+        legacy._dof_target_indices = (
+            legacy._backend.dof_position_indices if coordinate_layout else legacy._backend.dof_velocity_indices
+        )
         view = _NewtonArticulationViewAdapter(legacy, legacy.prim_paths)
 
         assert not (view.has_impl("dof-positions", t.ImplKind.Get))
@@ -229,8 +241,12 @@ class TestNewtonArticulationShapeContracts:
         assert view.has_impl("dof-dampings", t.ImplKind.Get)
         assert view.has_impl("dof-armatures", t.ImplKind.Get)
         assert view.has_impl("dof-max-forces", t.ImplKind.Get)
+        assert view.has_impl("dof-projected-joint-forces", t.ImplKind.Get)
+        for kind in (t.ImplKind.Get, t.ImplKind.Set):
+            assert view.has_impl("dof-position-targets", kind) == (not coordinate_layout)
 
-    def test_nondense_velocity_map_gates_only_velocity_operation(self) -> None:
+    @pytest.mark.parametrize("coordinate_layout", [False, True])
+    def test_nondense_velocity_map_gates_only_velocity_operation(self, coordinate_layout: bool) -> None:
         """Verify a non-dense velocity map disables only velocity access."""
         from isaacsim.physics_engines.ovnewton.impl.tensors.entity_factories import _NewtonArticulationViewAdapter
 
@@ -257,6 +273,7 @@ class TestNewtonArticulationShapeContracts:
             set_dof_velocity_targets=lambda data, indices: None,
             get_dof_actuation_forces=lambda: None,
             set_dof_actuation_forces=lambda data, indices: None,
+            get_dof_projected_joint_forces=lambda: None,
             get_dof_stiffnesses=lambda: None,
             set_dof_stiffnesses=lambda data, indices: None,
             get_dof_dampings=lambda: None,
@@ -279,6 +296,7 @@ class TestNewtonArticulationShapeContracts:
             get_inv_inertias=lambda: None,
             get_link_transforms=lambda: None,
             get_link_velocities=lambda: None,
+            get_link_incoming_joint_force=lambda: None,
             get_jacobians=lambda: None,
             get_generalized_mass_matrices=lambda: None,
             get_root_transforms=lambda: None,
@@ -286,11 +304,41 @@ class TestNewtonArticulationShapeContracts:
             _newton_stage=SimpleNamespace(solver_is_maximal=True),
         )
 
+        legacy._dof_target_indices = (
+            legacy._backend.dof_position_indices if coordinate_layout else legacy._backend.dof_velocity_indices
+        )
         view = _NewtonArticulationViewAdapter(legacy, legacy.prim_paths)
 
         assert view.has_impl("dof-positions", t.ImplKind.Get)
         assert not (view.has_impl("dof-velocities", t.ImplKind.Get))
         assert view.has_impl("dof-stiffnesses", t.ImplKind.Get)
+        for kind in (t.ImplKind.Get, t.ImplKind.Set):
+            assert view.has_impl("dof-position-targets", kind) == coordinate_layout
+
+
+class TestNewtonSolverOutputs:
+    """Validate optional solver-output configuration and query guards."""
+
+    def test_solver_output_defaults_preserve_contact_compatibility(self) -> None:
+        """Keep contact forces enabled while incoming joint wrenches remain opt-in."""
+        from isaacsim.physics_engines.ovnewton import NewtonConfig
+
+        config = NewtonConfig()
+        assert config.solver_outputs.contact_forces
+        assert not config.solver_outputs.link_incoming_joint_force
+
+    def test_disabled_contact_force_query_raises(self) -> None:
+        """Reject contact-force tensor reads when the solver output is disabled."""
+        from isaacsim.physics_engines.ovnewton import NewtonConfig
+        from isaacsim.physics_engines.ovnewton.impl.tensors.rigid_contact_view import NewtonRigidContactView
+
+        config = NewtonConfig()
+        config.solver_outputs.contact_forces = False
+        view = object.__new__(NewtonRigidContactView)
+        view._newton_stage = SimpleNamespace(config=config)
+
+        with pytest.raises(RuntimeError, match="contact force reporting is disabled"):
+            view._require_contact_forces()
 
 
 class TestNamedSimulationInstances:

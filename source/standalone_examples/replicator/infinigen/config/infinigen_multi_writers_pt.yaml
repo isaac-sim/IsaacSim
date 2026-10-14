@@ -118,8 +118,8 @@ distractors:
 
 # Physics GPU memory settings for the simulation
 physics:
-  # GPU collision stack size in bytes (300 MB, PhysX default of 64 MB overflows with many colliders)
-  gpu_collision_stack_size: 314572800
+  # GPU collision stack size in bytes (384 MiB, PhysX default of 64 MiB overflows with many colliders)
+  gpu_collision_stack_size: 402653184
 
 # Hide ceiling, move viewport camera to top-down view above the working area
 debug_mode: true

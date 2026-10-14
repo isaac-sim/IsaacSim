@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.17] - 2026-09-23
+### Changed
+- `HolonomicController`'s `max_linear_speed`, `max_angular_speed`, and `max_wheel_speed` now default to `None` (no limit) instead of `1.0e20`, and the solver's internal conditioning scale is derived from the commanded speed instead of from the saturation limit.
+
+### Fixed
+- Verify that `HolonomicController`'s max limits are non-negative and finite when provided.
+- Bound mecanum angles between (0, 180) - had been causing Kaya example to drive backwards.
+
+## [0.2.16] - 2026-09-22
+### Fixed
+- Raise a clear error when a robot has no mecanum wheel joints.
+
+## [0.2.15] - 2026-09-15
+### Fixed
+- Fix Stanley controller steering for cross-track errors greater than pi meters.
+
 ## [0.2.14] - 2026-08-25
 ### Fixed
 - Reject zero or non-finite `wheel_base` values in `AckermannController`.

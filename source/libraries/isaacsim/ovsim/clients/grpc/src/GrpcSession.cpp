@@ -1,5 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "isaacsim/ovsim/clients/grpc/GrpcSession.hpp"
 
@@ -11,6 +23,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <mutex>
@@ -49,7 +62,6 @@ namespace
 constexpr auto g_kRpcTimeout = std::chrono::seconds(5);
 constexpr auto g_kInitializeTimeout = std::chrono::minutes(5);
 constexpr auto g_kPollInterval = std::chrono::milliseconds(100);
-constexpr std::array<int64_t, 3> g_kStepNanoseconds{ 16'666'667, 16'666'667, 16'666'666 };
 
 void setDeadline(::grpc::ClientContext& context)
 {
@@ -125,11 +137,13 @@ OutputValueType createEmptyReadResult(const std::string& attributeName)
 }
 
 controlplane::CreateSimulationRequest makeCreateSimulationRequest(const std::string& simulationId,
-                                                                  const std::string& usdContent)
+                                                                  const std::string& usdContent,
+                                                                  double timeStep)
 {
     controlplane::CreateSimulationRequest request;
     request.set_simulation_id(simulationId);
     request.set_usd_content(usdContent);
+    request.set_time_step(timeStep);
     return request;
 }
 
@@ -353,6 +367,22 @@ public:
         return m_configuration;
     }
 
+    void setTimeStep(double timeStep)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_simulationId.empty() && !m_deleteAccepted)
+        {
+            throw std::logic_error("Set time-step before importing the remote stage.");
+        }
+        m_timeStep = timeStep;
+    }
+
+    double getTimeStep()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_timeStep;
+    }
+
     ::grpc::Status createSimulation(const std::string& usdContent)
     {
         if (usdContent.empty())
@@ -389,11 +419,21 @@ public:
         }
 
         m_simulationId = generateUuidV4();
-        const auto request = makeCreateSimulationRequest(m_simulationId, usdContent);
+        const auto request = makeCreateSimulationRequest(m_simulationId, usdContent, m_timeStep);
         controlplane::CreateSimulationResponse response;
         ::grpc::ClientContext context;
         setDeadline(context);
         const auto status = m_control->CreateSimulation(&context, request, &response);
+        if (status.ok() && (response.has_time_step() ? response.time_step() : 1.0 / 60.0) != m_timeStep)
+        {
+            ::grpc::ClientContext cleanupContext;
+            setDeadline(cleanupContext);
+            controlplane::DeleteSimulationResponse cleanupResponse;
+            const auto cleanupStatus = m_control->DeleteSimulation(
+                &cleanupContext, makeDeleteSimulationRequest(m_simulationId), &cleanupResponse);
+            m_deleteAccepted = cleanupStatus.ok();
+            return { ::grpc::StatusCode::UNIMPLEMENTED, "The server did not accept the requested time step." };
+        }
         if (!status.ok() && !isUnknownOutcome(status))
         {
             _clearLifecycle();
@@ -566,21 +606,24 @@ public:
 private:
     int64_t _getCurrentTime() const
     {
-        return m_simulationTimeNs + g_kStepNanoseconds.at(m_timePhase % g_kStepNanoseconds.size());
+        const double timestamp = std::ceil((static_cast<double>(m_stepCount) + 1.0) * (m_timeStep * 1e9));
+        if (timestamp >= 0x1p63 || timestamp <= std::ceil(m_stepCount * (m_timeStep * 1e9)))
+        {
+            throw std::overflow_error("The next simulation timestamp cannot advance within int64 nanoseconds.");
+        }
+        return static_cast<int64_t>(timestamp);
     }
 
     void _incrementTime()
     {
-        m_simulationTimeNs = _getCurrentTime();
-        m_timePhase = (m_timePhase + 1) % g_kStepNanoseconds.size();
+        ++m_stepCount;
     }
 
     void _clearLifecycle()
     {
         m_simulationId.clear();
         m_deleteAccepted = false;
-        m_simulationTimeNs = 0;
-        m_timePhase = 0;
+        m_stepCount = 0;
         m_pendingStepTimeNs.reset();
     }
 
@@ -591,8 +634,8 @@ private:
     std::mutex m_mutex;
     std::string m_simulationId;
     bool m_deleteAccepted{ false };
-    int64_t m_simulationTimeNs{ 0 };
-    size_t m_timePhase{ 0 };
+    int64_t m_stepCount{ 0 };
+    double m_timeStep{ 1.0 / 60.0 };
     std::optional<int64_t> m_pendingStepTimeNs;
 };
 
@@ -718,14 +761,29 @@ void GrpcSession::step()
     }
 }
 
-void GrpcSession::setSimulationParameter(const std::string&, const std::string&, const InputParameterType&)
+void GrpcSession::setSimulationParameter(const std::string& provider,
+                                         const std::string& parameterName,
+                                         const InputParameterType& value)
 {
-    throw std::logic_error("Remote simulation parameters are not supported.");
+    if (provider != "physics" || parameterName != "time-step")
+    {
+        throw std::logic_error("Only the physics time-step parameter is supported remotely.");
+    }
+    const auto* timeStep = std::get_if<double>(&value);
+    if (!timeStep || !std::isfinite(*timeStep) || *timeStep < 1e-9 || *timeStep * 1e9 >= 0x1p63)
+    {
+        throw std::invalid_argument("time-step must be at least 1 ns and fit in an int64 nanosecond timestamp.");
+    }
+    m_implementation->setTimeStep(*timeStep);
 }
 
-OutputParameterType GrpcSession::getSimulationParameter(const std::string&, const std::string&)
+OutputParameterType GrpcSession::getSimulationParameter(const std::string& provider, const std::string& parameterName)
 {
-    throw std::logic_error("Remote simulation parameters are not supported.");
+    if (provider != "physics" || parameterName != "time-step")
+    {
+        throw std::logic_error("Only the physics time-step parameter is supported remotely.");
+    }
+    return m_implementation->getTimeStep();
 }
 
 OutputValueType GrpcSession::read(const PathType& paths, const std::string& attributeName, std::optional<double> timestamp)

@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Simulate a Cube over gRPC
+# Simulate a cube over gRPC
 
 This example authors a cube locally, sends the stage to an OV SIM gRPC server, and advances the remote simulation.
 

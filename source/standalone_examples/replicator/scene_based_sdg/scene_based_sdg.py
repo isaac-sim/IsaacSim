@@ -69,6 +69,7 @@ config = {
 # Parse command line arguments for optional config file
 parser = argparse.ArgumentParser()
 parser.add_argument("--config", required=False, help="Include specific config parameters (json or yaml))")
+parser.add_argument("--headless", action="store_true", help="Run without a window or viewport rendering")
 args, unknown = parser.parse_known_args()
 
 # Load config file if provided
@@ -91,6 +92,8 @@ if "writer_config" in args_config:
 
 # Merge args config into default config
 config.update(args_config)
+if args.headless:
+    config["launch_config"].update({"headless": True, "disable_viewport_updates": True})
 
 # Initialize simulation app
 simulation_app = SimulationApp(launch_config=config["launch_config"])

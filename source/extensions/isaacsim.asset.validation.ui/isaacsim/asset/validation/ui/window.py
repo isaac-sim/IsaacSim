@@ -40,7 +40,7 @@ from .result_delegate import ResultsTreeDelegate
 from .result_model import FindingItem, RequirementItem, ResultsTreeModel
 
 WINDOW_TITLE = "SimReady Asset Validation"
-_DOCS_URL = "https://docs.omniverse.nvidia.com/kit/docs/asset-requirements/latest"
+_DOCS_URL_SETTING = "/exts/isaacsim.asset.validation.ui/docsUrl"
 _PROFILE_FILTER_SETTING = "/exts/isaacsim.asset.validation.ui/profileFilter"
 _PROFILE_NAMES_SETTING = "/exts/isaacsim.asset.validation.ui/profileNames"
 _DOCS_ROOT = "capabilities"
@@ -643,7 +643,7 @@ class SimReadyValidationWindow(ui.Window):
     def _open_requirement_docs(self) -> None:
         if self._selected_result is None:
             return
-        base = carb.settings.get_settings().get("exts/omni.asset_validator.ui/capabilities/url") or _DOCS_URL
+        base = carb.settings.get_settings().get(_DOCS_URL_SETTING)
         webbrowser.open(_requirement_docs_url(self._selected_result.documentation_path, base))
 
     def _copy_details(self) -> None:

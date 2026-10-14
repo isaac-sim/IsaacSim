@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.1.1] - 2026-10-02
+### Changed
+- `NewtonStage.state_temp` is no longer allocated and stays `None`.
+
+### Fixed
+- `NewtonStage.simulate`: keep `state_0` on one buffer for any `num_substeps`, with or without CUDA graph capture. Even substep counts with the graph ran physics at (N-1)/N speed and dropped tensor-view writes; odd counts without it made tensor views read a stale state every other step.
+- `NewtonStage.step_sim`: recapture the CUDA graph when `num_substeps` changes on the live configuration; the old graph kept replaying the captured substep count.
+
+## [1.1.0] - 2026-09-30
+### Changed
+- Updated Newton to 1.6.1rc1, MuJoCo and MuJoCo Warp to 3.12.0, newton-usd-schemas to 0.5.0, and Warp to 1.17.0.
+
+### Fixed
+- Use coordinate-layout indices for Newton position targets, including floating-base robots.
+
+## [1.0.8] - 2026-09-30
+### Added
+- Add `NewtonSolverOutputConfig` for configuring contact-force and articulation solver outputs before physics initialization.
+
+## [1.0.7] - 2026-09-29
+### Added
+- Add an optional `MuJoCoSolverConfig.cone` override.
+
+### Fixed
+- Stabilize the nut-and-bolt example with elliptic friction cones and stiffer contacts, and reject nonfinite poses.
+- Prevent the nut-and-bolt test mode from loading unrelated interactive examples.
+
 ## [1.0.6] - 2026-08-28
 ### Fixed
 - Initialize joint coordinates from authored rigid-body poses before forward kinematics, while preserving the nearest equivalent revolute-angle branch.

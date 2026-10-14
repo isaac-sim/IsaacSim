@@ -46,14 +46,14 @@ class RtxCamera(SensorAuthoring):
 
         This class creates or wraps (one of both) USD Camera prims according to the following rules:
 
-        * If the prim path exists, a wrapper is placed over the USD Camera prim. The
-          ``OmniSensorAPI`` schema is applied to it when not already present.
-        * If the prim path does not exist, a USD Camera prim is created at the path with the
-          ``OmniSensorAPI`` schema applied, and a wrapper is placed over it.
+        * If the prim paths exist, a wrapper is placed over the USD Camera prims. The
+          ``OmniSensorAPI`` schema is applied to each when not already present.
+        * If the prim paths do not exist, USD Camera prims are created at those paths with the
+          ``OmniSensorAPI`` schema applied, and a wrapper is placed over them.
 
     Args:
-        path: Single path to existing or non-existing (one of both) USD Camera prim.
-            Can include regular expression for matching a prim.
+        path: Single path, list of paths, or regular expression for existing or non-existing
+            (one of both) USD Camera prims.
         tick_rate: Sensor tick rate in Hz. When ``None`` (the default), the prim's
             ``omni:sensor:tickRate`` attribute is left untouched, so any value already authored on
             the prim (e.g. from a USD asset) is preserved. For newly-created prims, the
@@ -75,7 +75,6 @@ class RtxCamera(SensorAuthoring):
 
     Raises:
         ValueError: If no prim is found matching the specified path.
-        ValueError: If the input argument refers to more than one prim.
         ValueError: If the prim at the specified path is not a USD Camera prim.
 
     Example:
@@ -91,10 +90,11 @@ class RtxCamera(SensorAuthoring):
 
     _PRIM_TYPE = "Camera"
     _SCHEMA = "OmniSensorAPI"
+    _ALLOW_MULTIPLE_PRIMS = True
 
     def __init__(
         self,
-        path: str,
+        path: str | list[str],
         *,
         tick_rate: float | None = None,
         schemas: list[str] | None = None,
@@ -224,7 +224,7 @@ class RtxCamera(SensorAuthoring):
         """Camera object for accessing optical parameters.
 
         Returns a :class:`~isaacsim.core.experimental.objects.Camera` wrapper over
-        the same USD prim, providing access to focal length, clipping range, aperture,
+        the same USD prims, providing access to focal length, clipping range, aperture,
         and other optical properties.
 
         Returns:
@@ -239,5 +239,5 @@ class RtxCamera(SensorAuthoring):
             >>> cam.camera.get_focal_lengths()
         """
         if self._camera is None:
-            self._camera = Camera(self.paths[0])
+            self._camera = Camera(self.paths)
         return self._camera

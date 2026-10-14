@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Any
 
 import _physics_setup  # noqa: F401
-import pytest
+from isaacsim.physics_engines.ovnewton import SolverType
 
 _TENSORS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _TENSORS_DIR not in sys.path:
@@ -51,15 +52,6 @@ from common.articulation_dynamics import (  # noqa: E402
     JointPerformanceEnvelopeCommon,
     MassMatricesCommon,
     RootVelocityThroughDofSetCommon,
-)
-
-_GAP_JOINT_FORCE_REPORTING = (
-    "Newton joint-force reporting (link-incoming-joint-force / "
-    "dof-projected-joint-forces) is deferred pending a design decision: computing them "
-    "requires requesting State.body_parent_f at model-build time, an always-on per-step "
-    "cost on every solver (a full RNE post-constraint pass under MuJoCo) whether or not "
-    "the tensor is read. Unconditional vs. opt-in gating is undecided; the ops stay "
-    "unregistered until then."
 )
 
 
@@ -141,18 +133,25 @@ class TestGravityCompensation:
         run_scenario(self, GravityCompensationCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestJointActuationForces:
-    """Skip projected joint-force validation because Newton does not report joint forces."""
+    """Validate projected joint forces after applying actuation forces."""
+
+    class _Scenario(JointActuationForcesCommon):
+        """Request joint wrench output before Newton state creation."""
+
+        def configure_newton(self, config: Any) -> None:
+            """Enable joint wrench output and inverse-dynamics force reporting."""
+            config.solver_outputs.link_incoming_joint_force = True
+            config.solver.solver_type = SolverType.FEATHERSTONE
 
     def test_joint_actuation_forces_newton_cc(self) -> None:
         """Verify joint actuation forces on the Newton CPU pipeline."""
-        run_scenario(self, JointActuationForcesCommon, "newton", cpu_device())
+        run_scenario(self, self._Scenario, "newton", cpu_device())
 
     @gpu_only
     def test_joint_actuation_forces_newton_gg(self) -> None:
         """Verify joint actuation forces on the Newton GPU pipeline."""
-        run_scenario(self, JointActuationForcesCommon, "newton", gpu_device())
+        run_scenario(self, self._Scenario, "newton", gpu_device())
 
 
 class TestArticulationDofDriveType:

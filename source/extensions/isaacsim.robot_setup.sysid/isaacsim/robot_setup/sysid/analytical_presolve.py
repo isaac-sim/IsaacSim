@@ -17,11 +17,12 @@
 
 from __future__ import annotations
 
-import logging
+import traceback
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
+import carb
 import numpy as np
 import torch
 
@@ -56,8 +57,6 @@ from .usd_kinematics import (
 
 if TYPE_CHECKING:
     from pxr import Usd
-
-_LOGGER = logging.getLogger(__name__)
 
 VELOCITY_DEADBAND = 1e-4
 IDENTIFIABILITY_TOL = 1e-9
@@ -314,7 +313,7 @@ def _collect_unmapped_subtree_links(
         return tuple(lumps)
     except Exception as exc:
         # Collecting optional lumped-link diagnostics must not abort presolve.
-        _LOGGER.debug("Unmapped subtree link collection failed: %s", exc, exc_info=True)
+        carb.log_verbose(f"Unmapped subtree link collection failed: {exc}\n{traceback.format_exc()}")
         return ()
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import omni.kit.test
@@ -50,6 +51,10 @@ def _trajectory() -> TrajectoryDataset:
         commands=np.zeros((4, 1), dtype=np.float64),
         torques=np.ones((4, 1), dtype=np.float64),
     )
+
+
+def _messages(log_mock) -> list[str]:  # noqa: ANN001
+    return [call.args[0] for call in log_mock.call_args_list]
 
 
 class TelemetryQualityAndTrainingLogTests(omni.kit.test.AsyncTestCase):
@@ -145,11 +150,11 @@ class TelemetryQualityAndTrainingLogTests(omni.kit.test.AsyncTestCase):
             manifest = Path(tmp_dir) / "collection_manifest.json"
             manifest.write_text("{malformed", encoding="utf-8")
 
-            with self.assertLogs("isaacsim.robot_setup.sysid.training_logs", level="WARNING") as captured:
+            with patch("carb.log_warn") as log_warn:
                 payload = _load_json_object(manifest)
 
         self.assertEqual(payload, {})
-        self.assertTrue(any("could not parse optional companion JSON" in message for message in captured.output))
+        self.assertTrue(any("could not parse optional companion JSON" in message for message in _messages(log_warn)))
 
     async def test_malformed_optional_phase_event_logs_warning(self) -> None:
         """Warn with a row number when malformed optional JSONL is skipped."""
@@ -157,11 +162,11 @@ class TelemetryQualityAndTrainingLogTests(omni.kit.test.AsyncTestCase):
             events_path = Path(tmp_dir) / "phase_events.jsonl"
             events_path.write_text('{"phase": "train"}\n{malformed\n', encoding="utf-8")
 
-            with self.assertLogs("isaacsim.robot_setup.sysid.training_logs", level="WARNING") as captured:
+            with patch("carb.log_warn") as log_warn:
                 rows = _load_jsonl_objects(events_path)
 
         self.assertEqual(rows, [{"phase": "train"}])
-        self.assertTrue(any("row 2" in message for message in captured.output))
+        self.assertTrue(any("row 2" in message for message in _messages(log_warn)))
 
     async def test_companion_training_details_convert_phase_events_to_chunks(self) -> None:
         """Convert phase event logs and manifest metadata into chunk specs."""
@@ -271,12 +276,12 @@ class TelemetryQualityAndTrainingLogTests(omni.kit.test.AsyncTestCase):
                 encoding="utf-8",
             )
 
-            with self.assertLogs("isaacsim.robot_setup.sysid.training_logs", level="WARNING") as captured:
+            with patch("carb.log_warn") as log_warn:
                 details = load_companion_training_details(root, _trajectory())
 
         self.assertEqual(details.chunks, [])
         self.assertEqual(details.time_key, "")
-        self.assertTrue(any("no time key matches the telemetry window" in message for message in captured.output))
+        self.assertTrue(any("no time key matches the telemetry window" in message for message in _messages(log_warn)))
 
     async def test_phase_chunks_from_metadata_skips_invalid_specs(self) -> None:
         """Keep valid companion chunks when one user-authored spec is corrupt."""
@@ -296,7 +301,8 @@ class TelemetryQualityAndTrainingLogTests(omni.kit.test.AsyncTestCase):
             },
         )
 
-        with self.assertLogs("isaacsim.robot_setup.sysid.training_logs", level="WARNING"):
+        with patch("carb.log_warn") as log_warn:
             chunks = phase_chunks_from_metadata(trajectory)
 
         self.assertEqual([chunk.name for chunk in chunks], ["valid"])
+        self.assertTrue(any("ignoring invalid companion phase chunk" in message for message in _messages(log_warn)))

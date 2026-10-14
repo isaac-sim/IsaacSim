@@ -1,4 +1,7 @@
-namespace isaac;
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+namespace holoscan.schema;
 
 // Time.
 table Time {
@@ -10,3 +13,4 @@ table Time {
 }
 
 root_type Time;
+file_identifier "HSTM";

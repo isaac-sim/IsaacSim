@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0] - 2026-09-29
+### Added
+- Add replay write-interval tracking and separate rendered and written frame counts.
+
+### Fixed
+- NuRec replay preserves requested RGB and depth flags instead of forcing RGB-only output.
+
+## [0.4.0] - 2026-09-15
+### Added
+- Add separate state accessors, storage, and readers for instance ID segmentation, including legacy recording support.
+
+### Fixed
+- `MobilityGenCamera`: use the supported fast annotator and keep instance ID frames separate from semantic segmentation.
+- Preserve uint32 instance IDs losslessly, remove stale instance ID outputs before replay, and load only common state
+  when replaying.
+
 ## [0.3.0] - 2026-09-01
 ### Added
 - `Module.missing_modalities`, `Module.named_missing_modalities`, and `Module.format_missing_modalities`: report the modalities a module could not capture during the last `update_state()`.

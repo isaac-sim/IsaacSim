@@ -12,7 +12,7 @@ description = "Lightweight OpenGL viewport for Isaac Sim testing and debugging"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
-dependencies = []
+dependencies = ["ovstage==0.2.0.377349"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",

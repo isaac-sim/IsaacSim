@@ -79,7 +79,7 @@ def unpack_odometry_message(buffer: object) -> tuple:
     buf = bytearray(buffer.tobytes())
     msg = Odometry.Odometry.GetRootAs(buf, 0)
 
-    timestamp = msg.Header().Stamp().TimeNs() / 1e9
+    timestamp = msg.Header().CaptureTimestampNs() / 1e9
 
     pose = msg.Pose().Pose()
     position = _read_tensor_f32(pose.Position())

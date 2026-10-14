@@ -33,9 +33,9 @@
  * deliberately departs from it, or where the corresponding NumPy spelling helps to locate the
  * equivalent call.
  *
- * One departure applies throughout: operations that NumPy can satisfy with a view always return a
- * newly allocated array here. An @ref isaacsim::common::array::Array is densely packed and stores
- * no per-axis strides, so a strided view of another array's buffer is not representable.
+ * Arrays carry per-axis element strides. @ref isaacsim::common::array::transpose() returns independent storage;
+ * @ref isaacsim::common::array::transposeView() explicitly requests a shared view. Arithmetic, gather and
+ * reduction operations return newly allocated arrays.
  */
 
 namespace isaacsim
@@ -208,6 +208,25 @@ ISAACSIM_COMMON_ARRAY_API Array divide(const Array& a, const details::SupportedI
 ISAACSIM_COMMON_ARRAY_API Array divide(const details::SupportedInputSpecification& a, const Array& b);
 
 /**
+ * @brief Raises each element of the first operand to the power of the second.
+ * @details
+ * Unlike NumPy, the result is always floating point: boolean and integer operands are promoted to
+ * `float64` first, as they are for true division. NumPy instead keeps an integer dtype and raises
+ * on a negative integer exponent, a corner case this avoids having to carry.
+ *
+ * @param[in] a Base.
+ * @param[in] b Exponent.
+ * @return A new Array holding the element-wise power.
+ */
+ISAACSIM_COMMON_ARRAY_API Array power(const Array& a, const Array& b);
+
+/** @copydoc power(const Array&, const Array&) */
+ISAACSIM_COMMON_ARRAY_API Array power(const Array& a, const details::SupportedInputSpecification& b);
+
+/** @copydoc power(const Array&, const Array&) */
+ISAACSIM_COMMON_ARRAY_API Array power(const details::SupportedInputSpecification& a, const Array& b);
+
+/**
  * @brief Computes the element-wise truth value of `NOT x`.
  * @details
  * Accepts operands of any dtype: an element is treated as `true` when it is non-zero (so `NaN` is
@@ -245,6 +264,18 @@ ISAACSIM_COMMON_ARRAY_API Array negative(const Array& a);
  * @return A new Array holding the element-wise absolute value.
  */
 ISAACSIM_COMMON_ARRAY_API Array absolute(const Array& a);
+
+/**
+ * @brief Computes the element-wise square root.
+ * @details
+ * The result is always floating point: a boolean or integer operand is promoted to `float64` first,
+ * as true division promotes its operands. A negative operand yields a quiet NaN rather than
+ * throwing, which is what `std::sqrt()` and NumPy both do.
+ *
+ * @param[in] a Operand.
+ * @return A new Array holding the element-wise square root.
+ */
+ISAACSIM_COMMON_ARRAY_API Array sqrt(const Array& a);
 
 /**
  * @brief Tests whether all array elements evaluate to `true`.
@@ -344,16 +375,30 @@ ISAACSIM_COMMON_ARRAY_API Array amax(const Array& a);
  * `{a.shape()[axes[0]], a.shape()[axes[1]], ...}`. @p axes must be a permutation of
  * `[0, a.ndim())`; negative entries count from the last axis, as elsewhere in this library. Omitting
  * @p axes reverses the axis order, so a 0-D or 1-D operand comes back unchanged. The result keeps
- * the operand's dtype and device, and holds a copy rather than a view of the elements.
+ * the operand's dtype and device.
+ *
+ * The result is an independent contiguous array, including identity permutations and 0-D inputs.
+ * Use @ref transposeView() to explicitly share storage.
  *
  * @param[in] a    Operand.
  * @param[in] axes Permutation of the operand's axes, one entry per dimension, or `std::nullopt` to
  *                 reverse the axis order.
- * @return A new Array holding the permuted elements.
+ * @return An independent Array with permuted axes.
  * @throws std::invalid_argument if @p axes does not hold exactly one entry per dimension of @p a,
  *         if any entry is out of range, or if any axis is repeated.
  */
 ISAACSIM_COMMON_ARRAY_API Array transpose(const Array& a, const std::optional<std::vector<int64_t>>& axes = std::nullopt);
+
+/**
+ * @brief Returns a view with permuted axes and shared storage.
+ * @param[in] a Operand whose owner, device and writeability restrictions are retained.
+ * @param[in] axes Axis permutation, or no value to reverse the axes.
+ * @return A strided view; writes are shared with the operand when permitted.
+ * @throws std::invalid_argument if the axes are not a valid permutation.
+ */
+ISAACSIM_COMMON_ARRAY_API Array transposeView(const Array& a,
+                                              const std::optional<std::vector<int64_t>>& axes = std::nullopt);
+
 
 /**
  * @brief Gathers elements along a single axis by index.

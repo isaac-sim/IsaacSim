@@ -77,6 +77,24 @@ class TestTeleopManagerCommands(omni.kit.test.AsyncTestCase):
         registered_callback.assert_called_once_with("Error: CloudXR is not ready")
         self.assertIs(manager._on_status_changed, registered_callback)
 
+    async def test_provider_open_failure_preserves_registered_status_callback(self) -> None:
+        """Retain the attempt callback only for a provider that opened."""
+        manager = TeleopManager.__new__(TeleopManager)
+        manager._is_connected = False
+        manager._debug_tracking_enabled = False
+        registered_callback = MagicMock()
+        manager.set_on_status_changed(registered_callback)
+
+        provider = MagicMock()
+        provider.input_mode = TeleopInputMode.MCAP_REPLAY
+        provider.__enter__.side_effect = RuntimeError("MCAP open failed")
+
+        attempt_callback = MagicMock()
+
+        self.assertFalse(manager.connect_provider(provider, on_status_changed=attempt_callback))
+        attempt_callback.assert_called_once_with("Error: MCAP open failed")
+        self.assertIs(manager._on_status_changed, registered_callback)
+
     async def test_connect_rolls_back_when_anchor_prerequisites_fail(self) -> None:
         """Close the provider and remove runtime resources after partial setup."""
         manager = TeleopManager.__new__(TeleopManager)

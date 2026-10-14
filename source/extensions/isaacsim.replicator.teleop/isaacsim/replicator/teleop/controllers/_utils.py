@@ -28,6 +28,51 @@ DEFAULT_ROTATION_OFFSET_DEG = 0
 ROTATION_OFFSET_DEGREES = (-180, -90, 0, 90, 180)
 ROTATION_OFFSET_LABELS = ("-180", "-90", "0", "+90", "+180")
 
+FLOATING_BASE_MESSAGE = (
+    "Jacobian-based IK requires a fixed-base articulation, and {context} reports a floating base. "
+    "A floating base prepends six root columns to the Jacobian and shifts its link rows, which this "
+    "solver does not account for, so it would command wrong joints. Apply the articulation root to a "
+    "fixed joint anchoring the base to the world, or drive this robot with the floating controllers."
+)
+
+
+class FloatingBaseArticulationError(RuntimeError):
+    """Raised when an articulation Jacobian has the floating-base layout."""
+
+
+def slice_ee_jacobian(
+    jacobians: np.ndarray,
+    num_dofs: int,
+    ee_link_index: int,
+    arm_dof_indices: np.ndarray,
+) -> np.ndarray:
+    """Slice the controlled-arm columns out of an articulation Jacobian.
+
+    ``Articulation.get_jacobian_matrices`` returns ``(N, num_links - 1, 6, num_dofs)``
+    for a fixed base and ``(N, num_links, 6, num_dofs + 6)`` for a floating base.
+    The column count is what tells the two apart, and it is the only signal that
+    does so: a world-anchoring joint in USD leaves the base floating unless the
+    articulation root is applied to that joint.
+
+    Args:
+        jacobians: Jacobian matrices read from the articulation.
+        num_dofs: Number of articulation DOFs.
+        ee_link_index: Link index of the end-effector link.
+        arm_dof_indices: Articulation DOF indices of the controlled arm joints.
+
+    Returns:
+        End-effector Jacobian restricted to the controlled arm DOFs, shape
+        ``(N, 6, arm_dofs)``.
+
+    Raises:
+        FloatingBaseArticulationError: If the Jacobian has the floating-base layout.
+    """
+    if jacobians.shape[-1] != num_dofs:
+        raise FloatingBaseArticulationError(
+            FLOATING_BASE_MESSAGE.format(context=f"a Jacobian of {jacobians.shape[-1]} columns for {num_dofs} DOFs")
+        )
+    return jacobians[:, ee_link_index - 1][..., arm_dof_indices]
+
 
 def quat_mul_wxyz(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Hamilton product of batched quaternions in ``wxyz`` convention.

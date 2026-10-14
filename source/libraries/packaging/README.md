@@ -1,22 +1,20 @@
 # Library packaging
 
-Python wheels and native archives use separate, standards-appropriate workflows.
-Terminology in this document follows the canonical definitions of
-[carrier, adapter, and wrapper](../README.md#terminology).
+Python wheels and native archives use separate workflows because they follow different packaging standards.
+This document uses the [terminology defined in the main libraries README](../README.md#terminology).
 
 ## Python wheels
 
-Every independently shippable distribution owns a `pyproject.toml` at its package root. Package discovery supports
-the normal two-component layout, such as `isaacsim/common/pyproject.toml`, and named flat roots, such as
-`isaacsim_deprecated/pyproject.toml`. That file is authoritative for the Python project name, dynamic version,
-supported Python version, runtime dependencies, and PEP 517 backend. CMake remains authoritative for the wheel payload.
-Build requirements and runtime requirements are different contracts: `[build-system].requires` advertises the backend
-versions that can build the project from source, while `[project].dependencies` becomes public `Requires-Dist` wheel
-metadata. Internal `source/libraries` dependency names are listed in the `isaacsim_libraries_metadata` dynamic provider,
-which appends exact requirements derived from the shared `VERSION`; external requirements remain static and may use
-supported ranges. Concrete tools selected for an Isaac Sim release do not replace either published contract.
-Authored Python project and requirement names use canonical PEP 508 hyphens, such as `isaacsim-common`; CMake group
-selectors retain their underscore form, such as `--group isaacsim_common`.
+Every shippable distribution has a `pyproject.toml` at its package root. This works for the normal two-directory layout,
+such as `isaacsim/common/pyproject.toml`, and flat roots such as `isaacsim_deprecated/pyproject.toml`.
+
+`pyproject.toml` defines the Python project name, version source, supported Python version, runtime dependencies, and
+PEP 517 backend. CMake defines which files enter the wheel. `[build-system].requires` lists tools needed to build from
+source, while `[project].dependencies` becomes the wheel's public runtime requirements.
+
+List internal dependencies in the `isaacsim_libraries_metadata` provider, which adds exact requirements from the
+shared `VERSION`. External requirements may use supported ranges. Use hyphenated PEP 508 names in Python metadata,
+such as `isaacsim-common`, and underscore names in CMake selectors, such as `--group isaacsim_common`.
 
 Build the libraries and assemble their wheels:
 
@@ -37,14 +35,13 @@ Exercise the supported lower bounds with separate environments and build trees:
 ./build.sh -r --test --wheel --dependency-profile minimum
 ```
 
-`locked` is the default and uses the concrete versions selected for ordinary release production. `minimum` pins
-direct build/test tools to their declared lower bounds. Newer versions are evaluated only by updating and reviewing
-`pixi.lock`; ordinary builds never perform a floating solve. Test and wheel subprocesses isolate `PYTHONPATH` to the
-selected profile. The selected versions affect artifact production and validation, not wheel runtime metadata.
+The default `locked` profile uses the exact versions selected for release builds. The `minimum` profile uses the
+lowest supported version of each direct build and test tool. Ordinary builds never resolve floating versions; newer
+versions enter through reviewed `pixi.lock` updates. These profiles affect building and testing, not wheel runtime
+metadata.
 
-Without `--group`, the tool assembles every discovered package whose generated manifest declares at least one Python
-import. It skips C- and C++-only packages. Explicitly selecting a native-only package is an error rather than an empty
-wheel.
+Without `--group`, the tool builds a wheel for every package that declares a Python import. It skips native-only
+packages. Explicitly selecting a native-only package is an error.
 
 The standalone command configures and builds the complete module graph in
 `_cmake_build/isaacsim-libraries-release`. Wheel assembly validates the CMake source directory, configuration, Python
@@ -53,40 +50,58 @@ changing compiled module sources or CMake configuration.
 
 For each package, the wheel tool creates a unique temporary directory under
 `_cmake_build/isaacsim-libraries-wheel-stage`, installs only the already-built `<group>-python` CMake component, and
-invokes `python -m build --wheel` with scikit-build-core's CMake integration disabled. Scikit-build-core owns Python
-core metadata, wheel tags, `WHEEL`, `RECORD`, archive layout, and future wheel-specification changes; it never
-configures or compiles CMake. The tool validates the completed wheel and atomically publishes it to the output
-directory. Temporary installation and backend output directories are removed after assembly, including after a
-failure. Separate packages can be assembled concurrently.
+strips staged ELF files for release artifacts with the toolchain selected by CMake. It then runs
+`python -m build --wheel` without invoking CMake. Debug wheel stages retain their symbols. Scikit-build-core creates
+the metadata, tags, records, layout, and archive. The tool validates the completed wheel before publishing it
+atomically to the output directory and removes temporary files even after a failure. It can assemble separate packages
+concurrently.
+
+On non-Windows platforms, each distribution owns its native libraries, imported runtimes, and runtime directories. A
+consumer wheel relies on its exact internal wheel requirements rather than repackaging dependency-owned payloads.
+Windows wheels retain the complete binding-local DLL and data closure required by the platform loader. Linux and macOS
+wheels store the runtime SONAME and omit development linker-name aliases; native SDK archives retain their normal
+link-time layout. Wheel staging for Kit materializes manifest-declared runtime aliases from that SDK layout without
+adding the aliases to general-consumer wheels.
 
 Schema projects may declare named wheel variants in `[tool.isaacsim-library]`. Their standalone default installs the
-matching `<group>-python-<variant>` component and receives a PEP 427 build tag such as `1usd2505`; carrier manifests
+matching `<group>-python-<variant>` component and receives a PEP 427 build tag such as `1usd2505`; extension manifests
 select their required variant explicitly, such as `usd2511`. Schema wheels remain `py3-none-any` because their payload
 contains Python and USD data rather than native code. Keep variants in separate wheelhouses for general pip consumers:
-wheel build tags distinguish artifacts but do not express runtime compatibility to pip's resolver. Carrier staging
+wheel build tags distinguish artifacts but do not express runtime compatibility to pip's resolver. Wheel staging
 selects the exact version, build tag, and pure-wheel tag before exposing a one-wheel local index to pip.
 
-Validation checks the distribution name and version, exact internal package requirements, registered imports,
-`py.typed` markers, implicit namespace layout, and the installed package manifest. Requirement names and specifiers
-are normalized with the standard `packaging` parser. Internal wheel requirements must exist in the native package
-graph and must be unconditional exact shared-version pins. A native-only dependency may be omitted from wheel
-metadata. Source tests, tool caches, bytecode, and symlinks are also rejected. Additional external Python requirements
-and their supported ranges remain owned by `pyproject.toml`.
+Validation checks the distribution name and version, internal dependencies, imports, `py.typed` markers, namespace
+layout, and package manifest. Internal wheel dependencies must also exist in the native package graph and use an
+unconditional exact shared-version pin. Native-only dependencies may be omitted from wheel metadata. Wheels must not
+contain source tests, caches, bytecode, or symlinks. `pyproject.toml` continues to own external Python requirements.
 
-Use the wheel tool instead of invoking `python -m build` directly. The frontend needs the private CMake component stage
-that the tool supplies through backend configuration; `pyproject.toml` intentionally contains no source-tree or build-
-tree payload paths.
+Use the wheel tool instead of running `python -m build` directly. It supplies the private CMake staging directory that
+the backend needs; `pyproject.toml` intentionally contains no source or build directory paths.
 
-For wheels containing native code, the backend-generated platform tag describes the build host. Producing a wheel for
-a release portability policy, such as manylinux, is a separate CI repair and validation step performed with the
-platform's standard wheel tooling; do not change the filename or metadata tag manually.
+For wheels with native code, the generated platform tag describes the build host. CI performs any additional repair
+and validation required by a release standard such as manylinux. Do not edit wheel filenames or metadata tags by hand.
 
 Validate a wheel by installing it into a clean environment without the source or build tree on `PYTHONPATH`, importing
-each module, querying its version through `importlib.metadata`, and checking its installed files. Source tests, caches,
-and symlinks must not be present.
+each module in a fresh process, querying its version through `importlib.metadata`, and checking its installed files.
+Fresh processes keep independently supported native backends from loading incompatible runtime variants together.
+Source tests, caches, and symlinks must not be present.
 
-The command writes wheels to `_cmake_build/isaacsim-libraries-artifacts/<configuration>` by default. Backend scratch
-trees, CMake install stages, and generated artifacts are not part of a package's source layout. Do not commit them.
+The command writes wheels to `_cmake_build/isaacsim-libraries-artifacts/<configuration>` by default. It also writes
+`wheel_sizes.json` beside the wheels with the compressed size, installed size, and file count of each artifact plus
+wheelhouse totals and byte-identical duplicate content. The historical dashboard reports the total compressed wheel
+size, clean install size, install time, source library build time, and the on-disk sizes of the source library and
+example build trees. Backend scratch trees, CMake install stages, and generated artifacts are not part of a package's
+source layout. Do not commit them.
+
+Install a completed wheelhouse into a clean target, validate every declared import, and write installation metrics:
+
+```text
+./build.sh --validate-wheelhouse ../../_cmake_build/isaacsim-libraries-artifacts/release \
+  --install-metrics-output ../../_cmake_build/isaacsim-libraries-artifacts/release/wheel_install_metrics.json
+```
+
+The metrics contain the installation duration, final installed file size and count, and validated package and import
+counts. Wheel sizes are informational and do not fail a build.
 
 Run the packaging unit tests without a compiled library build:
 
@@ -97,21 +112,21 @@ PYTHONPATH=<python-test-deps> <library-python> -m unittest discover -s packaging
 Here, `<library-python>` is the locked interpreter in `.pixi/envs/build-driver`, and `<python-test-deps>` is the
 site-packages directory in the selected locked or minimum Pixi test environment.
 
-## Kit carrier artifacts
+## Stage a wheel and SDK in a Kit extension
 
-Use a carrier build when a Kit extension needs both the Python wheel and compile-time native SDK for one distribution:
+Use `--stage-wheel` when a Kit extension needs the Python wheel and compile-time native SDK for one distribution:
 
 ```text
-./build.sh -r --test --carrier isaacsim.common
+./build.sh -r --test --stage-wheel isaacsim.common
 ```
 
-The carrier build configures the complete native module graph, then creates a standards-based wheel and installs only
-the selected distribution's native runtime and development CMake components into the carrier stage. A carrier may
-declare a disjoint Python-module projection when multiple Kit extensions reuse one complete wheel; only those leaf
-packages enter that extension's `pip_prebundle`. It validates the wheel and SDK's shared package manifests. SDK
-archives are produced only by the explicit native archive workflow below.
-See [Kit carrier extensions](../README.md#kit-carrier-extensions) for the carrier layout, root-build integration,
-dependency ownership, and validation contract.
+The build configures the full native module graph, creates the wheel, and installs the selected distribution's runtime
+and development components into the extension's stage. When several Kit extensions share a wheel, each extension may
+select a non-overlapping set of Python leaf packages for its `pip_prebundle`. The build confirms that the wheel and SDK
+have matching package manifests. Use the native archive workflow below to create a shippable SDK archive.
+
+See [Stage a library wheel in a Kit extension](../README.md#stage-a-library-wheel-in-a-kit-extension) for the manifest,
+root-build integration, dependency ownership, and validation rules.
 
 ## Native archives
 
@@ -139,12 +154,10 @@ python packaging/package.py sdk \
 `--cmake` only when the configuring CMake executable is not on `PATH`. The tool recreates a private `.staging`
 directory below the output directory and removes it before returning.
 
-The tool reads the artifact version from the installed package manifest. It has no version override, so artifact names
-cannot diverge from `source/libraries/VERSION`. Artifact names are
+The tool reads the artifact version from the installed manifest. You cannot override it, so artifact names always
+match `source/libraries/VERSION`. Artifact names are
 `<group>-<version>-<platform>-runtime.tar.gz` or `<group>-<version>-<platform>-sdk.tar.gz`. Native archives are ordinary
-install prefixes; validate an SDK by extracting it and using `find_package(<group> CONFIG REQUIRED)` from a separate
-consumer project. An archive contains only the selected distribution. For a package with exact internal dependencies,
-extract the dependency runtime or SDK archives into the same prefix, or provide their prefixes through
-`CMAKE_PREFIX_PATH`; the generated package configuration discovers and version-checks them rather than copying them
-into the dependent archive. Archive creation also verifies that every internal manifest dependency requires the
-package's exact shared version.
+install prefixes. Validate an SDK by extracting it and calling `find_package(<group> CONFIG REQUIRED)` from a separate
+consumer project. Each archive contains only the selected distribution. For internal dependencies, either extract
+their archives into the same prefix or add their prefixes to `CMAKE_PREFIX_PATH`. Generated package configuration
+finds and version-checks them instead of copying them into the dependent archive.

@@ -35,7 +35,6 @@
 #include <isaacsim/common/ovstage/TransformJournal.hpp>
 #include <ovstage/ovstage.h>
 #include <ovstage/ovstage_instancing.h>
-#include <ovstage/ovstage_population.h>
 #include <ovx/path_dictionary/path_dictionary.h>
 #include <ovx/types.h>
 
@@ -2565,22 +2564,23 @@ bool pulledScalarF32(const PulledScene& scene, const std::string& prim, const st
 // is pinned broken in the official 0.4.0 C readback and DistanceToCameraSD
 // (Euclidean) is a possible follow-on — see the contract-ledger notes.
 constexpr const char* g_kDepthVarName = "DistanceToImagePlaneSD";
+constexpr const char* g_kStageInfoPath = "/";
+constexpr const char* g_kMetersPerUnitAttribute = "usd-metadata:metersPerUnit";
 
 // Stage units -> meters for the depth payload. Population authors the
-// RESOLVED metersPerUnit ({kDLFloat,64,1}) onto the reserved stage-info prim
-// on every ingest; a stage that never went through population (raw-authored
-// columns) has no row, and the official USD fallback 0.01 applies — measured
+// OVStage 0.2 publishes requested stage metadata on the root prim. A stage whose
+// population description did not request it has no column, and the official
+// USD fallback 0.01 applies — measured
 // on the official 0.4 engine: with metersPerUnit unauthored, DistanceTo*SD
 // payloads read stage units x 0.01 (official-depth probe, 2026-07-20).
 constexpr double g_kUsdFallbackMetersPerUnit = 0.01;
 
 double pulledMetersPerUnit(const PulledScene& scene)
 {
-    const ovx_string_t info = ovstage_population_stage_info_path();
-    auto p = scene.find(std::string(info.ptr ? info.ptr : "", info.ptr ? info.length : 0));
+    auto p = scene.find(g_kStageInfoPath);
     if (p == scene.end())
         return g_kUsdFallbackMetersPerUnit;
-    auto a = p->second.find("metersPerUnit");
+    auto a = p->second.find(g_kMetersPerUnitAttribute);
     if (a == p->second.end() || a->second.deleted || a->second.bytes.size() < sizeof(double))
         return g_kUsdFallbackMetersPerUnit;
     double mpu = 0.0;
@@ -2767,16 +2767,16 @@ int attachStage(OvglBackend* be, ovstage_instance_t* externalInstance, char* err
     if (!externalInstance || !externalInstance->vtable || !externalInstance->context)
         return fail("attached instance is not a {vtable, context} ovstage bundle");
 
-    // Vtable-version guard: this renderer speaks the official 0.1 28-slot ABI.
-    // A skewed instance must fail loudly at attach, never dispatch wrong slots.
+    // Vtable-version guard: this renderer consumes the OVStage 0.2 metadata
+    // layout. A skewed instance must fail loudly at attach.
     uint32_t maj = 0, min = 0, pat = 0;
     ovstage_get_version(externalInstance, &maj, &min, &pat);
-    if (maj != 0 || min != 1)
+    if (maj != 0 || min != 2)
     {
         char buf[160];
         std::snprintf(buf, sizeof(buf),
                       "attached ovstage reports ABI %u.%u.%u; this renderer requires the "
-                      "official 0.1 vtable",
+                      "official 0.2 API",
                       maj, min, pat);
         return fail(buf);
     }

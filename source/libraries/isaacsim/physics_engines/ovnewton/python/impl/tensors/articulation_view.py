@@ -45,6 +45,7 @@ from .kernels import *
 from .kernels import (
     apply_link_forces_at_position,
     build_ctrl_direct_dof_mapping,
+    build_dof_target_q_mapping,
     cache_link_com,
     get_link_com_position_only,
     sync_ctrl_direct_gains,
@@ -82,9 +83,13 @@ class NewtonArticulationView:
         self._frontend = frontend
         self._newton_stage = backend.newton_stage
         self._model = backend.model
+        self._dof_target_indices = (
+            backend.dof_position_indices if self._model.use_coord_layout_targets else backend.dof_velocity_indices
+        )
         self._sim_timestamp = 0
         self.ik_timestamp = 0
         self._ctrl_direct_dof_map: wp.array | None = None
+        self._ctrl_direct_target_q_map: wp.array | None = None
         self._ctrl_direct_map_initialized = False
         self._ctrl_direct_biastype_set = False
 
@@ -147,9 +152,11 @@ class NewtonArticulationView:
             self._ctrl_direct_map_initialized = True
             try:
                 self._ctrl_direct_dof_map = build_ctrl_direct_dof_mapping(self._model)
+                self._ctrl_direct_target_q_map = build_dof_target_q_mapping(self._model)
             except Exception as e:
                 _log.warning(f"Failed to build CTRL_DIRECT DOF mapping: {e}")
                 self._ctrl_direct_dof_map = None
+                self._ctrl_direct_target_q_map = None
         return self._ctrl_direct_dof_map
 
     def _set_ctrl_direct_biastype_affine(self) -> None:
@@ -226,13 +233,17 @@ class NewtonArticulationView:
         mujoco_ctrl = getattr(getattr(control, "mujoco", None), "ctrl", None)
         if mujoco_ctrl is None:
             return
+        dof_to_target_q = self._ctrl_direct_target_q_map
+        if dof_to_target_q is None:
+            return
         nworlds = model.world_count if hasattr(model, "world_count") else 1
         dofs_per_world = model.joint_dof_count // max(nworlds, 1)
+        targets_per_world = control.joint_target_q.shape[0] // max(nworlds, 1)
         ctrls_per_world = mujoco_ctrl.shape[0] // max(nworlds, 1)
         wp.launch(
             sync_ctrl_direct_targets,
             dim=(nworlds, dofs_per_world),
-            inputs=[dof_map, control.joint_target_q, dofs_per_world, ctrls_per_world],
+            inputs=[dof_map, dof_to_target_q, control.joint_target_q, targets_per_world, ctrls_per_world],
             outputs=[mujoco_ctrl],
             device=model.device,
         )
@@ -550,9 +561,7 @@ class NewtonArticulationView:
         state = self._newton_stage.state_0
         if copy:
             if not hasattr(self, "_root_transforms"):
-                self._root_transforms, self._root_transforms_desc = self._frontend.create_tensor(
-                    (self.count, 7), float32
-                )
+                self._root_transforms = self._frontend.create_tensor((self.count, 7), float32)
             wp.launch(
                 get_body_pose,
                 dim=self._backend.count,
@@ -580,9 +589,7 @@ class NewtonArticulationView:
         state = self._newton_stage.state_0
         if copy:
             if not hasattr(self, "_root_velocities"):
-                self._root_velocities, self._root_velocities_desc = self._frontend.create_tensor(
-                    (self.count, 6), float32
-                )
+                self._root_velocities = self._frontend.create_tensor((self.count, 6), float32)
             wp.launch(
                 get_body_velocity,
                 dim=self._backend.count,
@@ -610,9 +617,7 @@ class NewtonArticulationView:
         state = self._newton_stage.state_0
         if copy:
             if not hasattr(self, "_link_transforms"):
-                self._link_transforms, self._link_transforms_desc = self._frontend.create_tensor(
-                    (self.count, self.max_links, 7), float32
-                )
+                self._link_transforms = self._frontend.create_tensor((self.count, self.max_links, 7), float32)
             wp.launch(
                 get_link_pose,
                 dim=(self.count, self.max_links),
@@ -640,9 +645,7 @@ class NewtonArticulationView:
         state = self._newton_stage.state_0
         if copy:
             if not hasattr(self, "_link_velocities"):
-                self._link_velocities, self._link_velocities_desc = self._frontend.create_tensor(
-                    (self.count, self.max_links, 6), float32
-                )
+                self._link_velocities = self._frontend.create_tensor((self.count, self.max_links, 6), float32)
             wp.launch(
                 get_link_velocity,
                 dim=(self.count, self.max_links),
@@ -667,7 +670,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_masses"):
-                self._masses, self._masses_desc = self._frontend.create_tensor((self.count, self.max_links), float32)
+                self._masses = self._frontend.create_tensor((self.count, self.max_links), float32)
             wp.launch(
                 get_link_mass,
                 dim=(self.count, self.max_links),
@@ -692,9 +695,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_inv_masses"):
-                self._inv_masses, self._inv_masses_desc = self._frontend.create_tensor(
-                    (self.count, self.max_links), float32
-                )
+                self._inv_masses = self._frontend.create_tensor((self.count, self.max_links), float32)
             wp.launch(
                 get_link_inv_mass,
                 dim=(self.count, self.max_links),
@@ -718,7 +719,7 @@ class NewtonArticulationView:
 
         """
         if not hasattr(self, "_inertias"):
-            self._inertias, self._inertias_desc = self._frontend.create_tensor((self.count, self.max_links, 9), float32)
+            self._inertias = self._frontend.create_tensor((self.count, self.max_links, 9), float32)
         if copy:
             wp.launch(
                 get_link_inertia,
@@ -740,9 +741,7 @@ class NewtonArticulationView:
 
         """
         if not hasattr(self, "_inv_inertias"):
-            self._inv_inertias, self._inv_inertias_desc = self._frontend.create_tensor(
-                (self.count, self.max_links, 9), float32
-            )
+            self._inv_inertias = self._frontend.create_tensor((self.count, self.max_links, 9), float32)
         if copy:
             wp.launch(
                 get_link_inv_inertia,
@@ -765,7 +764,7 @@ class NewtonArticulationView:
 
         """
         if not hasattr(self, "_coms"):
-            self._coms, self._coms_desc = self._frontend.create_tensor((self.count, self.max_links, 7), float32)
+            self._coms = self._frontend.create_tensor((self.count, self.max_links, 7), float32)
             if self.count > 0 and self.max_links > 0:
                 coms_warp = self._convert_to_warp(self._coms)
                 coms_warp.fill_(0.0)
@@ -796,7 +795,7 @@ class NewtonArticulationView:
 
         """
         if not hasattr(self, "_coms"):
-            self._coms, self._coms_desc = self._frontend.create_tensor((self.count, self.max_links, 7), float32)
+            self._coms = self._frontend.create_tensor((self.count, self.max_links, 7), float32)
             if self.count > 0 and self.max_links > 0:
                 coms_warp = self._convert_to_warp(self._coms)
                 coms_warp.fill_(0.0)
@@ -843,9 +842,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_dof_positions"):
-                self._dof_positions, self._dof_positions_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_positions = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -871,9 +868,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_dof_velocities"):
-                self._dof_velocities, self._dof_velocities_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_velocities = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -899,9 +894,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_dof_limits"):
-                self._dof_limits, self._dof_limits_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs, 2), float32
-                )
+                self._dof_limits = self._frontend.create_tensor((self.count, self.max_dofs, 2), float32)
             wp.launch(
                 get_dof_limits,
                 dim=(self.count, self.max_dofs),
@@ -932,9 +925,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_dof_stiffnesses"):
-                self._dof_stiffnesses, self._dof_stiffnesses_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_stiffnesses = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -960,9 +951,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_dof_dampings"):
-                self._dof_dampings, self._dof_dampings_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_dampings = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -988,9 +977,7 @@ class NewtonArticulationView:
         """
         if copy:
             if not hasattr(self, "_dof_armatures"):
-                self._dof_armatures, self._dof_armatures_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_armatures = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -1016,19 +1003,17 @@ class NewtonArticulationView:
         control = self._newton_stage.control
         if copy:
             if not hasattr(self, "_dof_position_targets"):
-                self._dof_position_targets, self._dof_position_targets_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_position_targets = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
-                inputs=[control.joint_target_q, self._backend.dof_axis_indices, self.max_dofs],
+                inputs=[control.joint_target_q, self._dof_target_indices, self.max_dofs],
                 outputs=[self._convert_to_warp(self._dof_position_targets)],
                 device=str(self._frontend.device),
             )
             return self._dof_position_targets
         else:
-            return wp.indexedarray(control.joint_target_q, self._backend.dof_axis_indices)
+            return wp.indexedarray(control.joint_target_q, self._dof_target_indices)
 
     def get_dof_velocity_targets(self, copy: bool = copy_data) -> Any:
         """Get joint velocity targets (for velocity control).
@@ -1044,9 +1029,7 @@ class NewtonArticulationView:
         control = self._newton_stage.control
         if copy:
             if not hasattr(self, "_dof_velocity_targets"):
-                self._dof_velocity_targets, self._dof_velocity_targets_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_velocity_targets = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -1433,7 +1416,7 @@ class NewtonArticulationView:
                 self._wrap_input_tensor(data),
                 self._wrap_input_tensor(indices),
                 indices_mask if indices_mask is None else self._wrap_input_tensor(indices_mask),
-                self._backend.dof_axis_indices,
+                self._dof_target_indices,
                 self.max_dofs,
             ],
             outputs=[control.joint_target_q],
@@ -1507,9 +1490,7 @@ class NewtonArticulationView:
         control = self._newton_stage.control
         if copy:
             if not hasattr(self, "_dof_actuation_forces"):
-                self._dof_actuation_forces, self._dof_actuation_forces_desc = self._frontend.create_tensor(
-                    (self.count, self.max_dofs), float32
-                )
+                self._dof_actuation_forces = self._frontend.create_tensor((self.count, self.max_dofs), float32)
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
@@ -1533,9 +1514,7 @@ class NewtonArticulationView:
 
         """
         if not hasattr(self, "_dof_max_forces"):
-            self._dof_max_forces, self._dof_max_forces_desc = self._frontend.create_tensor(
-                (self.count, self.max_dofs), float32
-            )
+            self._dof_max_forces = self._frontend.create_tensor((self.count, self.max_dofs), float32)
 
         if copy:
             wp.launch(
@@ -1855,9 +1834,7 @@ class NewtonArticulationView:
         """
         _log.warning("get_disable_gravities is not yet implemented for Newton")
         if not hasattr(self, "_disable_gravities"):
-            self._disable_gravities, self._disable_gravities_desc = self._frontend.create_tensor(
-                (self.count, self.max_links), uint8
-            )
+            self._disable_gravities = self._frontend.create_tensor((self.count, self.max_links), uint8)
         return self._disable_gravities
 
     def get_dof_max_velocities(self, copy: bool = copy_data) -> Any:
@@ -1872,9 +1849,7 @@ class NewtonArticulationView:
 
         """
         if not hasattr(self, "_dof_max_velocities"):
-            self._dof_max_velocities, self._dof_max_velocities_desc = self._frontend.create_tensor(
-                (self.count, self.max_dofs), float32
-            )
+            self._dof_max_velocities = self._frontend.create_tensor((self.count, self.max_dofs), float32)
         if copy:
             wp.launch(
                 get_dof_attributes,
@@ -1888,24 +1863,59 @@ class NewtonArticulationView:
             return wp.indexedarray(self._model.joint_velocity_limit, self._backend.dof_axis_indices)
 
     def get_dof_projected_joint_forces(self, copy: bool = copy_data) -> Any:
-        """Get the compatibility buffer for projected joint forces.
-
-        Newton does not expose projected joint forces through this view, so the returned buffer is not populated from
-        the model.
+        """Get incoming joint wrenches projected onto each DOF motion direction.
 
         Args:
             copy: Compatibility parameter.
 
         Returns:
-            View-owned buffer with shape ``(count, max_dofs)``. Its contents are unspecified because Newton does not
-            populate the buffer.
+            Projected forces with shape ``(count, max_dofs)``.
+
+        Raises:
+            RuntimeError: If incoming joint wrench output was not requested before Newton state creation.
 
         """
-        _log.warning("get_dof_projected_joint_forces is not yet implemented for Newton")
-        if not hasattr(self, "_dof_projected_forces"):
-            self._dof_projected_forces, self._dof_projected_forces_desc = self._frontend.create_tensor(
-                (self.count, self.max_dofs), float32
+        self._check_state()
+        state = self._newton_stage.state_0
+        body_parent_f = getattr(state, "body_parent_f", None)
+        if body_parent_f is None:
+            message = (
+                "Newton joint force reporting is disabled. Set "
+                "NewtonConfig.solver_outputs.link_incoming_joint_force=True before initializing physics, then "
+                "recreate the simulation and tensor views."
             )
+            _log.warning(message)
+            raise RuntimeError(message)
+
+        if not hasattr(self, "_dof_projected_forces"):
+            self._dof_projected_forces = self._frontend.create_tensor((self.count, self.max_dofs), float32)
+        if not hasattr(self, "_joint_motion_subspaces"):
+            self._joint_motion_subspaces = wp.empty(
+                self._model.joint_dof_count, dtype=wp.spatial_vector, device=self._model.device
+            )
+            self._joint_force_jacobians = None
+        self._joint_force_jacobians = newton.eval_jacobian(
+            self._model,
+            state,
+            self._joint_force_jacobians,
+            self._joint_motion_subspaces,
+        )
+        wp.launch(
+            get_dof_projected_joint_force,
+            dim=(self.count, self.max_dofs),
+            inputs=[
+                body_parent_f,
+                state.body_q,
+                self._model.body_com,
+                self._joint_motion_subspaces,
+                getattr(self._newton_stage.solver, "joint_tau", None),
+                self._backend.dof_body_indices,
+                self._backend.dof_axis_indices,
+                self.max_dofs,
+            ],
+            outputs=[self._convert_to_warp(self._dof_projected_forces)],
+            device=str(self._frontend.device),
+        )
         return self._dof_projected_forces
 
     def get_gravity_compensation_forces(self, copy: bool = copy_data) -> Any:
@@ -1924,9 +1934,7 @@ class NewtonArticulationView:
         """
         _log.warning("get_gravity_compensation_forces is not yet implemented for Newton")
         if not hasattr(self, "_gravity_comp_forces"):
-            self._gravity_comp_forces, self._gravity_comp_forces_desc = self._frontend.create_tensor(
-                (self.count, self.max_dofs), float32
-            )
+            self._gravity_comp_forces = self._frontend.create_tensor((self.count, self.max_dofs), float32)
         return self._gravity_comp_forces
 
     def get_coriolis_and_centrifugal_compensation_forces(self, copy: bool = copy_data) -> Any:
@@ -1945,9 +1953,7 @@ class NewtonArticulationView:
         """
         _log.warning("get_coriolis_and_centrifugal_compensation_forces is not yet implemented for Newton")
         if not hasattr(self, "_coriolis_forces"):
-            self._coriolis_forces, self._coriolis_forces_desc = self._frontend.create_tensor(
-                (self.count, self.max_dofs), float32
-            )
+            self._coriolis_forces = self._frontend.create_tensor((self.count, self.max_dofs), float32)
         return self._coriolis_forces
 
     def get_dof_friction_properties(self, copy: bool = copy_data) -> Any:
@@ -1965,7 +1971,7 @@ class NewtonArticulationView:
         """
         _log.warning("get_dof_friction_properties is not yet implemented for Newton")
         if not hasattr(self, "_dof_friction_properties"):
-            self._dof_friction_properties, _ = self._frontend.create_tensor((self.count, self.max_dofs, 3), float32)
+            self._dof_friction_properties = self._frontend.create_tensor((self.count, self.max_dofs, 3), float32)
         return self._dof_friction_properties
 
     def get_drive_types(self, copy: bool = copy_data) -> Any:
@@ -1983,7 +1989,7 @@ class NewtonArticulationView:
         """
         _log.warning("get_drive_types is not yet implemented for Newton")
         if not hasattr(self, "_drive_types"):
-            self._drive_types, self._drive_types_desc = self._frontend.create_tensor((self.count, self.max_dofs), uint8)
+            self._drive_types = self._frontend.create_tensor((self.count, self.max_dofs), uint8)
         return self._drive_types
 
     def get_dof_drive_model_properties(self, copy: bool = copy_data) -> Any:
@@ -2001,29 +2007,70 @@ class NewtonArticulationView:
         """
         _log.warning("get_dof_drive_model_properties is not yet implemented for Newton")
         if not hasattr(self, "_dof_drive_model_properties"):
-            self._dof_drive_model_properties, self._dof_drive_model_properties_desc = self._frontend.create_tensor(
-                (self.count, self.max_dofs, 3), float32
-            )
+            self._dof_drive_model_properties = self._frontend.create_tensor((self.count, self.max_dofs, 3), float32)
         return self._dof_drive_model_properties
 
     def get_link_incoming_joint_force(self, copy: bool = copy_data) -> Any:
-        """Get the compatibility buffer for incoming joint forces.
-
-        The returned buffer is not populated from the Newton model.
+        """Get incoming joint wrenches in each child joint frame.
 
         Args:
             copy: Compatibility parameter.
 
         Returns:
-            View-owned buffer with shape ``(count, max_links, 6)``. Its contents are unspecified because Newton does not
-            populate the buffer.
+            Wrenches with shape ``(count, max_links, 6)`` in force-then-torque order. Root and padded link slots are
+            zero.
+
+        Raises:
+            RuntimeError: If incoming joint wrench output was not requested before Newton state creation.
 
         """
-        _log.warning("get_link_incoming_joint_force is not yet implemented for Newton")
-        if not hasattr(self, "_link_incoming_forces"):
-            self._link_incoming_forces, self._link_incoming_forces_desc = self._frontend.create_tensor(
-                (self.count, self.max_links, 6), float32
+        self._check_state()
+        state = self._newton_stage.state_0
+        body_parent_f = getattr(state, "body_parent_f", None)
+        if body_parent_f is None:
+            message = (
+                "Newton link incoming joint force reporting is disabled. Set "
+                "NewtonConfig.solver_outputs.link_incoming_joint_force=True before initializing physics, then "
+                "recreate the simulation and tensor views."
             )
+            _log.warning(message)
+            raise RuntimeError(message)
+
+        if not hasattr(self, "_link_incoming_forces"):
+            self._link_incoming_forces = self._frontend.create_tensor((self.count, self.max_links, 6), float32)
+        joint_tau = getattr(self._newton_stage.solver, "joint_tau", None)
+        motion_subspaces = None
+        if joint_tau is not None:
+            if not hasattr(self, "_joint_motion_subspaces"):
+                self._joint_motion_subspaces = wp.empty(
+                    self._model.joint_dof_count, dtype=wp.spatial_vector, device=self._model.device
+                )
+                self._joint_force_jacobians = None
+            self._joint_force_jacobians = newton.eval_jacobian(
+                self._model,
+                state,
+                self._joint_force_jacobians,
+                self._joint_motion_subspaces,
+            )
+            motion_subspaces = self._joint_motion_subspaces
+        wp.launch(
+            get_link_incoming_joint_force,
+            dim=(self.count, self.max_links),
+            inputs=[
+                body_parent_f,
+                state.body_q,
+                self._model.body_com,
+                self._model.joint_X_c,
+                motion_subspaces,
+                joint_tau,
+                self._model.joint_qd_start,
+                self._model.joint_dof_dim,
+                self._backend.link_indices,
+                self._backend.link_joint_indices,
+            ],
+            outputs=[self._convert_to_warp(self._link_incoming_forces)],
+            device=str(self._frontend.device),
+        )
         return self._link_incoming_forces
 
     def check(self) -> bool:

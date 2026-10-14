@@ -261,6 +261,60 @@ class UiBuilderGateTests(omni.kit.test.AsyncTestCase):
         builder._refresh_parameter_space.assert_called_once_with()
         builder._update_run_button_state.assert_called_once_with()
 
+    async def test_parameter_baselines_follow_resolved_physics_backend(self) -> None:
+        """Verify USD baselines are read for the resolved backend and re-read when it changes."""
+        from isaacsim.robot_setup.sysid.ui import ui_builder as ui_builder_module
+
+        builder = object.__new__(UIBuilder)
+        builder._active_physics_backend = ""
+        builder._optimizer = None
+        builder._recipe_bar = Mock()
+        builder._refresh_engine_backend_hint = Mock()
+        builder._update_run_button_state = Mock()
+        builder._telemetry = Mock()
+        builder._telemetry.get_trajectory.return_value = SimpleNamespace(num_joints=1)
+        builder._parameters = Mock()
+        builder._parameters.get_advanced_flags.return_value = {}
+        builder._simulation = Mock()
+        builder._simulation.get_robot_path.return_value = "/World/robot"
+        builder._simulation.get_engine.return_value = SIMULATION_ENGINE_ISAAC_SIM
+        builder._simulation.get_physics_backend.return_value = "auto"
+
+        with (
+            patch.object(ui_builder_module.omni.usd, "get_context") as get_context,
+            patch.object(
+                ui_builder_module,
+                "collect_robot_link_and_joint_paths",
+                return_value=(["/World/robot/link"], ["/World/robot/joint"]),
+            ),
+            patch.object(ParameterSpace, "read_usd_baselines") as read_baselines,
+        ):
+            get_context.return_value.get_stage.return_value = object()
+            builder._refresh_parameter_space()
+            self.assertEqual(read_baselines.call_args.kwargs["physics_backend"], "physx")
+
+            builder._on_newton_settings_changed()
+            self.assertEqual(read_baselines.call_count, 1)
+
+            builder._simulation.get_engine.return_value = SIMULATION_ENGINE_NEWTON
+            builder._simulation.get_physics_backend.return_value = "newton"
+            builder._on_engine_changed("Newton")
+            self.assertEqual(read_baselines.call_count, 2)
+            self.assertEqual(read_baselines.call_args.kwargs["physics_backend"], "newton")
+
+            # A failed read leaves fallback baselines, so an unchanged backend
+            # must still retry on the next settings callback.
+            read_baselines.side_effect = RuntimeError("stage not ready")
+            builder._simulation.get_engine.return_value = SIMULATION_ENGINE_ISAAC_SIM
+            builder._simulation.get_physics_backend.return_value = "physx"
+            builder._on_engine_changed("Isaac Sim")
+            self.assertEqual(read_baselines.call_count, 3)
+            read_baselines.side_effect = None
+            builder._on_newton_settings_changed()
+            self.assertEqual(read_baselines.call_count, 4)
+            builder._on_newton_settings_changed()
+            self.assertEqual(read_baselines.call_count, 4)
+
     async def test_run_click_rechecks_gate_before_building_spec(self) -> None:
         """Verify Run refuses stale inputs before constructing a run spec."""
         builder = object.__new__(UIBuilder)
@@ -315,6 +369,8 @@ class UiBuilderGateTests(omni.kit.test.AsyncTestCase):
         builder._simulation.get_robot_path.return_value = "/World/robot"
         builder._simulation.get_engine.return_value = SIMULATION_ENGINE_NEWTON
         builder._simulation.get_actuator_runtime.return_value = "newton_explicit"
+        builder._simulation.get_physics_backend.return_value = "newton"
+        builder._simulation.get_explicit_actuator_policy.return_value = "promote_selected"
         builder._solver = Mock()
         builder._solver.get_backend_config.return_value = SimpleNamespace(
             backend=SimpleNamespace(value="cma_es"),
@@ -379,6 +435,8 @@ class UiBuilderGateTests(omni.kit.test.AsyncTestCase):
         builder._simulation.is_fabric_clones.return_value = False
         builder._simulation.is_offline_stepping.return_value = False
         builder._simulation.get_actuator_runtime.return_value = "implicit_drive"
+        builder._simulation.get_physics_backend.return_value = "physx"
+        builder._simulation.get_explicit_actuator_policy.return_value = "authored_only"
         builder._simulation.get_newton_spec.return_value = SimpleNamespace()
         builder._active_parameter_space = object()
         builder._parameters = Mock()
@@ -440,6 +498,8 @@ class UiBuilderGateTests(omni.kit.test.AsyncTestCase):
             run_spec = builder._build_run_spec()
 
         self.assertFalse(run_spec.simulation.offline_stepping)
+        self.assertEqual(run_spec.simulation.physics_backend, "physx")
+        self.assertEqual(run_spec.simulation.explicit_actuator_policy, "authored_only")
 
     async def test_recipe_restores_newton_controller_and_effort_clamp(self) -> None:
         """Verify recipe application restores all exposed Newton actuator settings."""
@@ -449,6 +509,9 @@ class UiBuilderGateTests(omni.kit.test.AsyncTestCase):
             name="newton",
             simulation={
                 "engine": SIMULATION_ENGINE_NEWTON,
+                "physics_backend": "newton",
+                "actuator_runtime": "mixed",
+                "explicit_actuator_policy": "promote_selected",
                 "newton": {
                     "solver": "mujoco",
                     "controller": "pid",
@@ -458,6 +521,10 @@ class UiBuilderGateTests(omni.kit.test.AsyncTestCase):
         )
 
         builder._apply_recipe_simulation_section(preset)
+
+        builder._simulation.set_physics_backend.assert_called_once_with("newton")
+        builder._simulation.set_actuator_runtime.assert_called_once_with("mixed")
+        builder._simulation.set_explicit_actuator_policy.assert_called_once_with("promote_selected")
 
         builder._simulation.set_controller_mode.assert_called_once_with("pid")
         builder._simulation.set_effort_clamp_mode.assert_called_once_with("dc_motor")

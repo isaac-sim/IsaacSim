@@ -26,8 +26,8 @@ namespace objects
 namespace shapes
 {
 
-/// @brief Variant type for display colors: a single color token, a list of color tokens, or a numeric RGB array.
-using ColorType = std::variant<std::string, std::vector<std::string>, array::Array>;
+/// @brief Legacy spelling for display-color input values.
+using ColorType = isaacsim::foundation::objects::ColorType;
 
 /**
  * @class Shape
@@ -58,17 +58,26 @@ public:
     static array::Array areOfType(const std::variant<std::string, std::vector<std::string>>& paths);
 
     /**
-     * @brief Set the display colors of the selected prims.
-     * @param[in] colors  Color values as RGB triples (shape @c (N,3)), a single color token string,
-     *                    or a list of color token strings. Broadcast rules apply for smaller inputs.
+     * @brief Set the display colors (@c primvars:displayColor) of the selected prims.
+     * @details A single color is authored per prim. The interpolation of the primvar is left untouched, so a
+     *          prim already authored with a per-point interpolation keeps it even though it now holds a
+     *          single color.
+     * @param[in] colors  Normalized RGB display colors (shape @c (N,3)), a single color token, or a list of
+     *                    them (shape @c (N,)). Supported tokens include hex codes and X11/CSS4 color names
+     *                    without spaces, as well as any other format supported by Matplotlib; the alpha
+     *                    channel is ignored. Numeric values follow broadcast rules, so a flat input describes
+     *                    a single color shared by every prim: an RGB triple, or a single component spread over
+     *                    the three channels.
      * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
+     * @throws std::invalid_argument if @p indices selects no prim, if a color token is not recognized, or if
+     *         the colors cannot be broadcast to the number of selected prims.
      */
     void setDisplayColors(const ColorType& colors, const std::optional<array::Array>& indices = std::nullopt);
 
     /**
-     * @brief Get the display colors of the selected prims.
-     * @param[in] indices Indices of prims to process. If omitted, all wrapped prims are processed.
-     * @return Display color values as RGB triples (shape @c (N,3)).
+     * @brief Returns the legacy placeholder display colors; authored color readback is not implemented.
+     * @param[in] indices Ignored, retained for source compatibility.
+     * @return The M1 placeholder array.
      */
     array::Array getDisplayColors(const std::optional<array::Array>& indices = std::nullopt);
 

@@ -730,8 +730,6 @@ OvPhysxAdapter::GlobalLifecycleGuard::~GlobalLifecycleGuard()
 
 OvPhysxAdapter::OvPhysxAdapter(const Configuration& configuration)
 {
-    ovphysx_register_schema_paths();
-
     ovphysx_create_args arguments = OVPHYSX_CREATE_ARGS_DEFAULT;
     // Non-static (per-call, so concurrent constructions don't share it) but declared here so it
     // outlives ovphysx_create_instance below -- active_cuda_gpus borrows the pointer, not a copy.
@@ -1301,7 +1299,7 @@ void OvPhysxAdapter::_fireContactReportSubscribers()
         const ovphysx_contact_event_header_t& source = eventHeaders[i];
         isaacsim::physics::registration::ContactEventHeader header{};
         header.type = convertToContactEventType(source.type);
-        header.stageId = source.stageId;
+        header.stageId = m_attachedStageId;
         header.actor0 = static_cast<isaacsim::physics::registration::PathToken>(source.actor0);
         header.actor1 = static_cast<isaacsim::physics::registration::PathToken>(source.actor1);
         header.collider0 = static_cast<isaacsim::physics::registration::PathToken>(source.collider0);

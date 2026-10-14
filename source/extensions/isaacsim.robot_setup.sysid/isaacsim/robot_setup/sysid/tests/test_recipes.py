@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -183,6 +184,8 @@ class RecipeYamlTests(omni.kit.test.AsyncTestCase):
         recipe = load_builtin_parameter_preset("drive_calibration_inair")
         apply_recipe_to_run_spec(spec, recipe)
         self.assertEqual(spec.simulation.engine, "newton")
+        self.assertEqual(spec.simulation.physics_backend, "newton")
+        self.assertEqual(spec.simulation.actuator_runtime, "auto")
         self.assertEqual(spec.simulation.newton.solver, "featherstone_diff")
         self.assertEqual(spec.solver.optimizer, "gradient_descent")
         self.assertEqual(spec.solver.max_iterations, 60)
@@ -235,6 +238,8 @@ class RecipeYamlTests(omni.kit.test.AsyncTestCase):
                 spec = SysIdRunSpec()
                 apply_recipe_to_run_spec(spec, load_builtin_parameter_preset(name))
                 self.assertEqual(spec.simulation.newton.feedforward, "none")
+                self.assertEqual(spec.simulation.physics_backend, "newton")
+                self.assertEqual(spec.simulation.actuator_runtime, "auto")
                 self.assertEqual(spec.residuals.end_effector_pose_weight, 0.0)
                 self.assertEqual(spec.residuals.contact_force_weight, 0.0)
 
@@ -284,7 +289,30 @@ class QuickstartSynthesisTests(omni.kit.test.AsyncTestCase):
             self.assertLessEqual(item.min, item.initial)
             self.assertLessEqual(item.initial, item.max)
         self.assertTrue(any("registry defaults" in note for note in notes))
-        self.assertTrue(any("rejects" in note.lower() for note in notes))
+        self.assertTrue(any("unsupported" in note.lower() for note in notes))
+
+    async def test_synthesis_filters_joint_limits_for_standalone_mujoco(self) -> None:
+        """Quick-start must not emit a run spec that its selected bridge rejects."""
+        base = load_builtin_parameter_preset("manipulator")
+        recipe = replace(
+            base,
+            simulation={"engine": "newton", "physics_backend": "newton", "newton": {"solver": "mujoco"}},
+        )
+
+        spec, notes = synthesize_run_spec_from_quickstart(
+            robot_prim_path="/World/robot",
+            telemetry_path="data/traj.csv",
+            recipe=recipe,
+            num_joints=2,
+            num_links=3,
+        )
+
+        types = {item.param_type for item in spec.parameters.selected}
+        self.assertNotIn("joint_limit_lower_scale", types)
+        self.assertNotIn("joint_limit_upper_scale", types)
+        # Match on the dropped parameter rather than the backend display label,
+        # which is presentation text and free to change.
+        self.assertTrue(any("joint_limit_lower_scale" in note for note in notes))
 
     async def test_synthesis_enables_clones_only_with_explicit_source_environment(self) -> None:
         recipe = load_builtin_parameter_preset("manipulator")

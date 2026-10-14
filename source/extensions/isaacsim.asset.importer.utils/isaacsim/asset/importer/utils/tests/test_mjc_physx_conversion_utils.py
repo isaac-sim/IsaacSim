@@ -57,6 +57,20 @@ class TestMjcPhysxConversionUtils(omni.kit.test.AsyncTestCase):
         self.assertTrue(friction_attr.IsValid())
         self.assertAlmostEqual(friction_attr.Get(), 0.2, delta=1e-2)
 
+    async def test_convert_physx_to_mjc_author_reference_false(self) -> None:
+        """With author_reference=False the drive target is not copied to mjc:ref; other attributes still convert."""
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.Xform.Define(stage, "/World")
+        joint = UsdPhysics.RevoluteJoint.Define(stage, "/World/Joint").GetPrim()
+        UsdPhysics.DriveAPI.Apply(joint, "angular").CreateTargetPositionAttr().Set(90.0)
+        joint.ApplyAPI(PhysxSchema.JOINT_API)
+        joint.CreateAttribute(PhysxAttr.JOINT_ARMATURE.name, PhysxAttr.JOINT_ARMATURE.type).Set(0.02)
+
+        urdf_to_mjc_physx_conversion_utils.convert_physx_to_mjc(joint, author_reference=False)
+
+        self.assertFalse(joint.GetAttribute("mjc:ref").HasAuthoredValue())
+        self.assertAlmostEqual(joint.GetAttribute("mjc:armature").Get(), 0.02, delta=1e-4)
+
     async def test_convert_physx_to_mjc_authors_mjc_attrs(self) -> None:
         """Author MJCF attributes from PhysX joint data."""
         stage = Usd.Stage.CreateInMemory()

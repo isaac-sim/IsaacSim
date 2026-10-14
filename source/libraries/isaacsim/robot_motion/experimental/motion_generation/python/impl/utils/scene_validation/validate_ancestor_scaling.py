@@ -24,32 +24,52 @@ from __future__ import annotations
 
 import isaacsim.core.experimental.utils.prim as prim_utils
 import numpy as np
+from pxr import Gf, Usd, UsdGeom
 
 
-def _prim_scaling_is_valid(prim: object) -> bool:
-    """Check if a prim has valid (identity) scaling.
-
-    Validates that the prim has identity local scaling [1,1,1] and, if present,
-    unity unitsResolve scaling. This ensures that local scales match world scales.
+def get_world_scale(prim_path: str) -> np.ndarray:
+    """Get a prim's composed world scale without requiring Kit.
 
     Args:
-        prim: The USD prim to validate.
+        prim_path: Path to the USD prim.
+
+    Returns:
+        World scale as an ``xyz`` array, or identity for a non-transformable prim.
+
+    Raises:
+        ValueError: If the path does not identify a valid prim.
+    """
+    prim = prim_utils.get_prim_at_path(prim_path)
+    if not prim.IsValid():
+        raise ValueError(f"Prim path does not identify a valid prim: {prim_path}")
+    xformable = UsdGeom.Xformable(prim)
+    if not xformable:
+        return np.ones(3, dtype=np.float32)
+    world_transform = xformable.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    return np.asarray(Gf.Transform(world_transform).GetScale(), dtype=np.float32)
+
+
+def _prim_scaling_is_valid(prim_path: object) -> bool:
+    """Check if a prim has valid (identity) scaling.
+
+    Validates that the prim has uniform global scaling and, if present,
+    unity unitsResolve scaling.
+
+    Args:
+        prim_path: The USD prim path to validate.
 
     Returns:
         True if the prim has valid scaling, False otherwise.
     """
+    world_scale = get_world_scale(prim_path)
+    if (
+        world_scale[0] <= 0
+        or not np.isclose(world_scale, np.array([world_scale[0], world_scale[0], world_scale[0]])).all()
+    ):
+        return False
+
+    prim = prim_utils.get_prim_at_path(prim_path)
     attribute_names = prim_utils.get_prim_attribute_names(prim)
-
-    # if it authors no scale parameter, that is valid:
-    if "xformOp:scale" in attribute_names:
-        local_scale = np.array(prim_utils.get_prim_attribute_value(prim, "xformOp:scale"))
-
-        # Note: We require identity scaling [1,1,1] rather than allowing uniform
-        # scaling (alpha * [1,1,1]) because the experimental core API does not
-        # provide get_world_scales(). This ensures local_scale == world_scale.
-        if not np.allclose(local_scale, 1.0):
-            return False
-
     # If the prim authors no point scaling, that is valid:
     if "xformOp:scale:unitsResolve" in attribute_names:
         units_resolve = prim_utils.get_prim_attribute_value(prim, "xformOp:scale:unitsResolve")
@@ -62,8 +82,8 @@ def _prim_scaling_is_valid(prim: object) -> bool:
 def _invalid_ancestors_of_prim(prim_path: str, checked_prims: list[str]) -> list[str]:
     """Find all invalid ancestors of a single prim.
 
-    Traverses up the prim hierarchy and checks each Xformable ancestor for non-identity
-    local scaling. Caches checked prims to avoid redundant validation.
+    Traverses up the prim hierarchy and checks each Xformable ancestor for non-uniform
+    world scaling. Caches checked prims to avoid redundant validation.
 
     Args:
         prim_path: Path to the prim to validate.
@@ -83,7 +103,7 @@ def _invalid_ancestors_of_prim(prim_path: str, checked_prims: list[str]) -> list
         if current_prim_path() in checked_prims:
             return invalid_ancestors
 
-        if not _prim_scaling_is_valid(current_prim):
+        if not _prim_scaling_is_valid(current_prim_path()):
             invalid_ancestors.append(current_prim_path())
 
         checked_prims.append(current_prim_path())
@@ -95,9 +115,8 @@ def _invalid_ancestors_of_prim(prim_path: str, checked_prims: list[str]) -> list
 def find_all_invalid_ancestors(prim_paths: list[str]) -> list[str]:
     """Find all invalid ancestors for a list of prims.
 
-    Validates that all ancestor prims have identity local scaling [1,1,1] and have
-    unity unitsResolve. This ensures that local scales match world scales and prevents
-    shearing or mirroring in the transform hierarchy.
+    Validates that all ancestor prims have uniform scaling and have
+    unity unitsResolve.
 
     The function efficiently caches checked ancestors to avoid redundant validation when
     multiple prims share common ancestors.
@@ -106,7 +125,7 @@ def find_all_invalid_ancestors(prim_paths: list[str]) -> list[str]:
         prim_paths: List of prim paths to validate.
 
     Returns:
-        List of ancestor prim paths that have invalid (non-identity) scaling. Each invalid
+        List of ancestor prim paths that have invalid (non-uniform) scaling. Each invalid
         ancestor appears only once in the list, even if multiple queried prims share it.
 
     Example:

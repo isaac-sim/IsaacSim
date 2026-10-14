@@ -73,6 +73,11 @@ from .scripted_floating_gripper import (
     get_supported_floating_grippers,
     load_floating_grippers_async,
     move_floating_grippers_to_targets_async,
+)
+from .scripted_floating_gripper import (
+    resolve_floating_gripper_asset_path_async as resolve_floating_gripper_asset_path_async,
+)
+from .scripted_floating_gripper import (
     set_floating_gripper_grasp_async,
     setup_floating_gripper_controllers_async,
     stop_floating_gripper_controllers,
@@ -190,6 +195,7 @@ __all__ = [
     "get_supported_floating_grippers",
     "load_floating_grippers_async",
     "move_floating_grippers_to_targets_async",
+    "resolve_floating_gripper_asset_path_async",
     "set_floating_gripper_grasp_async",
     "setup_floating_gripper_controllers_async",
     "stop_floating_gripper_controllers",

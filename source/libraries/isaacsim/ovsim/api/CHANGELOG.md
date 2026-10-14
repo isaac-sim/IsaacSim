@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `Simulation.initialize()` releases the Python GIL while it runs. Other client calls continue to hold it.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

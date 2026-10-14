@@ -17,7 +17,9 @@
 
 Injected globals via ``isaacsim_send.py --arg``:
     asset_path: Asset path under the Isaac asset root, or a full URL.
-    asset_root: Optional preset or URL. ``staging`` maps to Isaac 6.0 S3.
+    asset_root: Optional preset or URL. ``production`` and ``staging`` map to
+        Isaac 6.2 S3 assets. Use staging only for explicit testing. If omitted,
+        preserve the configured application asset root.
     prim_path: Prim path for a reference-open check, default ``/World/Asset``.
     open_stage: Whether to reference the asset into a new stage, default True.
 """
@@ -40,8 +42,8 @@ import omni.client
 from isaacsim.storage.native import get_assets_root_path
 
 PRESETS = {
-    "staging": "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0",
-    "production": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0",
+    "staging": "https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2",
+    "production": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2",
 }
 
 

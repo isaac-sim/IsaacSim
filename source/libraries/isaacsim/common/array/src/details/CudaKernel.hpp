@@ -20,7 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cuda_runtime_api.h>
+#include <cuda.h>
 #include <string>
 #include <vector>
 
@@ -44,6 +44,9 @@ enum class UnaryOp : int32_t
 
     /** @brief Element-wise absolute value. */
     eAbsolute,
+
+    /** @brief Element-wise square root. The operand reaches the kernel already floating-point. */
+    eSqrt,
 };
 
 /** @brief Element-wise binary operation selected at runtime. */
@@ -60,6 +63,9 @@ enum class BinaryOp : int32_t
 
     /** @brief Element-wise quotient. */
     eDivide,
+
+    /** @brief Element-wise exponentiation. Both operands reach the kernel already floating-point. */
+    ePower,
 };
 
 /**
@@ -133,36 +139,36 @@ public:
               size_t count,
               Dtype::Kind sourceKind,
               Dtype::Kind destinationKind,
-              cudaStream_t stream = nullptr,
+              CUstream stream = nullptr,
               bool throwIfInvalid = true) const;
 
     /**
-     * @brief Gathers a device-resident buffer into a broadcast destination shape.
+     * @brief Copies elements between two device-resident strided layouts.
      * @details
-     * Element-wise gather: for every element of the destination (in row-major order), reads from
-     * `source` at the offset given by the dot product of the destination multi-index with
-     * @p sourceStrides. A stride of 0 marks a broadcast axis (source size 1, or an axis absent
-     * from the source that was implicitly prepended), so every element along that axis reads the
-     * same source element -- mirroring the CPU gather in `Array::broadcastTo()`.
-     * @param[in] source Device pointer to the source buffer.
-     * @param[out] destination Device pointer to `totalElements` elements of @p elementSize bytes.
-     * @param[in] sourceStrides Per-axis source stride, in elements, aligned to the destination
-     * axes (length equal to the destination's number of dimensions).
-     * @param[in] destinationShape Destination shape, in elements per axis (same length as
-     * @p sourceStrides).
-     * @param[in] elementSize Size, in bytes, of one element.
-     * @param[in] totalElements Total number of elements in the destination.
+     * Element-wise gather: for every element of the shared logical shape, reads `source` at the dot
+     * product of the multi-index with @p sourceStrides and writes `destination` at its dot product
+     * with @p destinationStrides. A source stride of 0 marks a broadcast axis (source size 1, or an
+     * axis absent from the source that was implicitly prepended), so every position along that axis
+     * reads the same source element; contiguous @p destinationStrides make this a compacting gather.
+     * @param[in] source Device pointer to the logical first source element.
+     * @param[out] destination Device pointer to the logical first destination element.
+     * @param[in] sourceStrides Per-axis source strides in elements.
+     * @param[in] destinationStrides Per-axis destination strides in elements.
+     * @param[in] shape Shared logical shape of the source and destination.
+     * @param[in] elementSize Size of one element in bytes.
+     * @param[in] totalElements Number of logical elements to copy.
      * @param[in] stream CUDA stream to launch on, or `nullptr` for the default stream.
      * @param[in] throwIfInvalid If `true`, throws @ref CudaRuntimeError on failure; otherwise returns `false`.
-     * @return `true` on success, `false` on failure when @p throwIfInvalid is `false`.
+     * @return `true` on success, or `false` on failure when @p throwIfInvalid is `false`.
      */
-    bool broadcastTo(const void* source,
+    bool copyStrided(const void* source,
                      void* destination,
                      const std::vector<int64_t>& sourceStrides,
-                     const std::vector<int64_t>& destinationShape,
+                     const std::vector<int64_t>& destinationStrides,
+                     const std::vector<int64_t>& shape,
                      size_t elementSize,
                      size_t totalElements,
-                     cudaStream_t stream = nullptr,
+                     CUstream stream = nullptr,
                      bool throwIfInvalid = true) const;
 
     /**
@@ -192,7 +198,7 @@ public:
               size_t inner,
               size_t elementSize,
               size_t totalElements,
-              cudaStream_t stream = nullptr,
+              CUstream stream = nullptr,
               bool throwIfInvalid = true) const;
 
     /**
@@ -216,7 +222,7 @@ public:
                   size_t count,
                   Dtype::Kind kind,
                   BinaryOp operation,
-                  cudaStream_t stream = nullptr,
+                  CUstream stream = nullptr,
                   bool throwIfInvalid = true) const;
 
     /**
@@ -238,7 +244,7 @@ public:
                  size_t count,
                  Dtype::Kind kind,
                  UnaryOp operation,
-                 cudaStream_t stream = nullptr,
+                 CUstream stream = nullptr,
                  bool throwIfInvalid = true) const;
 
     /**
@@ -267,21 +273,26 @@ public:
                   size_t count,
                   Dtype::Kind kind,
                   ReduceOp operation,
-                  cudaStream_t stream = nullptr,
+                  CUstream stream = nullptr,
                   bool throwIfInvalid = true) const;
 
     CudaKernel(const CudaKernel&) = delete;
     CudaKernel& operator=(const CudaKernel&) = delete;
 
 private:
-    using CastFunction = cudaError_t (*)(const void*, void*, size_t, int32_t, int32_t, cudaStream_t);
-    using BroadcastToFunction =
-        cudaError_t (*)(const void*, void*, const int64_t*, const int64_t*, size_t, size_t, size_t, cudaStream_t);
-    using TakeFunction =
-        cudaError_t (*)(const void*, void*, const int64_t*, size_t, size_t, size_t, size_t, size_t, cudaStream_t);
-    using BinaryOpFunction = cudaError_t (*)(const void*, const void*, void*, size_t, int32_t, int32_t, cudaStream_t);
-    using UnaryOpFunction = cudaError_t (*)(const void*, void*, size_t, int32_t, int32_t, cudaStream_t);
-    using ReduceOpFunction = cudaError_t (*)(const void*, void*, size_t, int32_t, int32_t, cudaStream_t);
+    // The kernel library is compiled by nvcc against the CUDA runtime and declares these entry
+    // points as `cudaError_t f(..., cudaStream_t)`. They are resolved here through the driver's
+    // vocabulary instead, which is ABI-identical and keeps the runtime headers out of the host
+    // build: `cudaStream_t` and `CUstream` are the same opaque handle, and `cudaError_t` is an
+    // int-sized enum. Only success is interpreted -- a non-zero code is reported verbatim rather
+    // than mapped, since it is a runtime code and not a `CUresult`.
+    using CastFunction = int (*)(const void*, void*, size_t, int32_t, int32_t, CUstream);
+    using CopyStridedFunction =
+        int (*)(const void*, void*, const int64_t*, const int64_t*, const int64_t*, size_t, size_t, size_t, CUstream);
+    using TakeFunction = int (*)(const void*, void*, const int64_t*, size_t, size_t, size_t, size_t, size_t, CUstream);
+    using BinaryOpFunction = int (*)(const void*, const void*, void*, size_t, int32_t, int32_t, CUstream);
+    using UnaryOpFunction = int (*)(const void*, void*, size_t, int32_t, int32_t, CUstream);
+    using ReduceOpFunction = int (*)(const void*, void*, size_t, int32_t, int32_t, CUstream);
 
     CudaKernel();
     ~CudaKernel();
@@ -289,7 +300,7 @@ private:
     std::string m_loadError;
     void* m_handle{ nullptr };
     CastFunction m_cast{ nullptr };
-    BroadcastToFunction m_broadcastTo{ nullptr };
+    CopyStridedFunction m_copyStrided{ nullptr };
     TakeFunction m_take{ nullptr };
     BinaryOpFunction m_binaryOp{ nullptr };
     UnaryOpFunction m_unaryOp{ nullptr };

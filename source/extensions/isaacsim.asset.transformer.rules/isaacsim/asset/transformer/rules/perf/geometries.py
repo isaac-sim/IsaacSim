@@ -2890,10 +2890,8 @@ class GeometriesRoutingRule(RuleInterface):
     ) -> None:
         """Recursively collect *visual* material bindings from a prim and its children.
 
-        Physics-purpose bindings (``material:binding:physics``) are skipped
-        here and instead preserved as regular relationships by
-        ``_write_instance_delta_to_layer`` so they keep pointing at the
-        original physics material prim in the base layer.
+        Physics-purpose bindings are skipped here and resolved before source
+        references are updated, then authored on the instance roots in the base layer.
 
         Args:
             src_prim: The source prim to process.
@@ -2936,6 +2934,65 @@ class GeometriesRoutingRule(RuleInterface):
                 child, child_inst_path, materials_scope_path, all_materials, prim_bindings
             )
 
+    @staticmethod
+    def _resolve_physics_binding(prim: Usd.Prim) -> tuple[list[Sdf.Path], str]:
+        """Resolve physics-purpose bindings, excluding the all-purpose fallback.
+
+        Args:
+            prim: Prim whose effective physics material binding is resolved.
+
+        Returns:
+            Material target paths and binding strength, or empty targets when no physics binding exists.
+        """
+        material, relationship = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial(materialPurpose="physics")
+        if material and relationship:
+            name = relationship.GetName()
+            # An all-purpose visual material can win when no physics binding exists.
+            if name == "material:binding:physics" or name.startswith("material:binding:collection:physics:"):
+                return [material.GetPath()], UsdShade.MaterialBindingAPI.GetMaterialBindingStrength(relationship)
+        return [], UsdShade.Tokens.weakerThanDescendants
+
+    def _author_local_physics_binding(
+        self, prim_spec: Sdf.PrimSpec, targets: list[Sdf.Path], binding_strength: str
+    ) -> None:
+        """Author a physics binding and its API on the source instance root.
+
+        Args:
+            prim_spec: Source instance root specification to edit.
+            targets: Resolved physics material target paths.
+            binding_strength: Strength to author on the material binding.
+        """
+        if not targets:
+            return
+        with Usd.EditContext(self.source_stage, prim_spec.layer):
+            prim = self.source_stage.GetPrimAtPath(prim_spec.path)
+            material = UsdShade.Material(self.source_stage.GetPrimAtPath(targets[0]))
+            UsdShade.MaterialBindingAPI.Apply(prim).Bind(
+                material, bindingStrength=binding_strength, materialPurpose="physics"
+            )
+
+    @staticmethod
+    def _remove_instance_physics_bindings(layer: Sdf.Layer) -> None:
+        """Unbind local physics relationships whose targets escape the reference scope.
+
+        Args:
+            layer: Layer containing the instance-local bindings to remove.
+        """
+        stage = Usd.Stage.Open(layer)
+        with Usd.EditContext(stage, layer):
+            # Include over/class prims, but only edit relationships authored in this layer.
+            for prim in stage.TraverseAll():
+                prim_spec = layer.GetPrimAtPath(prim.GetPath())
+                if prim_spec is None:
+                    continue
+                binding_api = UsdShade.MaterialBindingAPI(prim)
+                direct = binding_api.GetDirectBindingRel(materialPurpose="physics")
+                if direct and direct.GetName() in prim_spec.relationships:
+                    binding_api.UnbindDirectBinding(materialPurpose="physics")
+                for relationship in binding_api.GetCollectionBindingRels(materialPurpose="physics"):
+                    if relationship.GetName() in prim_spec.relationships:
+                        binding_api.UnbindCollectionBinding(relationship.GetBaseName(), materialPurpose="physics")
+
     def _update_source_stage_references(
         self,
         instance_by_key: dict[tuple[str, str], InstanceEntry],
@@ -2977,6 +3034,13 @@ class GeometriesRoutingRule(RuleInterface):
 
         self.log_operation(f"Reference path: {source_layer.identifier} -> {instance_layer_rel_path}")
 
+        # Resolve against the original hierarchy before any parent/child merges.
+        physics_bindings = {
+            source.prim_path: self._resolve_physics_binding(self.source_stage.GetPrimAtPath(source.prim_path))
+            for entry in instance_by_key.values()
+            for source in entry.sources
+        }
+
         # Track processed paths to avoid duplicates
         processed_paths: set[str] = set()
 
@@ -2989,6 +3053,7 @@ class GeometriesRoutingRule(RuleInterface):
 
             for source in instance_entry.sources:
                 update_path = source.prim_path
+                physics_targets, physics_strength = physics_bindings[update_path]
 
                 # Skip if already processed
                 if update_path in processed_paths:
@@ -3070,6 +3135,7 @@ class GeometriesRoutingRule(RuleInterface):
 
                     # Set parent as instanceable
                     parent_prim_spec.instanceable = True
+                    self._author_local_physics_binding(parent_prim_spec, physics_targets, physics_strength)
 
                     updated_count += 1
                 else:
@@ -3151,8 +3217,11 @@ class GeometriesRoutingRule(RuleInterface):
 
                     # Set as instanceable
                     prim_spec.instanceable = True
+                    self._author_local_physics_binding(prim_spec, physics_targets, physics_strength)
 
                     updated_count += 1
+
+        self._remove_instance_physics_bindings(instances_layer)
 
         # Remove "doc" metadata from all properties before final export
         self._remove_doc_metadata_from_layer(instances_layer)

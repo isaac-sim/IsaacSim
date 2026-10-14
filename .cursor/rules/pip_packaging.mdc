@@ -7,6 +7,11 @@ alwaysApply: false
 ---
 # Standalone Pip Packages from Kit Extensions
 
+## Ownership gate
+
+This is the legacy extension-local wheel workflow. Libraries under `source/libraries` use distribution-root,
+CMake-staged packaging through `source/libraries/build.sh|build.bat --wheel` instead.
+
 Create lightweight, standalone pip packages from Kit extensions so they work
 without a full Isaac Sim / Omniverse Kit install.
 
@@ -399,28 +404,13 @@ their dependencies, then runs `unittest discover` on each extension's
 
 | Extension | Wheel | Pattern | Key Notes |
 |---|---|---|---|
-| `isaacsim.asset.transformer` | `isaacsim-asset-transformer` | A | — |
 | `isaacsim.asset.transformer.rules` | `isaacsim-asset-transformer-rules` | A | data/ symlink, subpackages |
-| `isaacsim.robot.schema` | `isaacsim-robot-schema` | C | `usd.schema.isaac` namespace |
-| `isaacsim.asset.importer.utils` | `isaacsim-asset-importer-utils` | B | physx_types, bundled schemas |
 | `isaacsim.asset.importer.urdf` | `isaacsim-asset-importer-urdf` | B | + urdf-usd-converter |
 | `isaacsim.asset.importer.mjcf` | `isaacsim-asset-importer-mjcf` | B | + mujoco-usd-converter |
 | `isaacsim.asset.exporter.urdf` | `isaacsim-asset-exporter-urdf` | A | depends on importer-utils |
 
-## Dependency Graph
-
-```
-usd-core
-├── isaacsim-robot-schema
-├── isaacsim-asset-transformer
-│   └── isaacsim-asset-transformer-rules
-│       ├── isaacsim-robot-schema
-│       └── isaacsim-asset-importer-utils
-│           ├── isaacsim-asset-importer-urdf (+ urdf-usd-converter)
-│           └── isaacsim-asset-importer-mjcf (+ mujoco-usd-converter)
-└── isaacsim-asset-exporter-urdf
-    └── isaacsim-asset-importer-utils
-```
+`isaacsim.asset.transformer`, `isaacsim.asset.importer.utils`, and `isaacsim.robot.schema` have migrated to
+`source/libraries` and are delivered to Kit by extensions that stage library wheels. Their packaging does not use this rule.
 
 ## Checklist
 

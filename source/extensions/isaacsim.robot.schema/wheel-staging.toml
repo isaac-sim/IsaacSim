@@ -1,0 +1,3 @@
+[wheel]
+distribution = "isaacsim_robot_schema"
+wheel-variant = "usd2511"

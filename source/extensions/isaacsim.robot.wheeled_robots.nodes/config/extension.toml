@@ -1,5 +1,5 @@
 [package]
-version = "0.1.12"
+version = "0.1.14"
 category = "Simulation"
 title = "Wheeled Robots Nodes"
 description = "OmniGraph nodes for wheeled robot controllers including differential, holonomic, and Ackermann steering"

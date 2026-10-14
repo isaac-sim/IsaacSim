@@ -18,6 +18,9 @@ T Array::get() const
         return this->toDevice(Device::Cpu()).get<T>();
     }
 
+    ArrayReadAccess access = acquireRead(*this);
+    const auto* data = static_cast<const std::byte*>(access.data());
+
     // 0-dim scalar
     if constexpr (std::is_arithmetic_v<T>)
     {
@@ -25,7 +28,7 @@ T Array::get() const
         {
             throw std::runtime_error("Array::get(): scalar type requested but array is not scalar");
         }
-        return _getItem<T>(static_cast<const std::byte*>(this->data()));
+        return _getItem<T>(data);
     }
     // 1-dim std::vector<U>
     else if constexpr (std::is_arithmetic_v<typename T::value_type>)
@@ -35,13 +38,14 @@ T Array::get() const
             throw std::runtime_error("Array::get(): 1D vector type requested but array has ndim > 1");
         }
         using U = typename T::value_type;
-        const std::byte* data = static_cast<const std::byte*>(this->data());
         const size_t elementSize = m_dtype.size();
         size_t count = (this->ndim() == 0) ? 1 : static_cast<size_t>(m_shape[0]);
+        // A 0-D array has no stride to read; its single element sits at offset 0.
+        const size_t stride = (this->ndim() == 0) ? 0 : static_cast<size_t>(m_strides[0]);
         T result(count);
         for (size_t i = 0; i < count; ++i)
         {
-            result[i] = _getItem<U>(data + i * elementSize);
+            result[i] = _getItem<U>(data + i * stride * elementSize);
         }
         return result;
     }
@@ -54,7 +58,6 @@ T Array::get() const
         }
         using U = typename T::value_type;
         using V = typename U::value_type;
-        const std::byte* data = static_cast<const std::byte*>(this->data());
         const size_t elementSize = m_dtype.size();
         if (this->ndim() == 0)
         {
@@ -66,7 +69,7 @@ T Array::get() const
             U row(count);
             for (size_t i = 0; i < count; ++i)
             {
-                row[i] = _getItem<V>(data + i * elementSize);
+                row[i] = _getItem<V>(data + i * static_cast<size_t>(m_strides[0]) * elementSize);
             }
             return T(1, std::move(row));
         }
@@ -80,7 +83,9 @@ T Array::get() const
                 result[i].resize(cols);
                 for (size_t j = 0; j < cols; ++j)
                 {
-                    result[i][j] = _getItem<V>(data + (i * cols + j) * elementSize);
+                    const size_t elementOffset =
+                        i * static_cast<size_t>(m_strides[0]) + j * static_cast<size_t>(m_strides[1]);
+                    result[i][j] = _getItem<V>(data + elementOffset * elementSize);
                 }
             }
             return result;
@@ -100,7 +105,9 @@ T Array::item() const
     {
         return this->toDevice(Device::Cpu()).item<T>();
     }
-    return _getItem<T>(static_cast<const std::byte*>(this->data()));
+
+    ArrayReadAccess access = acquireRead(*this);
+    return _getItem<T>(static_cast<const std::byte*>(access.data()));
 }
 
 template <typename T>

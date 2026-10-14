@@ -68,6 +68,9 @@
   - [velocity_impulse.setter] def velocity_impulse(self, value: float)
   - [property] def robot(self) -> pxr.Usd.Prim
   - def compute_joints_accumulated_inertia(self)
+  - def apply_self_collision_override(self) -> str | None
+  - def restore_self_collision_override(self)
+  - def self_collision_override_active(self) -> bool
   - def get_articulation(self) -> Articulation
   - def get_articulation_root(self) -> str | None
   - def get_all_joint_indices(self) -> list[int]

@@ -19,6 +19,7 @@ Covers RGB, compressed H.264/HEVC, moving-camera sequences, transform frames,
 semantic labels, enable gating, tick-rate throttling, and depth point clouds.
 """
 
+import asyncio
 import math
 import os
 import shutil
@@ -366,6 +367,54 @@ class TestRos2Camera(ROS2TestCase):
         self.assertGreaterEqual(self._depth_pcl.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._instance_segmentation.header.stamp.sec, system_time)
         self.assertGreaterEqual(self._semantic_segmentation.header.stamp.sec, system_time)
+
+    async def test_camera_queue_publisher_shutdown(self) -> None:
+        """Verify queued image publishers release their ROS nodes safely when playback stops."""
+        settings = carb.settings.get_settings()
+        queue_settings = {
+            "/exts/isaacsim.ros2.bridge/publish_multithreading_disabled": False,
+            "/exts/isaacsim.ros2.bridge/publish_with_queue_thread": True,
+            "/exts/isaacsim.ros2.bridge/publish_queue_thread_sleep_us": 100000,
+        }
+        previous_settings = {path: settings.get(path) for path in queue_settings}
+        try:
+            for path, value in queue_settings.items():
+                settings.set(path, value)
+
+            camera_path = "/World/QueueShutdownCamera"
+            stage_utils.define_prim(camera_path, type_name="Camera")
+            _create_rgb_camera_graph("/QueueShutdownGraph", camera_path, "queue_shutdown_rgb", 128, 128)
+
+            node = self.create_node("queue_shutdown_tester")
+            image = None
+
+            def image_callback(message: Image) -> None:
+                nonlocal image
+                image = message
+
+            self.create_subscription(node, Image, "queue_shutdown_rgb", image_callback)
+
+            def spin_ros() -> None:
+                rclpy.spin_once(node, timeout_sec=0.01)
+
+            for _ in range(3):
+                image = None
+                self._timeline.play()
+                await self.wait_for_publishers_on_topic(node, "queue_shutdown_rgb", per_frame_callback=spin_ros)
+                await self.simulate_until_condition(
+                    lambda: image is not None, max_frames=300, per_frame_callback=spin_ros
+                )
+                self.assertIsNotNone(image, "Queued camera image was not received")
+                self.assertEqual(len(image.data), 128 * 128 * 3)
+
+                # Stop while the worker is sleeping after its completed publish, then let it release the request.
+                self._timeline.stop()
+                await omni.kit.app.get_app().next_update_async()
+                await asyncio.sleep(0.2)
+        finally:
+            self._timeline.stop()
+            for path, value in previous_settings.items():
+                settings.set(path, value)
 
     async def test_rgb_golden_image_comparison(self) -> None:
         """Subscribe to an RGB image topic and compare received buffer against a golden image."""

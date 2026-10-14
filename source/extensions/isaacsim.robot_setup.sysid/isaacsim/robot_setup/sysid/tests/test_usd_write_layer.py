@@ -26,7 +26,10 @@ from unittest.mock import patch
 
 import omni.kit.test
 from isaacsim.robot_setup.sysid.parameter_space import ParameterSpace
-from isaacsim.robot_setup.sysid.parameter_types import SysIdParameterEntry, SysIdParameterType
+from isaacsim.robot_setup.sysid.parameter_types import (
+    SysIdParameterEntry,
+    SysIdParameterType,
+)
 from isaacsim.robot_setup.sysid.run_controller import write_optimized_parameters_to_usd
 from isaacsim.robot_setup.sysid.usd_parameter_io import read_joint_usd_snapshot
 from isaacsim.robot_setup.sysid.usd_write_layer import (
@@ -44,6 +47,7 @@ class TestUsdWriteLayer(omni.kit.test.AsyncTestCase):
     def _author_joint(stage: Usd.Stage, path: str) -> None:
         joint = UsdPhysics.RevoluteJoint.Define(stage, path)
         drive = UsdPhysics.DriveAPI.Apply(joint.GetPrim(), "angular")
+        drive.CreateStiffnessAttr(4.0)
         drive.CreateDampingAttr(2.0)
 
     @staticmethod
@@ -222,6 +226,71 @@ class TestUsdWriteLayer(omni.kit.test.AsyncTestCase):
             self.assertAlmostEqual(float(damping.Get()), 6.0)
             self.assertAlmostEqual(float(friction.Get()), 4.0)
             self.assertIsNone(root_layer.GetAttributeAtPath("/Robot/joint.physxJoint:jointFriction"))
+
+            targets.neutral.GetLayer().Save()
+            targets.solver.GetLayer().Save()
+            stage.GetRootLayer().Save()
+            reopened = Usd.Stage.Open(str(stage_path))
+            reopened.GetPrimAtPath("/Robot").GetVariantSet("Physics").SetVariantSelection("physx")
+            self.assertAlmostEqual(
+                float(reopened.GetAttributeAtPath("/Robot/joint.drive:angular:physics:damping").Get()),
+                6.0,
+            )
+            self.assertAlmostEqual(
+                float(reopened.GetAttributeAtPath("/Robot/joint.physxJoint:jointFriction").Get()),
+                4.0,
+            )
+
+    async def test_masked_stiffness_writeback_fails_until_root_override_is_used(self) -> None:
+        """Reject a weaker payload write and accept an effective instance-local override."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            physics_path = root / "physics.usda"
+            stage_path = root / "robot.usda"
+
+            physics_stage = Usd.Stage.CreateNew(str(physics_path))
+            physics_stage.DefinePrim("/Robot", "Xform")
+            self._author_joint(physics_stage, "/Robot/joint")
+            physics_stage.Save()
+
+            root_layer = Sdf.Layer.CreateNew(str(stage_path))
+            root_layer.subLayerPaths = ["physics.usda"]
+            root_layer.Save()
+            stage = Usd.Stage.Open(str(stage_path))
+            with Usd.EditContext(stage, root_layer):
+                UsdPhysics.DriveAPI(stage.GetPrimAtPath("/Robot/joint"), "angular").GetStiffnessAttr().Set(5.0)
+
+            space = ParameterSpace.for_robot(1)
+            space.baseline.usd_joint_snapshots = [read_joint_usd_snapshot(stage, "/Robot/joint", dof_index=0)]
+            entries = [SysIdParameterEntry(SysIdParameterType.JOINT_STIFFNESS, 0)]
+            config = SimpleNamespace(param_entries=entries, trajectory=SimpleNamespace(num_joints=1))
+
+            with self.assertRaisesRegex(RuntimeError, "authored but is not effective"):
+                write_optimized_parameters_to_usd(
+                    stage,
+                    space,
+                    config,
+                    [2.0],
+                    1,
+                    physics_backend="physx",
+                    neutral_write_layer=physics_stage.GetRootLayer(),
+                )
+
+            self.assertTrue(
+                write_optimized_parameters_to_usd(
+                    stage,
+                    space,
+                    config,
+                    [2.0],
+                    1,
+                    physics_backend="physx",
+                    neutral_write_layer=root_layer,
+                )
+            )
+            self.assertAlmostEqual(
+                float(stage.GetPrimAtPath("/Robot/joint").GetAttribute("drive:angular:physics:stiffness").Get()),
+                10.0,
+            )
 
     async def test_bridge_claims_are_routed_by_parameter_type(self) -> None:
         """Bridge-owned neutral and solver parameters must use their respective layers."""

@@ -14,9 +14,10 @@ Discover assets, measure bounds and shaders, swap placeholders, correct offsets,
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For standalone USD inspection/authoring: a completed `source/libraries` build
+  or matching installed foundation distributions.
+- For live Kit stages, asset services, MDL, or rendering: built Isaac Sim and
+  the environment from `isaac-sim-orchestrator`; GPU needs are route-specific.
 
 ## Limitations
 
@@ -27,9 +28,19 @@ Discover assets, measure bounds and shaders, swap placeholders, correct offsets,
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Standalone USD versus live Kit stage
+
+Use `isaacsim.foundation.usd.openusd` or the standalone
+`isaacsim.foundation.usd.ovstage` backend, plus `isaacsim.foundation.objects`,
+`isaacsim.foundation.prims`, and `isaacsim.foundation.utils` from
+`source/libraries/isaacsim/foundation/` for supported standalone OpenUSD stage,
+object, prim, and utility work.
+
+Use `omni.usd`, Kit asset services, MDL, viewport/rendering, commands, and
+live-stage interaction only on the Kit route.
 
 ## Available Scripts
 

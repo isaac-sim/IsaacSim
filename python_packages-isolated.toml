@@ -12,26 +12,27 @@ pyproject.dependencies.all = [
     "isaacsim-robot-schema==${version}",
     "usd-exchange==2.3.0",
     "urdf-usd-converter==0.3.2",
-    "mujoco==3.11.0",
-    "newton-usd-schemas==0.4.1",
-    "mujoco-usd-converter==0.5.0",
-    "usd-optimize>=1.1.0",
+    "mujoco==3.12.0",
+    "newton-usd-schemas==0.5.0",
+    "mujoco-usd-converter==0.6.1",
+    # Keep the optimizer's native OpenUSD ABI aligned with usd-exchange.
+    "usd-optimize==1.1.0",
 ]
 # inventory (relative to the build config)
 inventory.includes.all = [
     [ "APACHE-2.0-LICENSE.txt", "../.." ],
-    [ "exts/isaacsim.asset.exporter.urdf/isaacsim/asset/exporter/urdf/*", "./asset/exporter/urdf" ],
-    [ "exts/isaacsim.asset.importer.mjcf/isaacsim/asset/importer/mjcf/*", "./asset/importer/mjcf" ],
-    [ "exts/isaacsim.asset.importer.urdf/isaacsim/asset/importer/urdf/*", "./asset/importer/urdf" ],
+    [ "exts/isaacsim.asset.exporter.urdf/pip_prebundle/isaacsim/asset/exporter/urdf/*", "./asset/exporter/urdf" ],
+    [ "exts/isaacsim.asset.importer.mjcf/pip_prebundle/isaacsim/asset/importer/mjcf/*", "./asset/importer/mjcf" ],
+    [ "exts/isaacsim.asset.importer.urdf/pip_prebundle/isaacsim/asset/importer/urdf/*", "./asset/importer/urdf" ],
     [ "exts/isaacsim.asset.importer.utils/pip_prebundle/isaacsim/asset/importer/utils/*", "./asset/importer/utils" ],
     [ "exts/isaacsim.asset.transformer/pip_prebundle/isaacsim/asset/transformer/*", "./asset/transformer" ],
     [ "exts/isaacsim.asset.transformer.rules/isaacsim/asset/transformer/rules/*", "./asset/transformer/rules" ],
     [ "exts/isaacsim.asset.transformer.rules/data/isaacsim_structure.json", "./asset/transformer/rules/data" ],
 ]
 inventory.excludes.all = [
-    "exts/isaacsim.asset.exporter.urdf/isaacsim/asset/exporter/urdf/tests",
-    "exts/isaacsim.asset.importer.mjcf/isaacsim/asset/importer/mjcf/tests",
-    "exts/isaacsim.asset.importer.urdf/isaacsim/asset/importer/urdf/tests",
+    "exts/isaacsim.asset.exporter.urdf/pip_prebundle/isaacsim/asset/exporter/urdf/tests",
+    "exts/isaacsim.asset.importer.mjcf/pip_prebundle/isaacsim/asset/importer/mjcf/tests",
+    "exts/isaacsim.asset.importer.urdf/pip_prebundle/isaacsim/asset/importer/urdf/tests",
     "exts/isaacsim.asset.importer.utils/pip_prebundle/isaacsim/asset/importer/utils/tests",
     "exts/isaacsim.asset.transformer/pip_prebundle/isaacsim/asset/transformer/tests",
     "exts/isaacsim.asset.transformer.rules/isaacsim/asset/transformer/rules/tests",

@@ -13,15 +13,16 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Setup the basic extension variables
 local ext = get_current_extension_info()
--- Set up the basic shared project information
-project_ext (ext)
+dofile(root .. "/tools/isaac_build/extension_wheel.lua")
 
--- -------------------------------------
--- Link/copy folders and files to be packaged with the extension
+project_ext(ext)
+stage_isaacsim_extension_wheel_with_python_overlays(ext, "isaacsim.robot_motion.experimental.motion_generation", {
+    "isaacsim/robot_motion/experimental/motion_generation/impl/extension.py",
+})
+
 repo_build.prebuild_link {
-    { "data", ext.target_dir.."/data" },
-    { "docs", ext.target_dir.."/docs" },
-    { "python", ext.target_dir.."/isaacsim/robot_motion/experimental/motion_generation" },
+    { "data", ext.target_dir .. "/data" },
+    { "docs", ext.target_dir .. "/docs" },
+    { "python/tests", ext.target_dir .. "/isaacsim/robot_motion/experimental/motion_generation/tests" },
 }

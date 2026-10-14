@@ -8,10 +8,41 @@
     "ok": { "type": "boolean" },
     "report_schema_version": { "type": "integer" },
     "backend": { "type": "string" },
+    "parameters_written": {
+      "type": "boolean",
+      "description": "True when selected values were authored to the requested USD edit targets; saving and fresh-process composition are separate evidence."
+    },
+    "live_parameters_applied": {
+      "type": "boolean",
+      "description": "True when accepted values were applied and verified on the current live articulation."
+    },
     "schema_issues": { "type": "array", "items": { "type": "object" } },
     "telemetry_quality": { "type": "object" },
-    "validation_metrics": { "type": "array", "items": { "type": "object" } },
-    "validation_summary": { "type": "object" },
+    "untuned_validation_metrics": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Metrics for the authored launch parameters before presolve or optimization."
+    },
+    "tuned_validation_metrics": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Metrics for the selected accepted optimizer output."
+    },
+    "validation_metrics": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Backward-compatible alias of tuned_validation_metrics."
+    },
+    "untuned_validation_summary": { "type": "object", "description": "Untuned metric aggregates." },
+    "tuned_validation_summary": { "type": "object", "description": "Tuned metric aggregates." },
+    "validation_summary": {
+      "type": "object",
+      "description": "Backward-compatible alias of tuned_validation_summary."
+    },
+    "validation_comparison": {
+      "type": "object",
+      "description": "Paired untuned-versus-tuned comparison and thresholded verdict."
+    },
     "validation_artifacts": { "type": "object" },
     "resampling_diagnostics": { "type": "array", "items": { "type": "object" } },
     "tuning_assessment": { "type": "object" },

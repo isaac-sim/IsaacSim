@@ -11,7 +11,7 @@ Authoring classes inherit from {class}`SensorAuthoring <isaacsim.sensors.experim
 - {class}`Lidar <isaacsim.sensors.experimental.rtx.Lidar>` — Creates or wraps `OmniLidar` prims. Supports creating from known configurations via {data}`SUPPORTED_LIDAR_CONFIGS <isaacsim.sensors.experimental.rtx.SUPPORTED_LIDAR_CONFIGS>`. Accepts `accumulate_outputs` (default ``True``).
 - {class}`Radar <isaacsim.sensors.experimental.rtx.Radar>` — Creates or wraps `OmniRadar` prims. Requires Motion BVH to be enabled (`/renderer/raytracingMotion/enabled`).
 - {class}`Acoustic <isaacsim.sensors.experimental.rtx.Acoustic>` — Creates or wraps `OmniAcoustic` prims. Automatically applies multi-instance schemas (`OmniSensorWpmAcousticSensorMountAPI`, `OmniSensorWpmAcousticRxGroupAPI`) when attributes with matching prefixes are provided.
-- {class}`RtxCamera <isaacsim.sensors.experimental.rtx.RtxCamera>` — Creates or wraps USD Camera prims with `OmniSensorAPI` applied. Provides a `.camera` property for accessing optical parameters (focal length, clipping range, aperture, etc.).
+- {class}`RtxCamera <isaacsim.sensors.experimental.rtx.RtxCamera>` — Creates or wraps USD Camera prims with `OmniSensorAPI` applied. Accepts a single path, a path list, or a regex. Provides a `.camera` property for accessing optical parameters (focal length, clipping range, aperture, etc.).
 
 All authoring classes accept:
 
@@ -34,7 +34,7 @@ Annotator initialization parameters can be supplied at construction time with `a
 **Camera sensors** support standard rendering annotators (RGB, depth, normals, segmentation, bounding boxes, etc.):
 
 - {class}`CameraSensor <isaacsim.sensors.experimental.rtx.CameraSensor>` — Wraps a `RtxCamera` object. Requires a `resolution` parameter (``(height, width)``).
-- {class}`TiledCameraSensor <isaacsim.sensors.experimental.rtx.TiledCameraSensor>` — Batched rendering of multiple cameras into a single tiled texture. Supports both tiled and per-camera batched output.
+- {class}`TiledCameraSensor <isaacsim.sensors.experimental.rtx.TiledCameraSensor>` — Batched rendering of multiple cameras into a single tiled texture, authored through `RtxCamera`. Supports both tiled and per-camera batched output, and accepts `tick_rate` when constructing from paths. The batch shares one render product, which the renderer ticks as a whole, so a tick rate throttles all tiles together; cameras that must render at different rates need separate sensors. Batching cameras with differing `omni:sensor:tickRate` values logs a warning: the first camera in the batch sets the rate and the remaining values are ignored, so the resulting rate depends on camera ordering.
 - {class}`SingleViewDepthCameraSensor <isaacsim.sensors.experimental.rtx.SingleViewDepthCameraSensor>` — Extends `CameraSensor` with stereoscopic depth simulation via `OmniSensorDepthSensorSingleViewAPI`.
 
 ### Lidar configuration registry

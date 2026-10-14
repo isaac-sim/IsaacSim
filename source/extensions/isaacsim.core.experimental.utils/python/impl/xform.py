@@ -133,8 +133,8 @@ def set_local_pose(
             matrix.SetTranslateOnly(usdrt.Gf.Vec3d(*translation))
         if orientation is not None:
             orientation = ops_utils.place(orientation, device="cpu").numpy().flatten()
-            matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientation))
             scaling_matrix = usdrt.Gf.Matrix4d().SetIdentity().SetScale(usdrt.Gf.Transform(matrix).GetScale())
+            matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientation))
             matrix = scaling_matrix * matrix
         fabric_hierarchy.set_local_xform(path, matrix)
 
@@ -246,8 +246,8 @@ def set_world_pose(
             matrix.SetTranslateOnly(usdrt.Gf.Vec3d(*position))
         if orientation is not None:
             orientation = ops_utils.place(orientation, device="cpu").numpy().flatten()
-            matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientation))
             scaling_matrix = usdrt.Gf.Matrix4d().SetIdentity().SetScale(usdrt.Gf.Transform(matrix).GetScale())
+            matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientation))
             matrix = scaling_matrix * matrix
         fabric_hierarchy.set_world_xform(path, matrix)
 

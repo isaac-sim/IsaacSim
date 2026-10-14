@@ -484,7 +484,6 @@ generate_report_cmd = [
   "--/log/flushStandardStreamOutput=1",                    # Prevents mixed up piped stdout
   "--reset-user",
   "--/exts/omni.kit.test/testExtOutputPath='${test_root}/_testoutput'",
-  "--/exts/omni.kit.test/pyCoverageEnabled=True",
   "--/app/extensions/fsWatcherEnabled=0",
 ]
 "platform:linux-aarch64".args = [
@@ -601,7 +600,6 @@ generate_report_cmd = [
   "${test_root}/portable_root",
   "--reset-user",
   "--/exts/omni.kit.test/testExtOutputPath='${test_root}/_testoutput'",
-  "--/exts/omni.kit.test/pyCoverageEnabled=True",
 ]
 "platform:linux-aarch64".args = [
   "--portable-root",
@@ -714,7 +712,6 @@ generate_report_cmd = [
   "${test_root}/portable_root",
   "--reset-user",
   "--/exts/omni.kit.test/testExtOutputPath='${test_root}/_testoutput'",
-  "--/exts/omni.kit.test/pyCoverageEnabled=True",
   "--/crashreporter/skipOldDumpUpload=1",
 ]
 "platform:linux-aarch64".args = [
@@ -882,7 +879,6 @@ generate_report_cmd = [
   "${test_root}/portable_root",
   "--reset-user",
   "--/exts/omni.kit.test/testExtOutputPath='${test_root}/_testoutput'",
-  "--/exts/omni.kit.test/pyCoverageEnabled=True",
 ]
 "platform:linux-aarch64".args = [
   "--portable-root",

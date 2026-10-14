@@ -15,6 +15,8 @@
 
 """Tests for the collision detector widget's detection logic."""
 
+import contextlib
+
 import omni.kit.app
 import omni.kit.test
 import omni.ui as ui
@@ -22,7 +24,34 @@ import omni.usd
 from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics
 from usd.schema.isaac import robot_schema
 
+from .. import widget as widget_module
 from ..widget import CollisionDetectorWidget, RigidBodyPairData, _iter_body_prims
+
+
+@contextlib.contextmanager
+def _exhausted_group_pool():
+    """Make ``register_selection_group`` report an exhausted pool.
+
+    The engine offers no way to release a selection group, so genuinely
+    draining the 255-entry pool would poison every later test in the process.
+    """
+    real_get_context = omni.usd.get_context
+
+    class _ExhaustedContext:
+        def __init__(self, real) -> None:
+            self._real = real
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        def register_selection_group(self) -> int:
+            return 0
+
+    omni.usd.get_context = lambda *args, **kwargs: _ExhaustedContext(real_get_context(*args, **kwargs))
+    try:
+        yield
+    finally:
+        omni.usd.get_context = real_get_context
 
 
 class TestCollisionDetection(omni.kit.test.AsyncTestCase):
@@ -368,3 +397,100 @@ class TestCollisionDetection(omni.kit.test.AsyncTestCase):
             self.assertEqual(selected, [], "Row selection must not author a stage selection")
         finally:
             widget.destroy()
+
+    async def test_focal_click_reuses_the_group_holding_the_body_colour(self) -> None:
+        """A focal click must resolve a body to the group already carrying its colour.
+
+        Row selection paints a body's colour onto one group; the focal click
+        only re-applies a group and never sets a colour itself. Both paths must
+        therefore resolve a body to the same group, or the focal highlight
+        shows a stale colour or no colour at all.
+        """
+        with ui.Frame():
+            widget = CollisionDetectorWidget()
+        try:
+            pairs = [
+                RigidBodyPairData(
+                    body_a_name="Link1",
+                    body_b_name="Link3",
+                    body_a_path="/World/Robot/Link1",
+                    body_b_path="/World/Robot/Link3",
+                ),
+                RigidBodyPairData(
+                    body_a_name="Link2",
+                    body_b_name="Link4",
+                    body_a_path="/World/Robot/Link2",
+                    body_b_path="/World/Robot/Link4",
+                ),
+            ]
+            widget._pairs = pairs
+            widget._build_body_color_map()
+            widget._tree_model.set_data(pairs)
+            row = next(i for i in widget._tree_model._all_items if i.data.body_a_name == "Link2")
+
+            widget._on_tree_selection_changed([row])
+            row_gid = widget._active_groups["/World/Robot/Link2"]
+
+            widget._select_collision_prim(row, "/World/Robot/Link2")
+            focal_gid = widget._active_groups["/World/Robot/Link2"]
+
+            self.assertEqual(row_gid, focal_gid, "Focal click must reuse the group holding Link2's colour")
+        finally:
+            widget.destroy()
+
+
+class TestSelectionGroupAllocation(omni.kit.test.AsyncTestCase):
+    """Verify selection-group allocation never leaks IDs or targets the default group.
+
+    The viewport exposes 255 usable selection groups and no way to hand one
+    back, so every identifier the widget takes is gone for the life of the
+    process.  Group 0 is the viewport's own default and must never be written.
+    """
+
+    async def setUp(self) -> None:
+        """Start each test from an empty registration list."""
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        widget_module._registered_group_ids.clear()
+
+    async def tearDown(self) -> None:
+        """Leave the registration list empty for the next test."""
+        widget_module._registered_group_ids.clear()
+        await omni.kit.app.get_app().next_update_async()
+
+    async def test_deregister_keeps_ids_for_reuse(self) -> None:
+        """Deregistering must reuse identifiers, because the engine cannot reclaim them."""
+        before = [widget_module._get_group_id(i) for i in range(4)]
+        widget_module.deregister_selection_groups()
+        after = [widget_module._get_group_id(i) for i in range(4)]
+        self.assertEqual(before, after, "Re-acquiring after deregister must not consume fresh engine IDs")
+
+    async def test_repeated_deregister_cycles_do_not_grow_the_pool(self) -> None:
+        """Repeated deregister cycles must not drain the finite engine pool.
+
+        Deliberately stays well under the 255-entry pool so that a regression
+        fails this assertion rather than exhausting the pool for later tests.
+        """
+        widget_module._get_group_id(4)
+        first_cycle_ids = list(widget_module._registered_group_ids)
+        for _ in range(20):
+            widget_module.deregister_selection_groups()
+            widget_module._get_group_id(4)
+        self.assertEqual(
+            widget_module._registered_group_ids,
+            first_cycle_ids,
+            "20 deregister cycles must not allocate any new engine selection group",
+        )
+
+    async def test_exhausted_pool_reports_no_group_rather_than_default(self) -> None:
+        """With nothing registered, exhaustion must report no group instead of group 0."""
+        with _exhausted_group_pool():
+            self.assertIsNone(widget_module._get_group_id(0))
+
+    async def test_exhausted_pool_does_not_collapse_bodies_onto_one_group(self) -> None:
+        """Overflow past the registered groups must report no group, not reuse the last one."""
+        widget_module._get_group_id(2)
+        registered = list(widget_module._registered_group_ids)
+        with _exhausted_group_pool():
+            self.assertIsNone(widget_module._get_group_id(7))
+        self.assertEqual(widget_module._registered_group_ids, registered)

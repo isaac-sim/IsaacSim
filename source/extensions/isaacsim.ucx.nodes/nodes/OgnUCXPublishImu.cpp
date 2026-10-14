@@ -89,62 +89,45 @@ protected:
     {
         flatbuffers::FlatBufferBuilder builder;
 
-        auto makeTensorF32 = [&](const float* values, size_t count)
-        {
-            auto data_fb = builder.CreateVector(reinterpret_cast<const uint8_t*>(values), count * sizeof(float));
-            std::vector<int64_t> shape = { static_cast<int64_t>(count) };
-            auto shape_fb = builder.CreateVector(shape);
-            isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLFloat, 32, 1);
-            isaac::DLDevice device(isaac::DLDeviceType_kDLCPU, 0);
-            std::vector<int64_t> strides = { 1 };
-            auto strides_fb = builder.CreateVector(strides);
-            return isaac::CreateTensor(builder, data_fb, shape_fb, &dtype, &device, 1, strides_fb);
-        };
-
-        // Orientation tensor: float32, shape [4], order [w, x, y, z].
-        // ImuData orientation is stored as (x, y, z, w); reorder to (w, x, y, z).
-        flatbuffers::Offset<isaac::Tensor> orientation_fb = 0;
+        holoscan::schema::Quaternionf orientation;
+        auto flags = static_cast<holoscan::schema::ImuFlags>(0);
         if (data.publishOrientation)
         {
-            float orientData[4] = {
-                static_cast<float>(data.orientation[3]), // w
-                static_cast<float>(data.orientation[0]), // x
-                static_cast<float>(data.orientation[1]), // y
-                static_cast<float>(data.orientation[2]) // z
-            };
-            orientation_fb = makeTensorF32(orientData, 4);
+            orientation = holoscan::schema::Quaternionf(
+                static_cast<float>(data.orientation[0]), static_cast<float>(data.orientation[1]),
+                static_cast<float>(data.orientation[2]), static_cast<float>(data.orientation[3]));
+            flags = holoscan::schema::ImuFlags_ORIENTATION_VALID;
         }
 
         // Angular velocity: Vector3f struct (x, y, z) in rad/s.
-        isaac::Vector3f angularVel(0.0f, 0.0f, 0.0f);
-        isaac::Vector3f* angularVelPtr = nullptr;
+        holoscan::schema::Vector3f angularVel(0.0f, 0.0f, 0.0f);
+        holoscan::schema::Vector3f* angularVelPtr = nullptr;
         if (data.publishAngularVelocity)
         {
-            angularVel = isaac::Vector3f(static_cast<float>(data.angularVelocity[0]),
-                                         static_cast<float>(data.angularVelocity[1]),
-                                         static_cast<float>(data.angularVelocity[2]));
+            angularVel = holoscan::schema::Vector3f(static_cast<float>(data.angularVelocity[0]),
+                                                    static_cast<float>(data.angularVelocity[1]),
+                                                    static_cast<float>(data.angularVelocity[2]));
             angularVelPtr = &angularVel;
         }
 
         // Linear acceleration: Vector3f struct (x, y, z) in m/s^2.
-        isaac::Vector3f linearAccel(0.0f, 0.0f, 0.0f);
-        isaac::Vector3f* linearAccelPtr = nullptr;
+        holoscan::schema::Vector3f linearAccel(0.0f, 0.0f, 0.0f);
+        holoscan::schema::Vector3f* linearAccelPtr = nullptr;
         if (data.publishLinearAcceleration)
         {
-            linearAccel = isaac::Vector3f(static_cast<float>(data.linearAcceleration[0]),
-                                          static_cast<float>(data.linearAcceleration[1]),
-                                          static_cast<float>(data.linearAcceleration[2]));
+            linearAccel = holoscan::schema::Vector3f(static_cast<float>(data.linearAcceleration[0]),
+                                                     static_cast<float>(data.linearAcceleration[1]),
+                                                     static_cast<float>(data.linearAcceleration[2]));
             linearAccelPtr = &linearAccel;
         }
 
         // Header
         const int64_t time_ns = static_cast<int64_t>(data.timestamp * 1e9);
         auto frame_id_fb = builder.CreateString(data.frameId);
-        auto stamp_fb = isaac::CreateTime(builder, time_ns, 0);
-        auto header_fb = isaac::CreateHeader(builder, stamp_fb, frame_id_fb);
+        auto header_fb = holoscan::schema::CreateHeader(builder, 0, frame_id_fb, time_ns);
 
-        auto imu_fb = isaac::CreateImu(builder, header_fb, orientation_fb, angularVelPtr, linearAccelPtr);
-        builder.Finish(imu_fb);
+        auto imu_fb = holoscan::schema::CreateImu(builder, header_fb, &orientation, angularVelPtr, linearAccelPtr, flags);
+        holoscan::schema::FinishImuBuffer(builder, imu_fb);
 
         uint8_t const* bufPtr = builder.GetBufferPointer();
         size_t bufSize = builder.GetSize();

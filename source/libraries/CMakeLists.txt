@@ -284,6 +284,7 @@ if(BUILD_TESTING)
                 "--examples-dir=${ISAACSIM_SOURCE_DIR}/examples"
                 "--system-requirements-file=${ISAACSIM_SYSTEM_REQUIREMENTS_FILE}"
                 "--test-root=${CMAKE_BINARY_DIR}/examples-test"
+                "--metrics-output=${CMAKE_BINARY_DIR}/source-examples-build-metrics.json"
                 "--python=${Python_EXECUTABLE}"
                 "--python-install-dir=${ISAACSIM_PYTHON_INSTALL_DIR}"
                 "--python-runtime-deps-dir=${ISAACSIM_PYTHON_RUNTIME_DEPS_DIR}"
@@ -313,7 +314,7 @@ if(BUILD_TESTING)
             LABELS "consumer;examples;entry-point;setup"
         )
         add_test(NAME tests-examples-public-entry-point
-            COMMAND "${ISAACSIM_SOURCE_DIR}/examples/example.bat"
+            COMMAND "${ISAACSIM_SOURCE_DIR}/examples/examples.bat"
                 "--build-root=${public_entry_point_build_root}"
                 "--config=$<CONFIG>"
                 build

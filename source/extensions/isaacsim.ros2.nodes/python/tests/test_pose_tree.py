@@ -159,7 +159,12 @@ class TestRos2PoseTree(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
         await self.wait_for_publishers_on_topic(node, "/tf_test", timeout_sec=10.0, per_frame_callback=spin)
-        await self.simulate_until_condition(lambda: self._tf_data is not None, max_frames=120, per_frame_callback=spin)
+        await self.simulate_until_condition(
+            lambda: self._tf_data is not None and len(self._tf_data.transforms) == 14,
+            max_frames=240,
+            per_frame_callback=spin,
+            failure_message="Timed out waiting for the complete 14-transform pose tree",
+        )
 
         # checks
         self.assertEqual(len(self._tf_data.transforms), 14)  # there are 12 items in the tree.
@@ -185,15 +190,22 @@ class TestRos2PoseTree(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
         await self.wait_for_publishers_on_topic(node, "/tf_test", timeout_sec=10.0, per_frame_callback=spin)
-        await self.simulate_until_condition(lambda: self._tf_data is not None, max_frames=120, per_frame_callback=spin)
+
+        def received_reparented_tree() -> bool:
+            if self._tf_data is None:
+                return False
+            return any(
+                transform.header.frame_id == "panda_link0" and transform.child_frame_id == "panda_link1"
+                for transform in self._tf_data.transforms
+            )
+
+        await self.simulate_until_condition(received_reparented_tree, max_frames=120, per_frame_callback=spin)
 
         # checks
-        self.assertEqual(
-            self._tf_data.transforms[0].header.frame_id, "panda_link0"
-        )  # check the first link's parent is panda_link0
-        self.assertEqual(
-            self._tf_data.transforms[0].child_frame_id, "panda_link1"
-        )  # check the child of the first link is not panda_link0
+        reparented_transform = next(
+            transform for transform in self._tf_data.transforms if transform.child_frame_id == "panda_link1"
+        )
+        self.assertEqual(reparented_transform.header.frame_id, "panda_link0")
 
         self._timeline.stop()
         spin()
@@ -372,10 +384,23 @@ class TestRos2PoseTree(ROS2TestCase):
         def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
+        franka_links = ["panda_link0", "panda_link1", "panda_link2", "panda_hand"]
+
+        def received_uniquely_named_frames() -> bool:
+            if self._tf_data is None:
+                return False
+            frame_ids = {transform.child_frame_id for transform in self._tf_data.transforms}
+            return all(link in frame_ids and f"World_panda2_{link}" in frame_ids for link in franka_links)
+
         # Run the simulation which will trigger the CARB_LOG_WARN when processing the duplicate "base_link" names
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: self._tf_data is not None, max_frames=60, per_frame_callback=spin)
+        await self.simulate_until_condition(
+            received_uniquely_named_frames,
+            max_frames=240,
+            per_frame_callback=spin,
+            failure_message="Timed out waiting for original and uniquely renamed transform frames",
+        )
 
         self._timeline.stop()
         spin()
@@ -386,8 +411,6 @@ class TestRos2PoseTree(ROS2TestCase):
         # Creating dict to store all frame IDs from both robots
         original_frames = set()
         renamed_frames = set()
-
-        franka_links = ["panda_link0", "panda_link1", "panda_link2", "panda_hand"]
 
         # Collect frame IDs from TF message
         frame_ids = []

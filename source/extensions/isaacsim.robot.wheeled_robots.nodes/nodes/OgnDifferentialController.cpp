@@ -87,7 +87,13 @@ public:
         if (deltaTime <= 0.0 &&
             (state.m_maxAcceleration != 0.0 || state.m_maxDeceleration != 0.0 || state.m_maxAngularAcceleration != 0.0))
         {
-            db.logWarning("Invalid deltaTime %f, cannot check for acceleration limits, skipping current step", deltaTime);
+            // Keep the diagnostic for an unconnected dt input, but avoid flooding the log on zero-time updates.
+            if (deltaTime != 0.0 || !state.m_zeroDeltaTimeWarningLogged)
+            {
+                db.logWarning(
+                    "Invalid deltaTime %f, cannot check for acceleration limits, skipping current step", deltaTime);
+                state.m_zeroDeltaTimeWarningLogged = (deltaTime == 0.0) || state.m_zeroDeltaTimeWarningLogged;
+            }
             return false;
         }
 
@@ -171,10 +177,12 @@ public:
         m_previousLinearSpeed = 0.0;
         m_previousAngularSpeed = 0.0;
         m_initialized = false;
+        m_zeroDeltaTimeWarningLogged = false;
     }
 
 private:
     bool m_initialized = false;
+    bool m_zeroDeltaTimeWarningLogged = false;
     double m_maxAngularSpeed = 1.0e7;
     double m_maxWheelSpeed = 1.0e7;
     double m_maxLinearSpeed = 1.0e7;

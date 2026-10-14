@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.5] - 2026-10-01
+### Changed
+- Require a stopped timeline to load profiles or enable Debug Mode; disabling Debug Mode remains available during playback.
+- Rename Write Backend to Transform Backend to clarify its scope.
+
+### Fixed
+- Reset Debug Mode, input sliders, and profile validation status when the stage closes.
+
 ## [0.4.4] - 2026-08-25
 ### Changed
 - Subscribe to timeline play/stop through Events 2.0 instead of the deprecated timeline event stream.

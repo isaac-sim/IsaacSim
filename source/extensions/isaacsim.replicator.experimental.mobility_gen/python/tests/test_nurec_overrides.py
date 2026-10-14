@@ -28,30 +28,33 @@ _STAGE_SENTINEL = object()
 
 
 class TestNurecReplayOverrides(omni.kit.test.AsyncTestCase):
-    """The replay-flag policy restricts NuRec replay to RGB; setup is a no-op without a stage."""
+    """NuRec replay preserves RGB/depth choices and disables restricted modalities."""
 
-    async def test_ensure_forces_rgb_only(self) -> None:
-        """All non-RGB modality flags are turned off; rgb_enabled stays on."""
-        args = argparse.Namespace(
-            rgb_enabled=True,
-            segmentation_enabled=True,
-            depth_enabled=True,
-            instance_id_segmentation_enabled=True,
-            normals_enabled=True,
-            render_rt_subframes=64,
-        )
-        ensure_nurec_replay_flags(args)
-        self.assertTrue(args.rgb_enabled)
-        self.assertFalse(args.segmentation_enabled)
-        self.assertFalse(args.depth_enabled)
-        self.assertFalse(args.instance_id_segmentation_enabled)
-        self.assertFalse(args.normals_enabled)
+    async def test_ensure_preserves_rgb_and_depth_flags(self) -> None:
+        """Every RGB/depth combination survives the NuRec modality restrictions."""
+        for rgb_enabled in (False, True):
+            for depth_enabled in (False, True):
+                with self.subTest(rgb_enabled=rgb_enabled, depth_enabled=depth_enabled):
+                    args = argparse.Namespace(
+                        rgb_enabled=rgb_enabled,
+                        segmentation_enabled=True,
+                        depth_enabled=depth_enabled,
+                        instance_id_segmentation_enabled=True,
+                        normals_enabled=True,
+                        render_rt_subframes=64,
+                    )
+                    ensure_nurec_replay_flags(args)
+                    self.assertEqual(args.rgb_enabled, rgb_enabled)
+                    self.assertEqual(args.depth_enabled, depth_enabled)
+                    self.assertFalse(args.segmentation_enabled)
+                    self.assertFalse(args.instance_id_segmentation_enabled)
+                    self.assertFalse(args.normals_enabled)
 
     async def test_ensure_skips_missing_attributes(self) -> None:
         """Flags absent from the namespace are left absent (skipped, not created)."""
         args = argparse.Namespace(rgb_enabled=False)
         ensure_nurec_replay_flags(args)
-        self.assertTrue(args.rgb_enabled)
+        self.assertFalse(args.rgb_enabled)
         self.assertFalse(hasattr(args, "depth_enabled"))
 
     async def test_setup_for_replay_none_stage_is_noop(self) -> None:
@@ -85,7 +88,7 @@ class TestNurecReplayOverrides(omni.kit.test.AsyncTestCase):
         self.assertEqual(problems, [])
 
     async def test_setup_for_replay_does_not_raise_when_prerequisites_met(self) -> None:
-        """A NuRec stage that satisfies its prerequisites still restricts replay to RGB."""
+        """A NuRec stage that satisfies its prerequisites preserves RGB and depth choices."""
         args = argparse.Namespace(rgb_enabled=True, depth_enabled=True)
         with mock.patch.object(nurec_overrides, "setup_for_rendering", return_value=(True, True, False, [])):
             success, nurec, _, problems = setup_for_replay(args, _STAGE_SENTINEL)
@@ -94,4 +97,24 @@ class TestNurecReplayOverrides(omni.kit.test.AsyncTestCase):
         self.assertTrue(nurec)
         self.assertEqual(problems, [])
         self.assertTrue(args.rgb_enabled)
-        self.assertFalse(args.depth_enabled)
+        self.assertTrue(args.depth_enabled)
+
+    async def test_setup_for_replay_preserves_depth_only_request(self) -> None:
+        """NuRec setup does not enable RGB for a depth-only replay."""
+        args = argparse.Namespace(rgb_enabled=False, depth_enabled=True)
+        with mock.patch.object(nurec_overrides, "setup_for_rendering", return_value=(True, True, True, [])):
+            setup_for_replay(args, _STAGE_SENTINEL)
+
+        self.assertFalse(args.rgb_enabled)
+        self.assertTrue(args.depth_enabled)
+
+    async def test_setup_for_replay_non_nurec_preserves_all_flags(self) -> None:
+        """Ordinary scenes keep every requested modality."""
+        args = argparse.Namespace(
+            rgb_enabled=False, depth_enabled=True, segmentation_enabled=True, normals_enabled=True
+        )
+        expected = vars(args).copy()
+        with mock.patch.object(nurec_overrides, "setup_for_rendering", return_value=(True, False, False, [])):
+            setup_for_replay(args, _STAGE_SENTINEL)
+
+        self.assertEqual(vars(args), expected)

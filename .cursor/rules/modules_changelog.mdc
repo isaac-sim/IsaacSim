@@ -11,6 +11,8 @@ globs:
 - Use only populated `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, and `Security` subsections.
 - At release, move entries into `## [X.Y.Z] - YYYY-MM-DD`; the version must match `source/libraries/VERSION`.
 - Do not add empty release sections to modules that did not change.
-- Record user-visible API, behavior, compatibility, packaging, and migration changes.
+- During alpha, summarize the net user-visible delta since the last release, not every code change or MR.
+- Changelog edits are not required for routine build fixes, internal cleanup, or test-only changes.
+- Revise existing Unreleased entries as features evolve; do not add `Fixed` entries for behavior that has not shipped.
 - Omit implementation walkthroughs, commit or issue identifiers, test-only changes, and restated diffs.
 - Keep entries concise and identify the affected API when useful.

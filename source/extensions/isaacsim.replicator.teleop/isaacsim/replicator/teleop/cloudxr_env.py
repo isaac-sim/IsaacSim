@@ -15,10 +15,13 @@
 
 """External CloudXR runtime environment helpers for live teleop sessions.
 
-The CloudXR runtime is started externally (for example
-``python -m isaacteleop.cloudxr --accept-eula`` in a separate terminal).
-This module only detects readiness and applies ``cloudxr.env`` to the current
-process before opening a live OpenXR session.
+The CloudXR runtime is intentionally kept outside Isaac Sim so it remains
+stable while the Kit timeline starts and stops. This module detects readiness
+and applies the launcher's generated ``cloudxr.env`` before live OpenXR input
+opens.
+
+The live runtime is probed through its Unix domain socket where the platform
+provides one. Platforms without the optional runtime can still use debug input.
 """
 
 from __future__ import annotations
@@ -26,9 +29,14 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import socket
 from pathlib import Path
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Bounds the liveness probe against a runtime that accepts but never answers,
+# short enough that Connect stays responsive when nothing is listening.
+_IPC_PROBE_TIMEOUT_S = 0.5
 
 
 def default_cloudxr_install_dir() -> Path:
@@ -48,9 +56,32 @@ def cloudxr_runtime_ready_sentinel(install_dir: Path | None = None) -> Path:
     return root / "run" / "runtime_started"
 
 
+def cloudxr_runtime_ipc_socket(install_dir: Path | None = None) -> Path:
+    """Return the path to the Unix domain socket a live runtime serves."""
+    root = install_dir if install_dir is not None else default_cloudxr_install_dir()
+    return root / "run" / "ipc_cloudxr"
+
+
 def is_cloudxr_runtime_ready(install_dir: Path | None = None) -> bool:
-    """Return whether a CloudXR runtime has signaled readiness on disk."""
-    return cloudxr_runtime_ready_sentinel(install_dir).is_file()
+    """Return whether a CloudXR runtime is ready and serving its IPC socket.
+
+    The sentinel can survive an unclean launcher exit. Isaac Teleop probes the
+    same socket before treating an existing runtime as live, so a stale file
+    must not make Connect open an OpenXR provider against a process that is no
+    longer there. Platforms without Unix domain sockets rely on the sentinel alone.
+    """
+    root = install_dir if install_dir is not None else default_cloudxr_install_dir()
+    if not cloudxr_runtime_ready_sentinel(root).is_file():
+        return False
+    if not hasattr(socket, "AF_UNIX"):
+        return True
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as ipc:
+            ipc.settimeout(_IPC_PROBE_TIMEOUT_S)
+            ipc.connect(str(cloudxr_runtime_ipc_socket(root)))
+    except OSError:
+        return False
+    return True
 
 
 def parse_cloudxr_env_file(path: Path) -> dict[str, str]:

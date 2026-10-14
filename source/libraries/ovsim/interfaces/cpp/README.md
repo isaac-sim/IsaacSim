@@ -1,12 +1,11 @@
 # OV SIM C++ interfaces
 
-This directory contains the canonical C++ callable-signature aliases for the OV SIM API. It is shared interface source,
-not a separately registered module or distribution.
+This directory defines the shared C++ function-signature aliases for the OV SIM API. It is source used by several
+packages, not a separate module or distribution.
 
-Header ownership is package-level: every distribution whose public SDK exposes or includes these interfaces installs an
-identical copy at `include/ovsim/interfaces`. This keeps each SDK self-contained without making one distribution the
-owner of another distribution's public includes. The canonical source remains this directory; package CMake files must
-install it unchanged rather than maintain private copies.
+Every distribution whose public SDK uses these interfaces installs the same headers at `include/ovsim/interfaces`.
+This keeps each SDK self-contained without making packages depend on another package's include directory. This
+directory remains the source of truth; package CMake files install it unchanged instead of maintaining copies.
 
 The current consumers are:
 
@@ -34,9 +33,8 @@ ovsim/interfaces/
 
 ## Verification
 
-Provider-side `VerifyInterfaces.cpp` translation units enforce the current contract at compile time for Foundation,
-Physics, and the local OV SIM client. They include each applicable canonical interface header alongside the concrete
-header, then assign concrete function addresses to variables of the alias types. For example:
+Each provider has a `VerifyInterfaces.cpp` file that checks the contract at compile time. It includes the shared
+interface and the provider's concrete header, then assigns each function to the corresponding alias type. For example:
 
 ```cpp
 #include <isaacsim/foundation/ovsim/control/authoring/Authoring.hpp>
@@ -58,7 +56,7 @@ namespace foundationData = isaacsim::foundation::ovsim::data;
 [[maybe_unused]] const simulationInterface::PlayFunction g_kPlay = &foundationControl::simulation::play;
 ```
 
-A mismatching return type, parameter type, or parameter count causes a compile error on that assignment.
+The assignment fails to compile if the return type, parameter types, or parameter count do not match.
 
 ## Notes
 

@@ -290,6 +290,7 @@ function group_apps(kit)
     define_local_experience("isaac-sim", "isaacsim.exp.full")
     define_local_experience("isaac-sim.fabric", "isaacsim.exp.full.fabric")
     define_local_experience("isaac-sim.newton", "isaacsim.exp.full.newton")
+    define_local_experience("isaac-sim.newton.streaming", "isaacsim.exp.full.newton.streaming", "--no-window ")
     define_local_experience("isaac-sim.compatibility_check", "isaacsim.exp.compatibility_check")
     define_local_experience("isaac-sim.streaming", "isaacsim.exp.full.streaming", "--no-window ")
     if os.hostarch() == "x86_64" then

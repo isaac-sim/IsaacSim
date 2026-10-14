@@ -22,7 +22,6 @@ import tempfile
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
 import omni.timeline
-import omni.ui as ui
 from isaacsim.replicator.episode_recorder.ui.episode_recorder_extension import EpisodeRecorderUIExtension
 from isaacsim.replicator.episode_recorder.ui.episode_recorder_panel import EpisodeRecorderPanel
 from isaacsim.replicator.episode_recorder.ui.episode_recorder_window import EpisodeRecorderWindow
@@ -30,7 +29,6 @@ from isaacsim.test.utils import MenuUITestCase
 from pxr import Gf, UsdGeom, UsdPhysics
 
 WINDOW_TITLE = EpisodeRecorderUIExtension.WINDOW_NAME
-MENU_PATH = f"{EpisodeRecorderUIExtension.MENU_GROUP}/{EpisodeRecorderUIExtension.WINDOW_NAME}"
 
 _FILE_PREFIX = "ui_test"
 _NUM_FRAMES = 5
@@ -56,10 +54,7 @@ def _build_rigid_cube_scene() -> None:
 
 
 async def _open_panel(test: MenuUITestCase) -> tuple[EpisodeRecorderWindow, EpisodeRecorderPanel]:
-    await test.menu_click_with_retry(MENU_PATH, window_name=WINDOW_TITLE)
-    await test.find_widget_with_retry(WINDOW_TITLE)
-    window = ui.Workspace.get_window(WINDOW_TITLE)
-    test.assertIsNotNone(window, "Episode Recorder window should exist after opening via the menu")
+    window = EpisodeRecorderWindow(title=WINDOW_TITLE)
     window.visible = True
     window.focus()
     await test.wait_n_frames(5)

@@ -119,7 +119,8 @@ public:
             // missed if we restricted the walk to descendants of the articulation-root link.
             for (const pxr::UsdPrim& currentPrim : pxr::UsdPrimRange(startPrim))
             {
-                if (!currentPrim.HasAttribute(isaacsim::core::includes::g_kIsaacNameOveride))
+                if (!currentPrim.HasAttribute(isaacsim::core::includes::g_kIsaacNameOveride) &&
+                    !currentPrim.HasAttribute(isaacsim::core::includes::g_kIsaacJointNameOverride))
                     continue;
                 const std::string primNameOverride = isaacsim::core::includes::getName(currentPrim);
                 const std::string primName = currentPrim.GetName().GetString();

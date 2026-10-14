@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Verify that the carried logging module submits through Kit's Carbonite backend."""
+"""Verify that the staged logging module submits through Kit's Carbonite backend."""
 
 from __future__ import annotations
 
@@ -42,12 +42,12 @@ def _emit_from_python_wrapper(logger: Logger, message: str) -> int:
     return expected_line
 
 
-class TestLoggingCarrier(omni.kit.test.AsyncTestCase):
+class TestLoggingIntegration(omni.kit.test.AsyncTestCase):
     """Exercise the wheel import and borrowed Kit backend together."""
 
     async def test_python_record_reaches_kit_logging_callback(self) -> None:
         """Observe a module record and safe recursive submission through Kit."""
-        marker = f"isaacsim-common-carrier-{uuid.uuid4()}"
+        marker = f"isaacsim-common-test-{uuid.uuid4()}"
         recursive_marker = f"isaacsim-common-recursive-{uuid.uuid4()}"
         records: list[LogRecord] = []
         kit_logging = carb.logging.acquire_logging()

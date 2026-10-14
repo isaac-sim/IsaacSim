@@ -1,6 +1,6 @@
 ---
 name: isaac-sim-orchestrator
-description: "Execute end-to-end Isaac Sim work through ordered specialist skills and validation. Use when an established goal requires multi-skill scene, robot, render, sensor, or SDG integration."
+description: "Integrate approved multi-skill Isaac Sim demos and validate delivery. Route focused obstacle-aware arm demos to motion-generation, including video requests; scope gaps with isaac-sim-workflow."
 license: Apache-2.0
 metadata:
   author: Renato Gasoto <info@nvidia.com>
@@ -10,30 +10,43 @@ metadata:
 
 ## Purpose
 
-Turn an established goal or demo contract into a runnable simulation by mapping capabilities, executing specialist skills in order, and validating output before delivery. Use `isaac-sim-workflow` first when the deliverable and acceptance criteria still need to be scoped.
+Turn an established goal or contract into a validated library, Kit integration, or runnable simulation by mapping capabilities and executing specialist skills in order. A request such as "the forklift demo is scoped and approved; build it and give me the video" enters the four phases below directly. Use `isaac-sim-workflow` first only when the deliverable or acceptance criteria still need scoping.
+
+## Specialist ownership
+
+A focused obstacle-aware arm demo belongs to `motion-generation`, including
+pick-and-place around a pole with physics and video. If this orchestrator is
+loaded first, hand off to `motion-generation` before implementation and keep it
+as the primary skill. Orchestration may support composition and delivery.
+
+When a native skill invocation tool is available, invoke the specialist with
+that tool; shell reads of its instructions or scripts do not replace invocation.
+When the runtime only supports file-based skill loading, use that mechanism and
+state the trace limitation accurately.
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For Kit integration: built Isaac Sim, a supported NVIDIA GPU, and the shell
+  environment below.
+- For a standalone library foundation: a configured `source/libraries` build or
+  installed wheel/SDK; Kit and a GPU are not universal requirements.
 
 ## Limitations
 
-- Targets Isaac Sim 6 / Kit 110 unless a section states otherwise.
+- Kit-specific guidance targets Isaac Sim 6 / Kit 110 unless a section states otherwise.
 - Does not replace official NVIDIA documentation for unsupported edge cases.
 
 ## Troubleshooting
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
+| Extension not found | Wrong `$ISAAC_SIM_DIR` or stale Kit build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
 
 ## Environment contract
 
-Every routed skill assumes these variables; set them in the agent config or shell:
+Kit-routed skills use these variables; standalone library work uses its configured build/install environment instead:
 
 | Variable | Purpose | Example |
 |---|---|---|
@@ -42,15 +55,37 @@ Every routed skill assumes these variables; set them in the agent config or shel
 | `$WORKSPACE_DIR` | Per-agent outputs, scratch, caches | unset by default; pick a project-local path or `~/.cache/<repo>` |
 | `$CIP_ROOT` (Windows) | Content-pipeline install (CIP/WRAPP) | `C:\_Data` |
 
-Run `nvidia-smi` at session start to size `num_envs` and pick RT2 vs PathTracing. Do not hardcode GPU class.
+Run `nvidia-smi` before GPU-backed simulation or rendering to size `num_envs`
+and pick RT2 vs PathTracing. Do not require it for a library-only CPU workflow
+or hardcode a GPU class.
 
 ## Execution mode
 
-Prefer live iteration: when a sim is running, push code over the Python server via
-`isaac-sim-remote` (port 8226). Write a standalone script only for handoff/repro;
-avoid `python.sh` except to test that script.
+Choose the owning surface before running code:
+
+| Surface | Execution |
+|---|---|
+| Standalone library | Use the configured module build, installed wheel/SDK, or `source/examples/examples.sh`; do not create `SimulationApp` |
+| Kit demo/controller | Iterate and validate through `isaac-sim-remote` before standalone handoff/capture, unless the user explicitly requests standalone validation |
+| Other Kit extension or adapter | Prefer live Python-server iteration through `isaac-sim-remote`; use `python.sh` for a standalone Kit handoff test |
+| Library staged in Kit | Prove the library in a normal process first, then test its wheel staging and lifecycle adapter in Kit |
+
+### Extension-to-library rewrite sequence
+
+When an established contract moves reusable behavior out of an extension:
+
+1. Inventory and classify the old API, implementation, adapters, packaging, dependencies, tests, imports, and version surfaces.
+2. Keep one implementation in `source/libraries`; preserve supported imports and prove its public facade without Kit.
+3. Stage the built wheel and SDK in a thin Kit extension that retains only Kit lifecycle or translation behavior.
+4. Validate library and Kit routes independently with `isaac-sim-validator`, including their separate version decisions.
 
 Launch a server-enabled sim using the launch procedure in `isaac-sim-remote`; do not duplicate its command here.
+Before Kit controller iteration, require a successful health response and then
+send scene setup, tuning, and validation probes through the client. Retain their
+responses as execution evidence. If the server cannot be made available, report
+that workflow validation is blocked; do not silently switch to repeated
+`SimulationApp` launches or claim workflow completion from a successful video.
+For graceful shutdown after live iteration, invoke the [remote skill's shutdown helper](../isaac-sim-remote/scripts/shutdown_app.py) through its localhost client.
 
 ## Task decomposition
 
@@ -59,7 +94,7 @@ For any request, run all four phases. The specific steps inside each phase depen
 ### Phase 1 — Verify foundations
 
 **1a. Feature/skill mapping** (before any code):
-- If the request is a demo, load `isaac-sim-workflow` first: it defines the deliverable type, acceptance criteria, validation needs, and routes back through these phases with that context.
+- If a demo still lacks a deliverable or acceptance criteria, load `isaac-sim-workflow` to define them, then return to these phases. If the request already fixes the subject, behavior, constraints, and output (for example, a collision-free aisle drive delivered as a 20-second video), use that contract directly; do not repeat the scoping pass.
 - Cross-check the request against documented Isaac Sim features and APIs.
 - For each capability, look up an existing skill:
   - Skill exists -> load it, follow its procedure.
@@ -86,9 +121,9 @@ Combine verified foundations one at a time. Re-run stability/correctness checks 
 - List iterations, failures, workarounds.
 - Record user corrections.
 - Classify each lesson: new skill, skill update, procedure fix, or `MEMORY.md` fact.
-- Update the skill files; re-read to confirm a fresh agent can follow them.
+- Follow `skill-distillation` to decide whether a reusable lesson warrants a skill change. Apply scoped edits when the user has authorized them; otherwise record or propose the patch before writing. If there is no reusable lesson, record that conclusion.
 
-See `skill-distillation` for the full procedure. Phase 4 is not optional.
+See `skill-distillation` for the full procedure. Phase 4 is not optional, even when no file change is warranted.
 
 ## Sub-agent rules
 
@@ -101,8 +136,10 @@ See `skill-distillation` for the full procedure. Phase 4 is not optional.
 
 | Skill | Use for |
 |---|---|
-| `isaac-sim-remote` | Live Python-server iteration against a running sim (preferred over standalone during dev) |
+| `isaac-sim-remote` | Live Python-server iteration and validation for Kit development |
+| `motion-generation` | Primary owner for obstacle-aware arm controllers and pick-and-place, including physics/video demos |
 | `urdf-mjcf-to-usd-conversion` | Import URDF/MJCF robot descriptions to USD with physics APIs and articulation structure |
+| `physx-to-newton-conversion` | Convert an existing PhysX-only USD robot to a Newton-capable variant package |
 | `usd-pipeline` | Asset insertion, scaling, materials, headless render compatibility |
 | `usd-composition-architecture` | Layered USD assets (root + physics + appearance) |
 | `usd-articulation` | Multi-link articulations, joint hierarchies, Robot Schema overlay |
@@ -110,8 +147,8 @@ See `skill-distillation` for the full procedure. Phase 4 is not optional.
 | `isaac-sim-sensor` | RTX/physics sensors (camera, LiDAR, IMU, contact), render products, annotators |
 | `isaac-sim-rendering` | Headless Kit 110 capture, RT2/PathTracing, ACES |
 | `isaac-sim-validator` | Final QA gate before delivery |
-
-For the modern Kit 110 public API surface (bootstrap, stage/app utilities, common calls) used across these skills, see [`references/api-cheatsheet.md`](references/api-cheatsheet.md).
+For Kit bootstrap and the distinction from standalone library imports, see
+[`references/api-cheatsheet.md`](references/api-cheatsheet.md).
 
 ## Multi-robot fleet reference
 

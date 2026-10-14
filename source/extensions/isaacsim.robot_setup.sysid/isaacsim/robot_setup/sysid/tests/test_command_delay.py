@@ -39,6 +39,11 @@ from isaacsim.robot_setup.sysid.parameter_types import (
 from isaacsim.robot_setup.sysid.run_spec import SysIdRunSpec, TelemetryRunSpec
 from isaacsim.robot_setup.sysid.schema_validation import validate_sysid_run_spec_payload
 from isaacsim.robot_setup.sysid.telemetry_quality import (
+    _COMMAND_LAG_MAX_WINDOW_SAMPLES,
+    _COMMAND_LAG_MIN_CORE_SAMPLES,
+    COMMAND_LAG_MIN_CORRELATION,
+    WEAK_EXCITATION_VELOCITY_THRESHOLD,
+    _window_means_and_energies,
     build_telemetry_quality_report,
     estimate_command_lag,
 )
@@ -73,24 +78,87 @@ def _multisine(t: np.ndarray, joint: int) -> tuple[np.ndarray, np.ndarray]:
     return position, velocity
 
 
-def _delayed_trajectory(lag_samples_by_joint: list[float], duration_seconds: float = 40.0) -> TrajectoryDataset:
+def _delayed_trajectory(
+    lag_samples_by_joint: list[float],
+    duration_seconds: float = 40.0,
+    rate_hz: float = _RATE_HZ,
+) -> TrajectoryDataset:
     """Commands are the multisine; measurements respond ``lag`` samples later.
 
     Args:
         lag_samples_by_joint: Value supplied for ``lag_samples_by_joint``.
         duration_seconds: Value supplied for ``duration_seconds``.
+        rate_hz: Telemetry sample rate, which sets how many candidate lags the
+            one-second search window spans.
 
     Returns:
         Result produced by the operation.
     """
-    times = np.arange(int(round(duration_seconds * _RATE_HZ))) * _DT
+    dt = 1.0 / rate_hz
+    times = np.arange(int(round(duration_seconds * rate_hz))) * dt
     commands = np.zeros((times.shape[0], len(lag_samples_by_joint)))
     positions = np.zeros_like(commands)
     velocities = np.zeros_like(commands)
     for joint, lag in enumerate(lag_samples_by_joint):
         commands[:, joint], _ = _multisine(times, joint)
-        positions[:, joint], velocities[:, joint] = _multisine(times - lag * _DT, joint)
+        positions[:, joint], velocities[:, joint] = _multisine(times - lag * dt, joint)
     return TrajectoryDataset(times=times, positions=positions, velocities=velocities, commands=commands)
+
+
+def _reference_joint_lag(
+    times: np.ndarray,
+    command: np.ndarray,
+    velocity: np.ndarray,
+    max_lag: int,
+) -> tuple[float | None, float | None]:
+    """Score every candidate lag one at a time, the definition of the estimator.
+
+    This is deliberately the slow, obvious formulation: for each lag, slide the
+    command-derivative window, remove its mean, and take a normalized dot product
+    against the fixed core. It exists only so the production implementation has
+    something independent to be checked against.
+
+    Args:
+        times: Sample timestamps for the joint signals.
+        command: Command series for one joint.
+        velocity: Measured velocity series for the same joint.
+        max_lag: Maximum lag to search, in samples.
+
+    Returns:
+        Sub-sample refined lag and correlation peak, with the lag ``None`` when
+        the peak falls below the acceptance threshold.
+    """
+    peak_velocity = float(np.max(np.abs(velocity)))
+    active = np.flatnonzero(np.abs(velocity) > max(0.05 * peak_velocity, WEAK_EXCITATION_VELOCITY_THRESHOLD))
+    start = int(active[0])
+    stop = min(int(active[-1]) + 1, start + _COMMAND_LAG_MAX_WINDOW_SAMPLES)
+    x = np.gradient(command[start:stop], times[start:stop])
+    y = velocity[start:stop]
+    n = int(x.shape[0])
+    lag_cap = min(max_lag, (n - _COMMAND_LAG_MIN_CORE_SAMPLES) // 2)
+
+    core = y[lag_cap : n - lag_cap]
+    core = core - np.mean(core)
+    core_norm = float(np.linalg.norm(core))
+    lags = np.arange(-lag_cap, lag_cap + 1)
+    corr = np.zeros(lags.shape[0], dtype=np.float64)
+    for index, lag in enumerate(lags):
+        window = x[lag_cap - lag : n - lag_cap - lag]
+        window = window - np.mean(window)
+        window_norm = float(np.linalg.norm(window))
+        if window_norm > 0.0:
+            corr[index] = float(np.dot(core, window)) / (core_norm * window_norm)
+
+    peak = int(np.argmax(corr))
+    peak_value = float(corr[peak])
+    if peak_value < COMMAND_LAG_MIN_CORRELATION:
+        return None, peak_value
+    offset = 0.0
+    if 0 < peak < corr.shape[0] - 1:
+        denom = corr[peak - 1] - 2.0 * corr[peak] + corr[peak + 1]
+        if denom < 0.0:
+            offset = float(np.clip(0.5 * (corr[peak - 1] - corr[peak + 1]) / denom, -0.5, 0.5))
+    return float(lags[peak]) + offset, peak_value
 
 
 class CommandDelayTests(omni.kit.test.AsyncTestCase):
@@ -113,6 +181,152 @@ class CommandDelayTests(omni.kit.test.AsyncTestCase):
             self.assertLess(abs(estimate.residual_samples - offset), 0.25)
         self.assertGreater(report.residual_spread_samples, 0.4)
         self.assertLess(report.residual_spread_samples, 1.0)
+
+    async def test_lag_estimate_matches_direct_cross_correlation(self) -> None:
+        """The vectorized correlation must reproduce the per-lag reference exactly.
+
+        `_reference_joint_lag` is the straightforward per-lag normalized
+        cross-correlation this estimator is defined by. Any faster formulation has
+        to agree with it to well inside the sub-sample refinement step.
+        """
+        lags = [_COMMON_LAG_SAMPLES + offset for offset in _JOINT_OFFSETS]
+        # 1 kHz telemetry, where the one-second window spans 2001 candidate lags
+        # per joint — the regime that made the shipped per-lag loop expensive.
+        trajectory = _delayed_trajectory(lags, duration_seconds=12.0, rate_hz=1000.0)
+        dt = float(np.median(np.diff(trajectory.times)))
+        max_lag = max(1, int(round(1.0 / dt)))
+
+        report = estimate_command_lag(trajectory)
+
+        self.assertIsNotNone(report)
+        self.assertEqual(report.max_lag_samples, max_lag)
+        self.assertEqual(max_lag, 1000)
+        for joint, estimate in enumerate(report.joints):
+            expected_lag, expected_peak = _reference_joint_lag(
+                trajectory.times,
+                trajectory.commands[:, joint],
+                trajectory.velocities[:, joint],
+                max_lag,
+            )
+            self.assertAlmostEqual(estimate.correlation_peak, expected_peak, places=9)
+            self.assertIsNotNone(estimate.lag_samples)
+            self.assertAlmostEqual(estimate.lag_samples, expected_lag, places=6)
+
+    async def test_lag_estimate_is_exact_under_a_steady_command_rate(self) -> None:
+        """A constant command rate must not cost the estimate any precision.
+
+        A steady rate adds the same constant to every sample of d(command)/dt.
+        The normalized correlation is unchanged by that shift, so the estimate has
+        to keep matching the per-lag reference however large the rate is relative
+        to the excitation.
+        """
+        lags = [_COMMON_LAG_SAMPLES + offset for offset in _JOINT_OFFSETS]
+        trajectory = _delayed_trajectory(lags, duration_seconds=12.0, rate_hz=1000.0)
+        creep_rate = 1.0e4
+        trajectory.commands += creep_rate * trajectory.times[:, None]
+        trajectory.velocities += creep_rate
+        max_lag = max(1, int(round(1.0 / float(np.median(np.diff(trajectory.times))))))
+
+        report = estimate_command_lag(trajectory)
+
+        self.assertIsNotNone(report)
+        for joint, estimate in enumerate(report.joints):
+            expected_lag, expected_peak = _reference_joint_lag(
+                trajectory.times,
+                trajectory.commands[:, joint],
+                trajectory.velocities[:, joint],
+                max_lag,
+            )
+            self.assertIsNotNone(expected_lag)
+            self.assertAlmostEqual(estimate.correlation_peak, expected_peak, places=9)
+            self.assertIsNotNone(estimate.lag_samples)
+            self.assertAlmostEqual(estimate.lag_samples, expected_lag, places=6)
+
+    async def test_lag_estimate_is_exact_after_an_isolated_command_glitch(self) -> None:
+        """One extreme command sample must not corrupt the score of windows that exclude it.
+
+        A single-sample glitch puts a derivative spike roughly 1e8 times the excitation
+        into d(command)/dt. Windows that do not contain it must still score exactly as
+        the per-lag reference does, so the recovered lag is unchanged.
+        """
+        lags = [_COMMON_LAG_SAMPLES + offset for offset in _JOINT_OFFSETS]
+        trajectory = _delayed_trajectory(lags, duration_seconds=12.0, rate_hz=1000.0)
+        max_lag = max(1, int(round(1.0 / float(np.median(np.diff(trajectory.times))))))
+        # Early enough that the windows around the true lag exclude it.
+        glitch_sample = max_lag // 10
+        trajectory.commands[glitch_sample, :] += 2.0e5
+
+        report = estimate_command_lag(trajectory)
+
+        self.assertIsNotNone(report)
+        for joint, estimate in enumerate(report.joints):
+            expected_lag, expected_peak = _reference_joint_lag(
+                trajectory.times,
+                trajectory.commands[:, joint],
+                trajectory.velocities[:, joint],
+                max_lag,
+            )
+            self.assertIsNotNone(expected_lag)
+            self.assertAlmostEqual(estimate.correlation_peak, expected_peak, places=6)
+            self.assertIsNotNone(estimate.lag_samples)
+            self.assertAlmostEqual(estimate.lag_samples, expected_lag, places=6)
+
+    async def test_lag_estimate_is_exact_when_the_command_rate_changes(self) -> None:
+        """Short windows away from the median command rate must keep full precision.
+
+        A 2.2 s recording leaves 200-sample windows for 2001 candidate lags. The
+        command rate is 1e6 except for a 0.5 s segment at half that rate, and the
+        windows around the true lag sit entirely inside that segment. Shifting by
+        the median rate cannot center them, so their energy and correlation
+        numerator are evaluated about 5e5 away from zero.
+        """
+        lags = [_COMMON_LAG_SAMPLES + offset for offset in _JOINT_OFFSETS]
+        trajectory = _delayed_trajectory(lags, duration_seconds=2.2, rate_hz=1000.0)
+        dt = float(np.median(np.diff(trajectory.times)))
+        max_lag = max(1, int(round(1.0 / dt)))
+        base_rate = 1.0e6
+        slow_start, slow_end = 0.8, 1.3
+
+        def command_rate(t: np.ndarray) -> np.ndarray:
+            return np.where((t >= slow_start) & (t < slow_end), 0.5 * base_rate, base_rate)
+
+        times = trajectory.times
+        trajectory.commands += (base_rate * times - 0.5 * base_rate * np.clip(times - slow_start, 0.0, 0.5))[:, None]
+        for joint, lag in enumerate(lags):
+            trajectory.velocities[:, joint] += command_rate(times - lag * dt)
+
+        report = estimate_command_lag(trajectory)
+
+        self.assertIsNotNone(report)
+        for joint, estimate in enumerate(report.joints):
+            expected_lag, expected_peak = _reference_joint_lag(
+                trajectory.times,
+                trajectory.commands[:, joint],
+                trajectory.velocities[:, joint],
+                max_lag,
+            )
+            self.assertIsNotNone(expected_lag)
+            self.assertAlmostEqual(estimate.correlation_peak, expected_peak, places=9)
+            self.assertIsNotNone(estimate.lag_samples)
+            self.assertAlmostEqual(estimate.lag_samples, expected_lag, places=6)
+
+    async def test_window_statistics_match_direct_computation(self) -> None:
+        """Every window's mean and centered energy must match the direct two-pass result.
+
+        Widths cover one sample, the whole series, powers of two, and widths with
+        several set bits, on a series with a large offset and a rate step.
+        """
+        rng = np.random.default_rng(7)
+        values = 1.0e6 + rng.normal(size=1000)
+        values[400:] += 5.0e5
+        for width in (1, 2, 3, 64, 255, 256, 257, 999, 1000):
+            means, energies = _window_means_and_energies(values, width)
+            windows = np.lib.stride_tricks.sliding_window_view(values, width)
+            expected_means = windows.mean(axis=1)
+            expected_energies = np.square(windows - expected_means[:, None]).sum(axis=1)
+            self.assertEqual(means.shape, expected_means.shape)
+            np.testing.assert_allclose(means, expected_means, rtol=1e-14, atol=0.0)
+            np.testing.assert_allclose(energies, expected_energies, rtol=1e-9, atol=1e-6)
 
     async def test_quality_report_warns_with_suggested_correction(self) -> None:
         """Common-mode lag above 1.5 samples surfaces a warn-first issue with the fix."""

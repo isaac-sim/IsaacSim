@@ -102,6 +102,8 @@ def ik_lm(
 
     # Initial evaluation (fused FK + Jacobian in one pass)
     T, J = chain.compute_fk_and_jacobian(q)
+    # Convert the space twist to velocity at the end-effector origin.
+    J[3:, :] += np.cross(J[:3, :].T, T.t).T
     J[:, fixed_mask] = 0.0
     e = pose_error(target, T)
     ew = W * e
@@ -138,6 +140,7 @@ def ik_lm(
 
         # Trial evaluation (fused FK + Jacobian so we don't recompute on accept)
         T_new, J_new = chain.compute_fk_and_jacobian(q_new)
+        J_new[3:, :] += np.cross(J_new[:3, :].T, T_new.t).T
         J_new[:, fixed_mask] = 0.0
         e_new = pose_error(target, T_new)
         ew_new = W * e_new

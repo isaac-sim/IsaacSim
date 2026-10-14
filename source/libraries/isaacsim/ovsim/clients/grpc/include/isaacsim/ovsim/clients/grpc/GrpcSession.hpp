@@ -176,21 +176,23 @@ public:
     void invalidate();
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::step
-     * @note Advances the protocol timestamp by one drift-free 60 Hz interval. The first implementation keeps the
-     * server's existing fixed physics time step.
+     * @note Advances physics and the protocol timestamp by the configured time step (default 1/60 second).
      * @throws std::runtime_error If the remote operation fails.
      */
     void step();
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::setParameter
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @note Supports `physics` / `time-step` as a double in seconds (at least 1 ns, within int64 nanoseconds),
+     * set before importing the stage.
+     * @throws std::logic_error If the parameter is unsupported or a remote stage already exists.
      */
     void setSimulationParameter(const std::string& provider,
                                 const std::string& parameterName,
                                 const InputParameterType& value);
 
     /** @copydoc isaacsim::physics::ovsim::control::simulation::getParameter
-     * @throws std::logic_error Always, because the remote operation is not implemented.
+     * @note Supports `physics` / `time-step`, in seconds.
+     * @throws std::logic_error If the parameter is unsupported.
      */
     OutputParameterType getSimulationParameter(const std::string& provider, const std::string& parameterName);
 

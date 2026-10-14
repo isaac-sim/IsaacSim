@@ -24,11 +24,12 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import numpy as np
 import omni.kit.test
 import torch
+from isaacsim.robot_setup.sysid.backend_capabilities import ISAAC_SIM_PHYSX_CAPABILITIES
 from isaacsim.robot_setup.sysid.env_bridge import SysIdEnvironmentBridgeError
 from isaacsim.robot_setup.sysid.fabric_batch import read_batched_link_pose
 from isaacsim.robot_setup.sysid.isaac_sim_sysid_bridge import IsaacSimSysIdBridge
@@ -370,18 +371,23 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(NewtonSysIdBridge._read_effort_limit(snapshot), 42.0)
 
     async def test_joint_snapshot_preserves_native_newton_properties(self) -> None:
-        """Read and write native Newton dynamics without authoring PhysX or drive properties."""
+        """Round-trip native Newton friction and armature while drive damping stays on the drive.
+
+        Newton applies ``newton:damping`` as passive joint damping on top of the drive gain, so
+        treating it as the drive gain would double the identified damping on reload.
+        """
         stage = Usd.Stage.CreateInMemory()
         joint = UsdPhysics.RevoluteJoint.Define(stage, "/World/joint")
         prim = joint.GetPrim()
         prim.CreateAttribute("newton:friction", Sdf.ValueTypeNames.Float, custom=False).Set(0.2)
-        prim.CreateAttribute("newton:damping", Sdf.ValueTypeNames.Float, custom=False).Set(0.001)
+        prim.CreateAttribute("newton:damping", Sdf.ValueTypeNames.Float, custom=False).Set(0.05)
         prim.CreateAttribute("newton:armature", Sdf.ValueTypeNames.Float, custom=False).Set(0.3)
+        UsdPhysics.DriveAPI.Apply(prim, "angular").CreateDampingAttr().Set(0.001)
 
         snapshot = read_joint_usd_snapshot(stage, "/World/joint")
 
         self.assertTrue(snapshot.uses_newton_friction)
-        self.assertTrue(snapshot.uses_newton_damping)
+        self.assertFalse(snapshot.uses_newton_damping)
         self.assertTrue(snapshot.uses_newton_armature)
         self.assertAlmostEqual(snapshot.friction, 0.2)
         self.assertAlmostEqual(snapshot.damping, float(1.0 / np.deg2rad(1.0 / 0.001)))
@@ -395,16 +401,17 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
                 damping=snapshot.damping * 2.0,
                 armature=0.6,
             ),
+            physics_backend="newton",
             write_stiffness=False,
             write_limits=False,
         )
 
         self.assertAlmostEqual(float(prim.GetAttribute("newton:friction").Get()), 0.4)
-        self.assertAlmostEqual(float(prim.GetAttribute("newton:damping").Get()), 0.002)
         self.assertAlmostEqual(float(prim.GetAttribute("newton:armature").Get()), 0.6)
+        self.assertAlmostEqual(float(prim.GetAttribute("drive:angular:physics:damping").Get()), 0.002)
+        self.assertAlmostEqual(float(prim.GetAttribute("newton:damping").Get()), 0.05)
         self.assertFalse(prim.GetAttribute("physxJoint:jointFriction").HasAuthoredValueOpinion())
         self.assertFalse(prim.GetAttribute("physxJoint:armature").HasAuthoredValueOpinion())
-        self.assertFalse(prim.HasAPI(UsdPhysics.DriveAPI, "angular"))
 
     async def test_joint_writeback_uses_selected_physics_backend(self) -> None:
         """Choose the output schema from the solve backend rather than the source schema."""
@@ -419,7 +426,7 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
         physx_prim = physx_joint.GetPrim()
         physx_prim.ApplyAPI("NewtonJointAPI")
         physx_prim.GetAttribute("newton:friction").Set(0.2)
-        physx_prim.GetAttribute("newton:damping").Set(0.001)
+        UsdPhysics.DriveAPI.Apply(physx_prim, "angular").CreateDampingAttr().Set(0.001)
         physx_space = ParameterSpace.for_robot(1)
         physx_space.baseline.usd_joint_snapshots = [read_joint_usd_snapshot(physx_stage, "/World/joint")]
 
@@ -436,7 +443,6 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(float(physx_prim.GetAttribute("physxJoint:jointFriction").Get()), 0.4)
         self.assertAlmostEqual(float(physx_prim.GetAttribute("drive:angular:physics:damping").Get()), 0.002)
         self.assertAlmostEqual(float(physx_prim.GetAttribute("newton:friction").Get()), 0.2)
-        self.assertAlmostEqual(float(physx_prim.GetAttribute("newton:damping").Get()), 0.001)
 
         newton_stage = Usd.Stage.CreateInMemory()
         newton_joint = UsdPhysics.RevoluteJoint.Define(newton_stage, "/World/joint")
@@ -457,9 +463,116 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
             )
         )
         self.assertAlmostEqual(float(newton_prim.GetAttribute("newton:friction").Get()), 0.4)
-        self.assertAlmostEqual(float(newton_prim.GetAttribute("newton:damping").Get()), 0.002)
         self.assertAlmostEqual(float(newton_prim.GetAttribute("physxJoint:jointFriction").Get()), 0.2)
-        self.assertAlmostEqual(float(newton_prim.GetAttribute("drive:angular:physics:damping").Get()), 0.001)
+        self.assertAlmostEqual(float(newton_prim.GetAttribute("drive:angular:physics:damping").Get()), 0.002)
+        self.assertFalse(newton_prim.GetAttribute("newton:damping").HasAuthoredValueOpinion())
+
+    async def test_joint_snapshot_reads_back_selected_backend_properties(self) -> None:
+        """Read back Newton writeback values from a joint that also authors PhysX values."""
+        stage = Usd.Stage.CreateInMemory()
+        prim = UsdPhysics.RevoluteJoint.Define(stage, "/World/joint").GetPrim()
+        physx_joint = PhysxSchema.PhysxJointAPI.Apply(prim)
+        physx_joint.CreateJointFrictionAttr().Set(1.0)
+        physx_joint.CreateArmatureAttr().Set(0.05)
+        UsdPhysics.DriveAPI.Apply(prim, "angular").CreateDampingAttr().Set(0.001)
+        prim.CreateAttribute(
+            "physxJointAxis:angular:dynamicFrictionEffort", Sdf.ValueTypeNames.Float, custom=False
+        ).Set(0.7)
+        physx_snapshot = read_joint_usd_snapshot(stage, "/World/joint")
+        self.assertAlmostEqual(physx_snapshot.dynamic_friction, 0.7)
+
+        write_joint_usd_snapshot(
+            stage,
+            replace(physx_snapshot, friction=0.4, damping=physx_snapshot.damping * 2.0, armature=0.6),
+            physics_backend="newton",
+            write_stiffness=False,
+            write_limits=False,
+        )
+
+        newton_snapshot = read_joint_usd_snapshot(stage, "/World/joint", physics_backend="newton")
+        self.assertTrue(newton_snapshot.uses_newton_friction)
+        self.assertFalse(newton_snapshot.uses_newton_damping)
+        self.assertTrue(newton_snapshot.uses_newton_armature)
+        self.assertAlmostEqual(newton_snapshot.friction, 0.4)
+        self.assertAlmostEqual(newton_snapshot.dynamic_friction, 0.0)
+        self.assertAlmostEqual(newton_snapshot.damping, physx_snapshot.damping * 2.0)
+        self.assertAlmostEqual(newton_snapshot.armature, 0.6)
+        self.assertFalse(prim.GetAttribute("newton:damping").HasAuthoredValueOpinion())
+
+        for backend in ("physx", "", "auto"):
+            snapshot = read_joint_usd_snapshot(stage, "/World/joint", physics_backend=backend)
+            self.assertFalse(snapshot.uses_newton_friction)
+            self.assertAlmostEqual(snapshot.friction, 1.0)
+            self.assertAlmostEqual(snapshot.dynamic_friction, 0.7)
+            self.assertAlmostEqual(snapshot.damping, physx_snapshot.damping * 2.0)
+            self.assertAlmostEqual(snapshot.armature, 0.05)
+
+        space = ParameterSpace.for_robot(1)
+        space.read_usd_baselines(stage, [], ["/World/joint"], physics_backend="newton")
+        self.assertAlmostEqual(float(space.baseline.joint_friction[0]), 0.4)
+        self.assertAlmostEqual(float(space.baseline.joint_dynamic_friction[0]), 0.0)
+        self.assertAlmostEqual(float(space.baseline.joint_damping[0]), physx_snapshot.damping * 2.0)
+        self.assertAlmostEqual(float(space.baseline.joint_armature[0]), 0.6)
+
+        # A calibrated zero must not fall back to the stale PhysX per-axis friction.
+        prim.GetAttribute("newton:friction").Set(0.0)
+        zero_snapshot = read_joint_usd_snapshot(stage, "/World/joint", physics_backend="newton")
+        self.assertAlmostEqual(zero_snapshot.friction or zero_snapshot.dynamic_friction, 0.0)
+
+        newton_only = UsdPhysics.RevoluteJoint.Define(stage, "/World/newton_only").GetPrim()
+        newton_only.CreateAttribute("newton:friction", Sdf.ValueTypeNames.Float, custom=False).Set(0.3)
+        unspecified = read_joint_usd_snapshot(stage, "/World/newton_only")
+        self.assertTrue(unspecified.uses_newton_friction)
+        self.assertAlmostEqual(unspecified.friction, 0.3)
+        physx_only = read_joint_usd_snapshot(stage, "/World/newton_only", physics_backend="physx")
+        self.assertFalse(physx_only.uses_newton_friction)
+        self.assertAlmostEqual(physx_only.friction, 0.0)
+
+        with self.assertRaises(ValueError):
+            read_joint_usd_snapshot(stage, "/World/joint", physics_backend="bullet")
+
+    async def test_build_parameter_space_reads_baselines_for_resolved_backend(self) -> None:
+        """Read USD baselines with the backend resolved from the run specification."""
+        from isaacsim.robot_setup.sysid import run_controller
+
+        trajectory = SimpleNamespace(num_joints=1)
+        cases = (
+            ("newton", "auto", False, "newton"),
+            ("isaac_sim", "auto", False, "physx"),
+            ("isaac_sim", "physx", False, "physx"),
+            ("isaac_sim", "newton", False, "newton"),
+            ("newton", "auto", True, "newton"),
+            ("isaac_sim", "auto", True, "physx"),
+        )
+        for engine, requested_backend, advanced, expected_backend in cases:
+            flags = SimpleNamespace(
+                include_basic=True,
+                include_com_offsets=False,
+                include_inertia_log_cholesky=False,
+                include_joint_limit_scales=False,
+                include_per_link_mass=advanced,
+                include_command_delay=False,
+            )
+            simulation = SimpleNamespace(
+                engine=engine, physics_backend=requested_backend, robot_prim_path="/World/robot"
+            )
+            spec = SimpleNamespace(simulation=simulation, parameters=SimpleNamespace(space=flags))
+            with (
+                patch.object(
+                    run_controller,
+                    "collect_robot_link_and_joint_paths",
+                    return_value=(["/World/robot/link"], ["/World/robot/joint"]),
+                ),
+                patch.object(run_controller, "order_joint_paths_for_trajectory", side_effect=lambda paths, _: paths),
+                patch.object(ParameterSpace, "read_usd_baselines") as read_baselines,
+            ):
+                run_controller.build_parameter_space(spec, Mock(), trajectory)
+            read_baselines.assert_called_once_with(
+                ANY,
+                ["/World/robot/link"],
+                ["/World/robot/joint"],
+                physics_backend=expected_backend,
+            )
 
     async def test_joint_writeback_preserves_original_dof_index_when_snapshot_missing(self) -> None:
         stage = Usd.Stage.CreateInMemory()
@@ -643,6 +756,7 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
 
     async def test_isaac_bridge_deferred_validation_fails_after_articulation_resolution(self) -> None:
         bridge = IsaacSimSysIdBridge.__new__(IsaacSimSysIdBridge)
+        bridge._backend_capabilities = ISAAC_SIM_PHYSX_CAPABILITIES
         bridge._articulation = None
         bridge._pending_param_entries = []
         entries = [SysIdParameterEntry(SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY, -1, link_index=0)]
@@ -1027,6 +1141,8 @@ class ParameterSpaceIntegrationTests(omni.kit.test.AsyncTestCase):
             {"compute_parameter_confidence": "false"},
             {"parameter_confidence_rollout_budget": 0},
             {"parameter_confidence_rollout_budget": "many"},
+            {"validation_relative_change_threshold": -0.1},
+            {"validation_absolute_change_threshold": "small"},
         )
 
         for outputs in invalid_payloads:

@@ -183,7 +183,7 @@ public:
     /**
      * @brief Restores the previously active CUDA device.
      */
-    ~DeviceGuard();
+    ~DeviceGuard() noexcept;
 
     DeviceGuard(const DeviceGuard&) = delete;
     DeviceGuard& operator=(const DeviceGuard&) = delete;

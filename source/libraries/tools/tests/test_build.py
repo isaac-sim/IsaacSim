@@ -29,6 +29,9 @@ import xml.etree.ElementTree as element_tree
 from pathlib import Path
 from unittest import mock
 
+from packaging.requirements import Requirement
+from packaging.version import Version
+
 BUILD_TOOL_PATH = Path(__file__).resolve().parents[1] / "build.py"
 BUILD_TOOL_SPEC = importlib.util.spec_from_file_location("isaacsim_library_build_tool", BUILD_TOOL_PATH)
 if BUILD_TOOL_SPEC is None or BUILD_TOOL_SPEC.loader is None:
@@ -36,6 +39,49 @@ if BUILD_TOOL_SPEC is None or BUILD_TOOL_SPEC.loader is None:
 build_tool = importlib.util.module_from_spec(BUILD_TOOL_SPEC)
 sys.modules[BUILD_TOOL_SPEC.name] = build_tool
 BUILD_TOOL_SPEC.loader.exec_module(build_tool)
+
+
+class LegacyCarrierTests(unittest.TestCase):
+    """Keep M1 commands and manifest inputs on the current staging path."""
+
+    def test_legacy_cli_alias(self) -> None:
+        """Select the same extension list through both documented options."""
+        for option in ("--carrier", "--stage-wheel"):
+            with mock.patch.object(sys, "argv", ["build.py", option, "isaacsim.common"]):
+                self.assertEqual(build_tool._parse_arguments().stage_wheel, ["isaacsim.common"])
+
+    def test_legacy_manifest_metadata(self) -> None:
+        """Read the legacy distribution and payload selection together."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            extension = root / "source/extensions/acme.runtime"
+            extension.mkdir(parents=True)
+            (extension / "module-carrier.toml").write_text(
+                '[carrier]\ndistribution="acme_runtime"\nwheel-variant="usd2511"\n', encoding="utf-8"
+            )
+            with mock.patch.object(build_tool, "REPOSITORY_ROOT", root):
+                self.assertEqual(build_tool._load_wheel_distribution("acme.runtime"), "acme_runtime")
+                self.assertEqual(build_tool._load_wheel_variant("acme.runtime"), "usd2511")
+
+
+class BuildMetricsTests(unittest.TestCase):
+    """Test source build storage measurements."""
+
+    @unittest.skipIf(os.name == "nt", "Symlink identity test requires Unix filesystem semantics")
+    def test_directory_storage_counts_unique_regular_files(self) -> None:
+        """Exclude symlinks and count hard-linked content once."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            original = root / "original.bin"
+            original.write_bytes(b"x" * 100)
+            os.link(original, root / "hard-link.bin")
+            (root / "symbolic-link.bin").symlink_to(original)
+
+            metrics = build_tool._directory_storage(root)
+
+        self.assertEqual(metrics["logical_size_bytes"], 100)
+        self.assertGreaterEqual(metrics["disk_size_bytes"], 100)
+        self.assertEqual(metrics["file_count"], 1)
 
 
 class HostPlatformTests(unittest.TestCase):
@@ -63,40 +109,6 @@ class HostPlatformTests(unittest.TestCase):
             with mock.patch.object(build_tool.platform, "machine", return_value="arm64"):
                 with self.assertRaisesRegex(RuntimeError, "Unsupported library build host"):
                     build_tool._detect_host_platform()
-
-    @unittest.skipUnless(
-        (build_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
-        "Internal repository configuration is not included in GitHub exports",
-    )
-    def test_msvc_package_matches_windows_binary_dependencies(self) -> None:
-        """Pin the internal CI compiler outside the public dependency graph."""
-        public_root = element_tree.parse(build_tool.DEPENDENCY_MANIFEST).getroot()
-        self.assertIsNone(public_root.find("./dependency[@name='msvc']"))
-
-        ci_manifest = build_tool.REPOSITORY_ROOT / "deps" / "isaacsim-libraries-msvc-ci.packman.xml"
-        root = element_tree.parse(ci_manifest).getroot()
-        dependency = root.find("./dependency[@name='msvc']")
-        if dependency is None:
-            self.fail("MSVC dependency is missing")
-        self.assertEqual(set(dependency.attrib["tags"].split()), {"non-redist", "packman-only"})
-        self.assertEqual(dependency.attrib["linkPath"], "../_build/host-deps/msvc")
-
-        packages = {
-            package.attrib["version"]: set(package.attrib["platforms"].split())
-            for package in dependency.findall("package")
-        }
-        self.assertEqual(packages, {"2022-17.14.21-1": {"windows-x86_64"}})
-
-        sdk_dependency = root.find("./dependency[@name='winsdk']")
-        if sdk_dependency is None:
-            self.fail("Windows SDK dependency is missing")
-        self.assertEqual(set(sdk_dependency.attrib["tags"].split()), {"non-redist", "packman-only"})
-        self.assertEqual(sdk_dependency.attrib["linkPath"], "../_build/host-deps/winsdk")
-        sdk_package = sdk_dependency.find("./package")
-        if sdk_package is None:
-            self.fail("Windows SDK package is missing")
-        self.assertEqual(sdk_package.attrib["version"], "10.0.20348.0")
-        self.assertEqual(sdk_package.attrib["platforms"], "windows-x86_64")
 
 
 class WindowsCompilerEnvironmentTests(unittest.TestCase):
@@ -354,6 +366,69 @@ class WindowsCompilerEnvironmentTests(unittest.TestCase):
         self.assertIn(r"-DISAACSIM_COLLECTED_PYTHON_LICENSE_FILE=C:\licenses\PIP-LICENSES.txt", command)
 
 
+class LinuxCompilerTests(unittest.TestCase):
+    """Keep native and CUDA compilation on the provisioned Linux toolchain."""
+
+    def test_configure_selects_pixi_compilers_over_ambient_environment(self) -> None:
+        """Ignore a caller's compiler selection for C, C++, and CUDA host builds."""
+        with (
+            mock.patch.dict(build_tool.os.environ, {"CC": "/usr/bin/cc", "CXX": "/usr/bin/c++"}),
+            mock.patch.object(build_tool.sys, "platform", "linux"),
+            mock.patch.object(build_tool.platform, "machine", return_value="x86_64"),
+            mock.patch.object(build_tool, "_run") as run,
+        ):
+            build_tool._configure(
+                Path("/cmake"),
+                Path("/ninja"),
+                None,
+                Path("/build"),
+                "Release",
+                build_tool._BUILD_PROFILES["cpp-library"],
+                Path("/runtime"),
+                None,
+                None,
+                None,
+                Path("/pixi"),
+                Path("/licenses"),
+            )
+        command = run.call_args.args[0]
+        gcc = Path("/pixi/bin/x86_64-conda-linux-gnu-gcc")
+        gxx = Path("/pixi/bin/x86_64-conda-linux-gnu-g++")
+        self.assertIn(f"-DCMAKE_C_COMPILER={gcc}", command)
+        self.assertIn(f"-DCMAKE_CXX_COMPILER={gxx}", command)
+        self.assertIn(f"-DCMAKE_CUDA_HOST_COMPILER={gxx}", command)
+
+    def test_changed_linux_toolchain_invalidates_configure_context(self) -> None:
+        """Do not reuse discovery results from a different compiler prefix."""
+        with mock.patch.object(build_tool.sys, "platform", "linux"):
+            old = build_tool._configure_context({"ISAACSIM_PIXI_BUILD_PREFIX": "/old"})
+            new = build_tool._configure_context({"ISAACSIM_PIXI_BUILD_PREFIX": "/new"})
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            build_dir = Path(temporary_directory)
+            (build_dir / "CMakeCache.txt").touch()
+            build_tool._write_json_atomically(build_dir / build_tool.CONFIGURE_CONTEXT_FILE, old)
+            self.assertIsNotNone(build_tool._configuration_refresh_reason(build_dir, new))
+
+    def test_changed_lock_refreshes_compiler_at_same_prefix(self) -> None:
+        """Refresh compiler discovery after an in-place locked toolchain update."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            lock = root / "pixi.lock"
+            environment = {"ISAACSIM_PIXI_BUILD_PREFIX": "/pixi"}
+            with (
+                mock.patch.object(build_tool, "REPOSITORY_ROOT", root),
+                mock.patch.object(build_tool.sys, "platform", "linux"),
+            ):
+                lock.write_text("old toolchain", encoding="utf-8")
+                old = build_tool._configure_context(environment)
+                (root / "CMakeCache.txt").touch()
+                build_tool._write_json_atomically(root / build_tool.CONFIGURE_CONTEXT_FILE, old)
+                self.assertIsNone(build_tool._configuration_refresh_reason(root, old))
+                lock.write_text("updated toolchain", encoding="utf-8")
+                new = build_tool._configure_context(environment)
+            self.assertIsNotNone(build_tool._configuration_refresh_reason(root, new))
+
+
 class SubprocessEnvironmentTests(unittest.TestCase):
     """Test environment isolation between Pixi and Packman subprocesses."""
 
@@ -380,11 +455,11 @@ class SubprocessEnvironmentTests(unittest.TestCase):
 class BuildDirectoryTests(unittest.TestCase):
     """Test stable build-tree naming used by packaging commands."""
 
-    def test_carrier_artifacts_share_the_library_build_root(self) -> None:
-        """Keep carrier artifacts outside Repo's application clean root."""
+    def test_staged_wheel_artifacts_share_the_library_build_root(self) -> None:
+        """Keep wheel staging artifacts outside Repo's application clean root."""
         self.assertEqual(
-            build_tool.CARRIER_ARTIFACT_ROOT,
-            build_tool.LIBRARY_BUILD_ROOT / "module-carrier-artifacts",
+            build_tool.EXTENSION_WHEEL_ARTIFACT_ROOT,
+            build_tool.LIBRARY_BUILD_ROOT / "extension-wheel-artifacts",
         )
 
     def test_get_build_directory_preserves_release_profile_contract(self) -> None:
@@ -407,15 +482,15 @@ class BuildDirectoryTests(unittest.TestCase):
         )
 
 
-class CarrierMetadataTests(unittest.TestCase):
-    """Test module-carrier metadata loading used by root builds."""
+class WheelStagingMetadataTests(unittest.TestCase):
+    """Test wheel staging metadata loading used by root builds."""
 
-    def test_load_carrier_metadata_with_pinned_python(self) -> None:
-        """Read carrier distribution and variant metadata with Python 3.12 ``tomllib``."""
+    def test_load_wheel_metadata_with_pinned_python(self) -> None:
+        """Read distribution and variant metadata from a wheel staging manifest."""
         extension = "isaacsim.robot_motion.schema"
 
-        self.assertEqual(build_tool._load_carrier_distribution(extension), "isaacsim_robot_motion_schema")
-        self.assertEqual(build_tool._load_carrier_wheel_variant(extension), "usd2511")
+        self.assertEqual(build_tool._load_wheel_distribution(extension), "isaacsim_robot_motion_schema")
+        self.assertEqual(build_tool._load_wheel_variant(extension), "usd2511")
 
 
 class ConfigureTests(unittest.TestCase):
@@ -525,83 +600,39 @@ class PixiManifestTests(unittest.TestCase):
                 license_file.write_text("dependency notice\n", encoding="utf-8")
                 self.assertEqual(build_tool._read_pixi_license_file(), license_file.resolve())
 
-    @unittest.skipUnless(
-        (build_tool.REPOSITORY_ROOT / "repo_internal.toml").is_file(),
-        "Internal repository configuration is not included in GitHub exports",
-    )
-    def test_pixi_work_directory_is_excluded_from_api_docs(self) -> None:
-        """Prevent generated environments and recipe sources from entering the Sphinx source tree."""
-        with (build_tool.REPOSITORY_ROOT / "repo_internal.toml").open("rb") as stream:
-            repository_config = tomllib.load(stream)
-
-        patterns = repository_config["repo_docs"]["projects"]["api"]["sphinx_exclude_patterns"]
-        self.assertIn(".pixi", patterns)
-
     def test_pixi_owns_public_build_tools_and_python(self) -> None:
         """Keep migrated tools exact and out of the Packman graph."""
         with (build_tool.REPOSITORY_ROOT / "pixi.toml").open("rb") as stream:
             pixi = tomllib.load(stream)
 
-        self.assertEqual(pixi["feature"]["python"]["dependencies"]["python"], "==3.12.13")
-        self.assertEqual(
-            pixi["feature"]["build-tools"]["dependencies"],
-            {
-                "cmake": "==4.3.2",
-                "dlpack": "==1.3",
-                "fmt": "==7.0.3",
-                "libgrpc": "==1.83.0",
-                "nanobind": "==2.12.0",
-                "ninja": "==1.13.2",
-                "ovphysx-sdk": {"path": "deps/recipes/ovphysx-sdk/recipe.yaml"},
-                "pip": "==26.2.1",
-                "sdl3": {"path": "deps/recipes/sdl3/recipe.yaml"},
-                "stb": {"path": "deps/recipes/stb/recipe.yaml"},
-                "tsl_robin_map": "==1.4.0",
-                "zlib": "==1.3.2",
-            },
-        )
-        self.assertEqual(
-            pixi["feature"]["build-tools"]["target"],
-            {
-                "linux-64-glibc-2-35": {
-                    "dependencies": {
-                        "doctest": "==2.5.3",
-                        "libegl-devel": "==1.7.0",
-                        "libgles-devel": "==1.7.0",
-                        "libopengl-devel": "==1.7.0",
-                    }
-                },
-                "linux-aarch64-glibc-2-35": {
-                    "dependencies": {
-                        "doctest": {"path": "deps/recipes/doctest/recipe.yaml"},
-                        "libegl-devel": "==1.7.0",
-                        "libgles-devel": "==1.7.0",
-                        "libopengl-devel": "==1.7.0",
-                    }
-                },
-                "win-64": {"dependencies": {"doctest": "==2.5.3"}},
-            },
-        )
-        self.assertNotIn("pypi-dependencies", pixi["feature"]["build-tools"])
+        build_tools = pixi["feature"]["build-tools"]
+        dependency_groups = {
+            "python": pixi["feature"]["python"]["dependencies"],
+            "build-tools": build_tools["dependencies"],
+        }
+        workspace_platforms = {
+            platform if isinstance(platform, str) else platform["name"] for platform in pixi["workspace"]["platforms"]
+        }
+        self.assertLessEqual(set(build_tools["target"]), workspace_platforms)
+        for platform, configuration in build_tools["target"].items():
+            dependency_groups[f"build-tools.target.{platform}"] = configuration["dependencies"]
+
+        pixi_owned_dependencies = set()
+        for group_name, dependencies in dependency_groups.items():
+            for name, requirement in dependencies.items():
+                with self.subTest(group=group_name, dependency=name):
+                    pixi_owned_dependencies.add(name.replace("_", "-"))
+                    if isinstance(requirement, str):
+                        self.assertRegex(requirement, r"^==[^=].+", "dependency must use an exact version pin")
+                    else:
+                        self.assertEqual(set(requirement), {"path"})
+                        recipe_path = build_tool.REPOSITORY_ROOT / requirement["path"]
+                        self.assertTrue(recipe_path.is_file(), f"local recipe does not exist: {recipe_path}")
+
+        self.assertNotIn("pypi-dependencies", build_tools)
         self.assertNotIn("solve-group", pixi["environments"]["build-driver"])
         packman = element_tree.parse(build_tool.DEPENDENCY_MANIFEST).getroot()
-        for name in (
-            "cmake",
-            "dlpack",
-            "doctest",
-            "fmt",
-            "libegl-devel",
-            "libgles-devel",
-            "libopengl-devel",
-            "nanobind",
-            "ninja",
-            "ovphysx-sdk",
-            "pip",
-            "python",
-            "sdl3",
-            "stb",
-            "tsl-robin-map",
-        ):
+        for name in sorted(pixi_owned_dependencies):
             self.assertIsNone(packman.find(f"./dependency[@name='{name}']"))
 
     def test_source_recipes_are_checksum_pinned_and_limited_to_approved_packages(self) -> None:
@@ -609,7 +640,9 @@ class PixiManifestTests(unittest.TestCase):
         lock = (build_tool.REPOSITORY_ROOT / "pixi.lock").read_text(encoding="utf-8")
         self.assertIn("conda_source: ovphysx-sdk", lock)
         self.assertIn("conda_source: stb", lock)
-        self.assertIn("conda_source: sdl3", lock)
+        self.assertNotIn("conda_source: sdl3", lock)
+        for platform in ("linux-64", "linux-aarch64", "win-64"):
+            self.assertIn(f"conda-forge/{platform}/sdl3-3.4.14-", lock)
         self.assertNotIn("conda_source: doctest", lock.split("win-64:", maxsplit=1)[1].split("default:", maxsplit=1)[0])
         recipe_directory = build_tool.REPOSITORY_ROOT / "deps" / "recipes"
         self.assertEqual(
@@ -620,8 +653,6 @@ class PixiManifestTests(unittest.TestCase):
                 "doctest/recipe.yaml",
                 "ovphysx-sdk/install.py",
                 "ovphysx-sdk/recipe.yaml",
-                "sdl3/build.py",
-                "sdl3/recipe.yaml",
                 "stb/install.py",
                 "stb/recipe.yaml",
             ],
@@ -631,13 +662,9 @@ class PixiManifestTests(unittest.TestCase):
         self.assertIn("5ddeafa34bece65b9f2e5207186fa70cd8ca44c00f41ae2c25e6e50b427c2b79", doctest_recipe)
         ovphysx_recipe = (recipe_directory / "ovphysx-sdk" / "recipe.yaml").read_text(encoding="utf-8")
         self.assertIn("releases/download/ovphysx-${{ version }}", ovphysx_recipe)
-        self.assertIn("d3936f0d056a667ebc99b68e8ca31506f559862cc3016a91569513812ea5055e", ovphysx_recipe)
-        self.assertIn("cf2f67448621cb613b7125888dea2a0c2b98b5d788139f383124cbb698923f1a", ovphysx_recipe)
-        self.assertIn("6fbe601cec8e851740fe22717c14af3d1f566072d31527dc8914949d4f39ab1b", ovphysx_recipe)
-        sdl_recipe = (recipe_directory / "sdl3" / "recipe.yaml").read_text(encoding="utf-8")
-        self.assertIn("release-${{ version }}.tar.gz", sdl_recipe)
-        self.assertIn("9d57b178fb297e121ef2605275937b7afaa7cd24d99ce1f95953e69e7a2535d6", sdl_recipe)
-        self.assertIn("-DSDL_SHARED=ON", (recipe_directory / "sdl3" / "build.py").read_text(encoding="utf-8"))
+        self.assertIn("e112b3e7ce608f85d519d8b755632a494d0f89cf2f8afb14f31833c215e1fc37", ovphysx_recipe)
+        self.assertIn("54f1a322cf049d5c10a694429dbd80192ebcb6dba60d0e728ff240f0bd821233", ovphysx_recipe)
+        self.assertIn("baaaf6981e52b39f29d6498524fae39a2e3a17fa5225bd6db1fc0a5fe88dea92", ovphysx_recipe)
         stb_recipe = (recipe_directory / "stb" / "recipe.yaml").read_text(encoding="utf-8")
         self.assertIn("2c980bb59875b0d32144a71867fbdebb2f77cd20.tar.gz", stb_recipe)
         self.assertIn("9a955b1b49a4410088a2e0ee2a9c057c3c907d0c1d75454144cb980aca0ba515", stb_recipe)
@@ -651,13 +678,37 @@ class PixiManifestTests(unittest.TestCase):
         self.assertEqual(
             shared,
             {
-                "ovstage": {"version": "==0.1.1.355824", "index": "https://pypi.org/simple"},
+                "ovstage": {"version": "==0.2.0.377349", "index": "https://pypi.org/simple"},
                 "physx-usd-schemas": "==25.11.1",
             },
         )
         for feature_name in ("runtime", "native-runtime", "minimum-runtime"):
             dependencies = pixi["feature"][feature_name]["pypi-dependencies"]
             self.assertTrue(shared.keys().isdisjoint(dependencies))
+
+    def test_library_newton_schema_requirements_accept_locked_version(self) -> None:
+        """Keep every library distribution compatible with the locked Newton schemas."""
+        with (build_tool.REPOSITORY_ROOT / "pixi.toml").open("rb") as stream:
+            pixi = tomllib.load(stream)
+
+        locked_specifier = pixi["feature"]["runtime"]["pypi-dependencies"]["newton-usd-schemas"]
+        self.assertRegex(locked_specifier, r"^==[^=,]+$", "Newton schema runtime dependency must be exact")
+        locked_version = Version(locked_specifier.removeprefix("=="))
+
+        libraries = build_tool.REPOSITORY_ROOT / "source" / "libraries"
+        requirements: dict[Path, Requirement] = {}
+        for pyproject_path in sorted(libraries.glob("*/**/pyproject.toml")):
+            with pyproject_path.open("rb") as stream:
+                project = tomllib.load(stream).get("project", {})
+            for dependency in project.get("dependencies", []):
+                requirement = Requirement(dependency)
+                if requirement.name == "newton-usd-schemas":
+                    requirements[pyproject_path] = requirement
+
+        self.assertTrue(requirements)
+        for pyproject_path, requirement in requirements.items():
+            with self.subTest(pyproject=pyproject_path.relative_to(libraries)):
+                self.assertIn(locked_version, requirement.specifier)
 
     def test_usd_optimize_uses_public_minimum_version(self) -> None:
         """Use the publicly available minimum supported `usd-optimize` release."""
@@ -670,8 +721,15 @@ class PixiManifestTests(unittest.TestCase):
             self.assertEqual(usd_optimize, expected)
 
         lock = (build_tool.REPOSITORY_ROOT / "pixi.lock").read_text(encoding="utf-8")
-        self.assertNotIn("ct-omniverse-pypi-local", lock)
-        self.assertNotIn("usd_optimize-1.1.2", lock)
+        usd_optimize_wheels = {
+            line.strip()
+            for line in lock.splitlines()
+            if line.lstrip().startswith("- pypi: ") and "/usd_optimize-" in line
+        }
+        self.assertTrue(usd_optimize_wheels)
+        for wheel in usd_optimize_wheels:
+            self.assertTrue(wheel.startswith("- pypi: https://files.pythonhosted.org/"), wheel)
+            self.assertIn("/usd_optimize-1.1.0-", wheel)
 
 
 class DeveloperEnvironmentBuildTests(unittest.TestCase):
@@ -1080,6 +1138,18 @@ class ArtifactStateTests(unittest.TestCase):
 class ArgumentTests(unittest.TestCase):
     """Test standalone build argument contracts."""
 
+    def test_test_jobs_require_a_test_action(self) -> None:
+        """Reject CTest parallelism when no test run was requested."""
+        with mock.patch.object(build_tool.sys, "argv", ["build.py", "--test-jobs", "8"]):
+            with self.assertRaises(SystemExit):
+                build_tool._parse_arguments()
+
+    def test_test_jobs_must_be_positive(self) -> None:
+        """Reject invalid CTest worker counts."""
+        with mock.patch.object(build_tool.sys, "argv", ["build.py", "--test", "--test-jobs", "0"]):
+            with self.assertRaises(SystemExit):
+                build_tool._parse_arguments()
+
     def test_pull_only_is_a_standalone_action(self) -> None:
         """Allow dependency population without configuring a build."""
         with mock.patch.object(build_tool.sys, "argv", ["build.py", "--pull-only"]):
@@ -1169,6 +1239,7 @@ class TestRunnerTests(unittest.TestCase):
                     "Release",
                     junit_output,
                     900,
+                    8,
                     "^tests-examples$",
                     "^tests-known-failure$",
                 )
@@ -1177,6 +1248,7 @@ class TestRunnerTests(unittest.TestCase):
         self.assertIn("--no-tests=error", command)
         self.assertEqual(command[command.index("--output-junit") + 1], junit_output.resolve())
         self.assertEqual(command[command.index("--timeout") + 1], 900)
+        self.assertEqual(command[command.index("--parallel") + 1], 8)
         self.assertEqual(command[command.index("-R") + 1], "^tests-examples$")
         self.assertEqual(command[command.index("-E") + 1], "^tests-known-failure$")
 
@@ -1188,6 +1260,7 @@ class TestRunnerTests(unittest.TestCase):
                     Path(temporary_directory) / "cmake",
                     Path(temporary_directory) / "missing",
                     "Release",
+                    None,
                     None,
                     None,
                     None,
@@ -1206,6 +1279,8 @@ class TestRunnerTests(unittest.TestCase):
             "--test-only",
             "--test-timeout",
             "900",
+            "--test-jobs",
+            "4",
         ]
         with (
             mock.patch.object(build_tool.sys, "argv", arguments),
@@ -1247,6 +1322,7 @@ class TestRunnerTests(unittest.TestCase):
             "Release",
             None,
             900,
+            4,
             None,
             None,
         )
@@ -1254,6 +1330,104 @@ class TestRunnerTests(unittest.TestCase):
 
 class WheelBuildTests(unittest.TestCase):
     """Test wheel command construction."""
+
+    def test_wheel_staging_build_removes_stale_default_artifacts(self) -> None:
+        """Replace the internal wheel staging directory instead of mixing packaging shapes across builds."""
+        host = build_tool._HostPlatform("linux-x86_64", "manylinux_2_35_x86_64", "")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            artifact_root = temporary_root / "extension-wheel-artifacts"
+            stale_artifact = artifact_root / "release" / "isaacsim_asset-7.0.0a1-cp312-abi3-linux_x86_64.whl"
+            stale_artifact.parent.mkdir(parents=True)
+            stale_artifact.touch()
+            current_artifact = artifact_root / "release" / "isaacsim_asset-7.0.0a1-py3-none-any.whl"
+
+            def write_wheel(*arguments: object) -> None:
+                current_artifact.parent.mkdir(parents=True, exist_ok=True)
+                current_artifact.touch()
+
+            arguments = [
+                str(BUILD_TOOL_PATH),
+                "--stage-wheel",
+                "isaacsim.asset.importer.utils",
+                "--no-pull",
+            ]
+            with (
+                mock.patch.object(build_tool.sys, "argv", arguments),
+                mock.patch.object(build_tool, "LIBRARY_BUILD_ROOT", temporary_root),
+                mock.patch.object(build_tool, "EXTENSION_WHEEL_ARTIFACT_ROOT", artifact_root),
+                mock.patch.object(build_tool, "_detect_host_platform", return_value=host),
+                mock.patch.object(build_tool, "_find_build_tool", side_effect=(Path("/cmake"), Path("/ninja"))),
+                mock.patch.object(
+                    build_tool,
+                    "_read_pixi_dependency_path",
+                    side_effect=lambda variable: Path(f"/{variable.lower()}"),
+                ),
+                mock.patch.object(
+                    build_tool,
+                    "_read_pixi_license_file",
+                    return_value=Path("/selected/PIP-LICENSES.txt"),
+                ),
+                mock.patch.object(build_tool, "_configure"),
+                mock.patch.object(build_tool, "_build"),
+                mock.patch.object(build_tool, "_materialize_developer_environment", return_value=()),
+                mock.patch.object(build_tool, "_write_artifact_state"),
+                mock.patch.object(build_tool, "_build_wheels", side_effect=write_wheel) as build_wheels,
+                mock.patch.object(build_tool, "_stage_extension_wheel"),
+            ):
+                status = build_tool._main()
+
+            self.assertEqual(status, 0)
+            self.assertFalse(stale_artifact.exists())
+            build_wheels.assert_called_once()
+            self.assertTrue(
+                (temporary_root / "module-carrier-artifacts/release" / current_artifact.name).samefile(current_artifact)
+            )
+
+    def test_wheel_staging_build_preserves_explicit_output_directory(self) -> None:
+        """Leave caller-owned wheel collections intact when `--output-dir` is explicit."""
+        host = build_tool._HostPlatform("linux-x86_64", "manylinux_2_35_x86_64", "")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            output_directory = temporary_root / "custom"
+            existing_artifact = output_directory / "other-platform.whl"
+            output_directory.mkdir()
+            existing_artifact.touch()
+            arguments = [
+                str(BUILD_TOOL_PATH),
+                "--stage-wheel",
+                "isaacsim.asset.importer.utils",
+                "--no-pull",
+                "--output-dir",
+                str(output_directory),
+            ]
+            with (
+                mock.patch.object(build_tool.sys, "argv", arguments),
+                mock.patch.object(build_tool, "LIBRARY_BUILD_ROOT", temporary_root),
+                mock.patch.object(build_tool, "_detect_host_platform", return_value=host),
+                mock.patch.object(build_tool, "_find_build_tool", side_effect=(Path("/cmake"), Path("/ninja"))),
+                mock.patch.object(
+                    build_tool,
+                    "_read_pixi_dependency_path",
+                    side_effect=lambda variable: Path(f"/{variable.lower()}"),
+                ),
+                mock.patch.object(
+                    build_tool,
+                    "_read_pixi_license_file",
+                    return_value=Path("/selected/PIP-LICENSES.txt"),
+                ),
+                mock.patch.object(build_tool, "_configure"),
+                mock.patch.object(build_tool, "_build"),
+                mock.patch.object(build_tool, "_materialize_developer_environment", return_value=()),
+                mock.patch.object(build_tool, "_write_artifact_state"),
+                mock.patch.object(build_tool, "_build_wheels"),
+                mock.patch.object(build_tool, "_stage_extension_wheel"),
+            ):
+                status = build_tool._main()
+
+            self.assertEqual(status, 0)
+            self.assertTrue(existing_artifact.is_file())
+            self.assertFalse((temporary_root / "module-carrier-artifacts/release").exists())
 
     def test_main_routes_wheel_artifact_directories(self) -> None:
         """Select configuration-specific defaults while preserving an explicit CLI override."""

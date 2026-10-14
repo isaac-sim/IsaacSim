@@ -142,8 +142,14 @@ protected:
     void _cacheStaticPointers();
     /// Rebuilds sensor/filter body index maps from the current Newton model body labels.
     void _rebuildBodyMaps();
-    /// Re-reads contact data pointers from Newton if the simulation timestamp has advanced.
+    /**
+     * @brief Re-reads contact data pointers from Newton if the simulation timestamp has advanced.
+     * @details The view is bound to the Newton model it was created against; once the stage holds a different (or no)
+     *          model the view is invalidated for good and has to be recreated.
+     */
     void _refreshContactPointers() const;
+    /// Return whether contact-force output was enabled before creating the contacts object.
+    bool _hasContactForces() const;
     /**
      * @brief Gets the physics dt scale.
      * @param[in] userDt User-provided time step, in seconds.
@@ -152,7 +158,9 @@ protected:
     float _getPhysicsDtScale(float userDt) const;
 
     py::object m_newtonStage; ///< Newton stage object backing the view.
-    py::object m_model; ///< Newton model object backing the view.
+    mutable py::object m_model; ///< Newton model object the view is bound to; released once invalidated.
+    mutable bool m_valid = true; ///< False once the Newton stage rebuilt or released its model.
+    bool m_contactForcesEnabled = true; ///< Whether optional contact-force output was requested.
 
     uint32_t m_sensorCount; ///< Sensor count.
     uint32_t m_filterCount; ///< Filter count.

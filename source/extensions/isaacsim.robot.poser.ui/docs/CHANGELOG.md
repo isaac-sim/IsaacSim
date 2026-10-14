@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.5] - 2026-09-25
+### Fixed
+- Report unsupported pose transforms at UI callback boundaries and stop failed tracking initialization.
+
 ## [1.1.4] - 2026-08-24
 ### Fixed
 - Named pose table and property panel no longer log "Widget[] was destroyed during event or draw" errors.

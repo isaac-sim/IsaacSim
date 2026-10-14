@@ -35,17 +35,24 @@ from __future__ import annotations
 
 import os
 
-from isaacsim.asset.importer.utils.impl.physx_types import PhysxSchema as PhysxSchemaTokens
 from isaacsim.asset.transformer import RuleConfigurationParam, RuleInterface
 from pxr import Usd, UsdPhysics
 
+_JOINT_STATE_API = "PhysicsJointStateAPI"
+
 
 def _has_joint_state_api(prim: Usd.Prim, instance: str) -> bool:
-    return prim.HasAPI(PhysxSchemaTokens.JOINT_STATE_API, instance)
+    token = f"{_JOINT_STATE_API}:{instance}"
+    if token in prim.GetAppliedSchemas():
+        return True
+    # Unregistered schemas are authored in metadata but omitted by `GetAppliedSchemas`.
+    schemas = prim.GetMetadata("apiSchemas")
+    return schemas is not None and token in schemas.GetAppliedItems()
 
 
 def _apply_joint_state_api(prim: Usd.Prim, instance: str) -> None:
-    prim.ApplyAPI(PhysxSchemaTokens.JOINT_STATE_API, instance)
+    # Standalone USD may not register PhysX schemas; author the token directly.
+    prim.AddAppliedSchema(f"{_JOINT_STATE_API}:{instance}")
 
 
 class JointStateAPIRule(RuleInterface):
@@ -53,8 +60,8 @@ class JointStateAPIRule(RuleInterface):
 
     Mirrors the validation rule's joint-type dispatch:
 
-    * ``UsdPhysics.PrismaticJoint`` -> ``prim.ApplyAPI("PhysicsJointStateAPI", "linear")``
-    * ``UsdPhysics.RevoluteJoint``  -> ``prim.ApplyAPI("PhysicsJointStateAPI", "angular")``
+    * ``UsdPhysics.PrismaticJoint`` -> ``PhysicsJointStateAPI:linear``
+    * ``UsdPhysics.RevoluteJoint``  -> ``PhysicsJointStateAPI:angular``
     * ``UsdPhysics.FixedJoint``      -> skip
     * Any other ``UsdPhysics.Joint`` subtype (D6, spherical) -> skip
 

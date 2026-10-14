@@ -34,7 +34,7 @@ includedirs {
     "plugins/isaacsim.sensors.experimental.physics",
     "%{root}/source/extensions/isaacsim.core.experimental.prims/include",
     "%{root}/source/extensions/isaacsim.core.includes/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     "%{root}/source/extensions/isaacsim.core.simulation_manager/include",
     target_deps .. "/omni_physics/%{config}/include",
     target_deps .. "/usd/%{cfg.buildcfg}/include",

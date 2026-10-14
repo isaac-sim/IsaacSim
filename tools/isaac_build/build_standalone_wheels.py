@@ -393,9 +393,9 @@ def _run_standalone_tests(
             "--find-links",
             output_dir,
         ]
-        module_wheelhouse = os.path.join(repo_root, "_cmake_build", "module-carrier-artifacts", build_config)
-        if os.path.isdir(module_wheelhouse):
-            install_command.extend(["--find-links", module_wheelhouse])
+        extension_wheelhouse = os.path.join(repo_root, "_cmake_build", "extension-wheel-artifacts", build_config)
+        if os.path.isdir(extension_wheelhouse):
+            install_command.extend(["--find-links", extension_wheelhouse])
         ret = omni.repo.man.run_process(install_command + wheels, exit_on_error=False)
         if ret != 0:
             omni.repo.man.print_log("Failed to install wheels.", logging.ERROR)

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.12] - 2026-10-01
+### Fixed
+
+- Auto-generated entity names now use absolute USD prim paths.
+
+## [1.6.11] - 2026-10-01
+### Fixed
+
+- Prefer robot-schema joint names, retaining legacy fallback with a deprecation warning and preserving link names.
+
+## [1.6.10] - 2026-09-28
+### Fixed
+- `SetEntityState` reports an unavailable stage instead of logging an error before a stage is open.
+
+## [1.6.9] - 2026-09-19
+### Fixed
+- Defer ROS 2 message imports until simulation-control helpers are called so extension discovery succeeds when the ROS 2 bridge is unavailable.
+
 ## [1.6.8] - 2026-06-30
 ### Changed
 - Publish ROS 2 simulation-control APIs explicitly and stop publishing the Kit lifecycle class.

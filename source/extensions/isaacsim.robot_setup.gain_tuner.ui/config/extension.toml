@@ -1,5 +1,5 @@
 [package]
-version = "2.2.0"
+version = "2.2.1"
 category = "Simulation"
 title = "Gain Tuner UI"
 description = "UI components for the Gain Tuner extension"

@@ -4,7 +4,11 @@
 
 # Settings
 
-## exts."isaacsim.asset.validation.ui".profileFilter
+### exts."isaacsim.asset.validation.ui".docsUrl
+- **Default Value**: "https://nvidia.github.io/simready-foundation/2026.06.0"
+- **Description**: Base URL for the "Open requirement docs" button. Relative requirement documentation paths are appended under a ``capabilities`` root.
+
+### exts."isaacsim.asset.validation.ui".profileFilter
 - **Default Value**: [
   "Package",
   "Package-Candidate",

@@ -80,6 +80,14 @@
   - def get_data(self) -> dict
 
 - class JointStateSensorReading
+  - [property] def is_valid(self) -> bool
+  - [property] def time(self) -> float
+  - [property] def dof_names(self) -> list[str]
+  - [property] def positions(self) -> np.ndarray
+  - [property] def velocities(self) -> np.ndarray
+  - [property] def efforts(self) -> np.ndarray
+  - [property] def dof_types(self) -> np.ndarray
+  - [property] def stage_meters_per_unit(self) -> float
   - def __init__(self, is_valid: bool = False, time: float = 0.0, dof_names: list[str] | None = None, positions: np.ndarray | None = None, velocities: np.ndarray | None = None, efforts: np.ndarray | None = None, dof_types: np.ndarray | None = None, stage_meters_per_unit: float = 0.0)
 
 - class Raycast(_PhysicsSensorAuthoring)

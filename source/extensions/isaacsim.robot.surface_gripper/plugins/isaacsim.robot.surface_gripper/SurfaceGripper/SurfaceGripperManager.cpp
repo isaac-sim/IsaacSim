@@ -142,6 +142,10 @@ void SurfaceGripperManager::executePhysxActions()
         auto& actions = component->m_physxActions;
         for (const PhysxAction& a : actions)
         {
+            if (!a.joint)
+            {
+                continue;
+            }
             switch (a.type)
             {
             case PhysxActionType::Attach:

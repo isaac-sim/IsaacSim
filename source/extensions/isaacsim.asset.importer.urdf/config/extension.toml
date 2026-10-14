@@ -9,7 +9,7 @@
 # its affiliates is strictly prohibited.
 
 [package]
-version = "3.11.10"
+version = "3.11.12"
 category = "Simulation"
 title = "Omniverse URDF Importer Core"
 description = "Imports URDF (Unified Robot Description Format) files into Omniverse USD scenes, converting robot models with their visual meshes, collision geometries, joints, and physics properties."
@@ -19,7 +19,7 @@ readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
 writeTarget.kit = true
-writeTarget.platform = true # pip prebundle makes this extension OS specific
+writeTarget.platform = true # the converter prebundle makes this extension OS specific
 
 [dependencies]
 "isaacsim.asset.importer.utils" = {}
@@ -30,6 +30,9 @@ writeTarget.platform = true # pip prebundle makes this extension OS specific
 
 [[python.module]]
 path = "pip_prebundle"
+
+[[python.module]]
+path = "urdf_prebundle"
 
 [[python.module]]
 name = "isaacsim.asset.importer.urdf"

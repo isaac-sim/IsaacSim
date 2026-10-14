@@ -24,7 +24,6 @@ from unittest.mock import patch
 import numpy as np
 import omni.kit.test
 import torch
-from isaacsim.robot_setup.sysid import run_controller
 from isaacsim.robot_setup.sysid.optimizer_config import (
     OptimizerBackend,
     OptimizerBackendConfig,
@@ -114,7 +113,7 @@ class TestPresolveBackendGate(omni.kit.test.AsyncTestCase):
     async def test_multichunk_analytical_jacobian_downgrade_is_reported(self):
         config = OptimizerBackendConfig(use_analytical_jacobian=True)
 
-        with patch.object(run_controller, "_log_warn") as log_warn:
+        with patch("carb.log_warn") as log_warn:
             _apply_multichunk_jacobian_policy(config, chunk_count=2)
 
         self.assertFalse(config.use_analytical_jacobian)

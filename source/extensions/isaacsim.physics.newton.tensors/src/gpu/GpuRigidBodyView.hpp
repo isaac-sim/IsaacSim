@@ -149,6 +149,12 @@ public:
                                          const TensorDesc* indexTensor,
                                          bool isGlobal) override;
 
+protected:
+    int* _getDeviceIndexScratch() const override
+    {
+        return m_deviceIndexScratch;
+    }
+
 private:
     int m_deviceOrdinal;
 

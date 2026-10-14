@@ -1,0 +1,37 @@
+id = "benchmarks.robot_motion.motion_generation.follow_trajectory"
+title = "Follow Trajectory"
+summary = "Move a Franka continuously between two poses with a time-parameterized joint trajectory."
+owners = [
+    "isaacsim.performance.benchmarking",
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.entities",
+    "isaacsim.robot_motion.experimental.motion_generation",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.ovgl_viewport.debug",
+]
+topics = ["controllers", "motion_generation", "physics", "rendering", "trajectory", "viewport"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+modules = [
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+    { name = "isaacsim_physics", surfaces = ["python"] },
+    { name = "isaacsim_physics_engines", surfaces = ["python"] },
+    { name = "isaacsim_robot_motion", surfaces = ["python"] },
+    { name = "isaacsim_ovgl_viewport", surfaces = ["python"] },
+    { name = "isaacsim_performance", surfaces = ["python"] },
+]
+
+[[test]]
+name = "smoke"
+path = "test.py"
+timeout_seconds = 300
+stdout_contains = ["Benchmark smoke test passed."]

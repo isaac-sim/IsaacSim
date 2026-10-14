@@ -335,3 +335,37 @@ class TestJointNameResolver(ogts.OmniGraphTestCase):
         self.assertEqual(joint_names[2], "panda_joint3")
         self.assertEqual(joint_names[3], "panda_joint4")
         self.assertEqual(joint_names[4], "panda_joint5")
+
+    async def test_canonical_and_legacy_name_precedence(self) -> None:
+        """Migrated names resolve and empty canonical names suppress stale legacy names."""
+        for name, legacy, canonical in (
+            ("panda_joint2", "canonical_two", None),
+            ("panda_joint3", "stale_three", "canonical_three"),
+            ("panda_joint4", "stale_four", ""),
+            ("panda_joint5", "legacy_five", None),
+            ("panda_joint6", "stale_six", Sdf.ValueBlock()),
+        ):
+            prim = self._stage.GetPrimAtPath(self._find_prim_path(name))
+            if legacy is not None:
+                prim.CreateAttribute("isaac:nameOverride", Sdf.ValueTypeNames.String).Set(legacy)
+            if canonical is not None:
+                prim.CreateAttribute("isaac:NameOverride", Sdf.ValueTypeNames.String).Set(canonical)
+        # Exercise the migration itself before the resolver reads the resulting stage.
+        from usd.schema.isaac.robot_schema.utils import UpdateDeprecatedSchemas
+
+        migrated = self._stage.GetPrimAtPath(self._find_prim_path("panda_joint2"))
+        migrated.ApplyAPI("IsaacJointAPI")
+        migrated.CreateAttribute("isaac:nameOverride", Sdf.ValueTypeNames.String).Set("canonical_two")
+        UpdateDeprecatedSchemas(migrated)
+        self.assertFalse(
+            self._stage.GetRootLayer().GetAttributeAtPath(migrated.GetPath().AppendProperty("isaac:nameOverride"))
+        )
+        names = ["canonical_two", "canonical_three", "stale_three", "stale_four", "legacy_five", "stale_six"]
+        graph, nodes = self._create_resolver_graph_with_robot_path(names)
+        app_utils.play()
+        await app_utils.update_app_async(steps=60)
+        await og.Controller.evaluate(graph)
+        resolved, _ = self._get_resolver_outputs(nodes[-1])
+        self.assertEqual(
+            list(resolved), ["panda_joint2", "panda_joint3", "stale_three", "stale_four", "panda_joint5", "stale_six"]
+        )

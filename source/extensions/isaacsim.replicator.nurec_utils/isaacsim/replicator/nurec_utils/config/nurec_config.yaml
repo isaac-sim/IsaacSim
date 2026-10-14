@@ -45,9 +45,9 @@ spg_pre_hydra_sync_overrides:
   /rtx/post/tonemap/op: null   # leave the stage-authored tonemap operator
 
   # --- Gaussian raycast quality (particle stages; inert for volume) ---
-  /rtx/rtpt/gaussian/accumulatedDepth/enabled: null
-  /rtx/rtpt/gaussian/accumulatedAlbedo/enabled: null
-  /rtx/rtpt/gaussian/maxGaussiansToAccumulate: null
+  /rtx/rtpt/gaussian/accumulatedDepth/allHits/enabled: true
+  /rtx/rtpt/gaussian/accumulatedAlbedo/enabled: true
+  /rtx/rtpt/gaussian/maxGaussiansToAccumulate: 360
 
 # Applied for plain (non-PPISP) NuRec USDs — the engine ISP/tonemap stays on.
 no_spg_pre_hydra_sync_overrides:
