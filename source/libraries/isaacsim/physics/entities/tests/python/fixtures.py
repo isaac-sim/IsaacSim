@@ -36,98 +36,98 @@ _LINK_NAMES = [f"link_{i}" for i in range(_L)]
 _JOINT_NAMES = [f"joint_{i}" for i in range(_J)]
 
 _ARTICULATION_IMPLEMENTATIONS: list[dict] = [
-    {"name": "dof-positions", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-velocities", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-position-targets", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-velocity-targets", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-actuation-forces", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-limits", "dtype": tensors.DType.FLOAT32, "shape": [_D, 2], "get": True, "set": True},
-    {"name": "dof-stiffnesses", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-dampings", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-armatures", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-max-forces", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-max-velocities", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": True},
-    {"name": "dof-friction-properties", "dtype": tensors.DType.FLOAT32, "shape": [_D, 3], "get": True, "set": True},
-    {"name": "root-transforms", "dtype": tensors.DType.FLOAT32, "shape": [7], "get": True, "set": True},
-    {"name": "root-velocities", "dtype": tensors.DType.FLOAT32, "shape": [6], "get": True, "set": True},
-    {"name": "link-transforms", "dtype": tensors.DType.FLOAT32, "shape": [_L, 7], "get": True, "set": False},
-    {"name": "link-velocities", "dtype": tensors.DType.FLOAT32, "shape": [_L, 6], "get": True, "set": False},
-    {"name": "link-accelerations", "dtype": tensors.DType.FLOAT32, "shape": [_L, 6], "get": True, "set": False},
-    {"name": "masses", "dtype": tensors.DType.FLOAT32, "shape": [_L], "get": True, "set": True},
-    {"name": "inv-masses", "dtype": tensors.DType.FLOAT32, "shape": [_L], "get": True, "set": False},
-    {"name": "coms", "dtype": tensors.DType.FLOAT32, "shape": [_L, 7], "get": True, "set": True},
-    {"name": "inertias", "dtype": tensors.DType.FLOAT32, "shape": [_L, 9], "get": True, "set": True},
-    {"name": "inv-inertias", "dtype": tensors.DType.FLOAT32, "shape": [_L, 9], "get": True, "set": False},
-    {"name": "disable-gravities", "dtype": tensors.DType.UINT8, "shape": [_L], "get": True, "set": True},
-    {"name": "jacobians", "dtype": tensors.DType.FLOAT32, "shape": [_R, _C], "get": True, "set": False},
-    {"name": "generalized-mass-matrices", "dtype": tensors.DType.FLOAT32, "shape": [_M, _M], "get": True, "set": False},
+    {"name": "dof-positions", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-velocities", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-position-targets", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-velocity-targets", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-actuation-forces", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-limits", "dtype": wp.float32, "shape": [_D, 2], "get": True, "set": True},
+    {"name": "dof-stiffnesses", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-dampings", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-armatures", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-max-forces", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-max-velocities", "dtype": wp.float32, "shape": [_D], "get": True, "set": True},
+    {"name": "dof-friction-properties", "dtype": wp.float32, "shape": [_D, 3], "get": True, "set": True},
+    {"name": "root-transforms", "dtype": wp.float32, "shape": [7], "get": True, "set": True},
+    {"name": "root-velocities", "dtype": wp.float32, "shape": [6], "get": True, "set": True},
+    {"name": "link-transforms", "dtype": wp.float32, "shape": [_L, 7], "get": True, "set": False},
+    {"name": "link-velocities", "dtype": wp.float32, "shape": [_L, 6], "get": True, "set": False},
+    {"name": "link-accelerations", "dtype": wp.float32, "shape": [_L, 6], "get": True, "set": False},
+    {"name": "masses", "dtype": wp.float32, "shape": [_L], "get": True, "set": True},
+    {"name": "inv-masses", "dtype": wp.float32, "shape": [_L], "get": True, "set": False},
+    {"name": "coms", "dtype": wp.float32, "shape": [_L, 7], "get": True, "set": True},
+    {"name": "inertias", "dtype": wp.float32, "shape": [_L, 9], "get": True, "set": True},
+    {"name": "inv-inertias", "dtype": wp.float32, "shape": [_L, 9], "get": True, "set": False},
+    {"name": "disable-gravities", "dtype": wp.uint8, "shape": [_L], "get": True, "set": True},
+    {"name": "jacobians", "dtype": wp.float32, "shape": [_R, _C], "get": True, "set": False},
+    {"name": "generalized-mass-matrices", "dtype": wp.float32, "shape": [_M, _M], "get": True, "set": False},
     {
         "name": "coriolis-and-centrifugal-compensation-forces",
-        "dtype": tensors.DType.FLOAT32,
+        "dtype": wp.float32,
         "shape": [_M],
         "get": True,
         "set": False,
     },
-    {"name": "gravity-compensation-forces", "dtype": tensors.DType.FLOAT32, "shape": [_M], "get": True, "set": False},
-    {"name": "dof-projected-joint-forces", "dtype": tensors.DType.FLOAT32, "shape": [_D], "get": True, "set": False},
-    {"name": "link-incoming-joint-force", "dtype": tensors.DType.FLOAT32, "shape": [_L, 6], "get": True, "set": False},
-    {"name": "material-properties", "dtype": tensors.DType.FLOAT32, "shape": [_S, 3], "get": True, "set": True},
-    {"name": "contact-offsets", "dtype": tensors.DType.FLOAT32, "shape": [_S], "get": True, "set": True},
-    {"name": "rest-offsets", "dtype": tensors.DType.FLOAT32, "shape": [_S], "get": True, "set": True},
+    {"name": "gravity-compensation-forces", "dtype": wp.float32, "shape": [_M], "get": True, "set": False},
+    {"name": "dof-projected-joint-forces", "dtype": wp.float32, "shape": [_D], "get": True, "set": False},
+    {"name": "link-incoming-joint-force", "dtype": wp.float32, "shape": [_L, 6], "get": True, "set": False},
+    {"name": "material-properties", "dtype": wp.float32, "shape": [_S, 3], "get": True, "set": True},
+    {"name": "contact-offsets", "dtype": wp.float32, "shape": [_S], "get": True, "set": True},
+    {"name": "rest-offsets", "dtype": wp.float32, "shape": [_S], "get": True, "set": True},
     {
         "name": "apply-forces-and-torques-at-position",
-        "dtype": tensors.DType.FLOAT32,
+        "dtype": wp.float32,
         "shape": [_L, 9],
         "get": False,
         "set": True,
     },
-    {"name": "fixed-tendon-stiffnesses", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
-    {"name": "fixed-tendon-dampings", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
-    {"name": "fixed-tendon-limit-stiffnesses", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
-    {"name": "fixed-tendon-limits", "dtype": tensors.DType.FLOAT32, "shape": [_T, 2], "get": True, "set": True},
-    {"name": "fixed-tendon-rest-lengths", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
-    {"name": "fixed-tendon-offsets", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
-    {"name": "spatial-tendon-stiffnesses", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
-    {"name": "spatial-tendon-dampings", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
+    {"name": "fixed-tendon-stiffnesses", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
+    {"name": "fixed-tendon-dampings", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
+    {"name": "fixed-tendon-limit-stiffnesses", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
+    {"name": "fixed-tendon-limits", "dtype": wp.float32, "shape": [_T, 2], "get": True, "set": True},
+    {"name": "fixed-tendon-rest-lengths", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
+    {"name": "fixed-tendon-offsets", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
+    {"name": "spatial-tendon-stiffnesses", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
+    {"name": "spatial-tendon-dampings", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
     {
         "name": "spatial-tendon-limit-stiffnesses",
-        "dtype": tensors.DType.FLOAT32,
+        "dtype": wp.float32,
         "shape": [_T],
         "get": True,
         "set": True,
     },
-    {"name": "spatial-tendon-offsets", "dtype": tensors.DType.FLOAT32, "shape": [_T], "get": True, "set": True},
+    {"name": "spatial-tendon-offsets", "dtype": wp.float32, "shape": [_T], "get": True, "set": True},
 ]
 
 _RIGID_BODY_IMPLEMENTATIONS: list[dict] = [
-    {"name": "transforms", "dtype": tensors.DType.FLOAT32, "shape": [7], "get": True, "set": True},
-    {"name": "velocities", "dtype": tensors.DType.FLOAT32, "shape": [6], "get": True, "set": True},
-    {"name": "accelerations", "dtype": tensors.DType.FLOAT32, "shape": [6], "get": True, "set": False},
-    {"name": "masses", "dtype": tensors.DType.FLOAT32, "shape": [], "get": True, "set": True},
-    {"name": "inv-masses", "dtype": tensors.DType.FLOAT32, "shape": [], "get": True, "set": False},
-    {"name": "inertias", "dtype": tensors.DType.FLOAT32, "shape": [9], "get": True, "set": True},
-    {"name": "inv-inertias", "dtype": tensors.DType.FLOAT32, "shape": [9], "get": True, "set": False},
-    {"name": "coms", "dtype": tensors.DType.FLOAT32, "shape": [7], "get": True, "set": True},
-    {"name": "forces", "dtype": tensors.DType.FLOAT32, "shape": [3], "get": False, "set": True},
-    {"name": "apply-forces", "dtype": tensors.DType.FLOAT32, "shape": [3], "get": False, "set": True},
-    {"name": "wrenches", "dtype": tensors.DType.FLOAT32, "shape": [9], "get": False, "set": True},
+    {"name": "transforms", "dtype": wp.float32, "shape": [7], "get": True, "set": True},
+    {"name": "velocities", "dtype": wp.float32, "shape": [6], "get": True, "set": True},
+    {"name": "accelerations", "dtype": wp.float32, "shape": [6], "get": True, "set": False},
+    {"name": "masses", "dtype": wp.float32, "shape": [], "get": True, "set": True},
+    {"name": "inv-masses", "dtype": wp.float32, "shape": [], "get": True, "set": False},
+    {"name": "inertias", "dtype": wp.float32, "shape": [9], "get": True, "set": True},
+    {"name": "inv-inertias", "dtype": wp.float32, "shape": [9], "get": True, "set": False},
+    {"name": "coms", "dtype": wp.float32, "shape": [7], "get": True, "set": True},
+    {"name": "forces", "dtype": wp.float32, "shape": [3], "get": False, "set": True},
+    {"name": "apply-forces", "dtype": wp.float32, "shape": [3], "get": False, "set": True},
+    {"name": "wrenches", "dtype": wp.float32, "shape": [9], "get": False, "set": True},
     {
         "name": "apply-forces-and-torques-at-position",
-        "dtype": tensors.DType.FLOAT32,
+        "dtype": wp.float32,
         "shape": [9],
         "get": False,
         "set": True,
     },
-    {"name": "disable-simulations", "dtype": tensors.DType.UINT8, "shape": [], "get": True, "set": True},
-    {"name": "disable-gravities", "dtype": tensors.DType.UINT8, "shape": [], "get": True, "set": True},
-    {"name": "material-properties", "dtype": tensors.DType.FLOAT32, "shape": [1, 3], "get": True, "set": True},
-    {"name": "contact-offsets", "dtype": tensors.DType.FLOAT32, "shape": [1], "get": True, "set": True},
-    {"name": "rest-offsets", "dtype": tensors.DType.FLOAT32, "shape": [1], "get": True, "set": True},
+    {"name": "disable-simulations", "dtype": wp.uint8, "shape": [], "get": True, "set": True},
+    {"name": "disable-gravities", "dtype": wp.uint8, "shape": [], "get": True, "set": True},
+    {"name": "material-properties", "dtype": wp.float32, "shape": [1, 3], "get": True, "set": True},
+    {"name": "contact-offsets", "dtype": wp.float32, "shape": [1], "get": True, "set": True},
+    {"name": "rest-offsets", "dtype": wp.float32, "shape": [1], "get": True, "set": True},
 ]
 
 _TENSOR_DTYPE_TO_NUMPY_DTYPE: dict[object, type] = {
-    tensors.DType.FLOAT32: np.float32,
-    tensors.DType.UINT8: np.uint8,
+    wp.float32: np.float32,
+    wp.uint8: np.uint8,
 }
 
 
@@ -145,9 +145,7 @@ class _MockRigidBodyEntityView(tensors.EntityView):
         for impl in _RIGID_BODY_IMPLEMENTATIONS:
             full_shape = [self.count] + impl["shape"]
             numpy_dtype = _TENSOR_DTYPE_TO_NUMPY_DTYPE[impl["dtype"]]
-            tensor_spec = tensors.TensorSpec(
-                dtype=impl["dtype"], shape_hint=full_shape, device_kind=tensors.DeviceKind.CPU
-            )
+            tensor_spec = tensors.ArrayTensorSpec(dtype=impl["dtype"], shape_hint=full_shape, device="cpu")
             # create a mock implementation for the tensor
             if impl["get"]:
                 self._register_impl(
@@ -180,9 +178,7 @@ class _MockArticulationEntityView(tensors.EntityView):
         for impl in _ARTICULATION_IMPLEMENTATIONS:
             full_shape = [self.count] + impl["shape"]
             numpy_dtype = _TENSOR_DTYPE_TO_NUMPY_DTYPE[impl["dtype"]]
-            tensor_spec = tensors.TensorSpec(
-                dtype=impl["dtype"], shape_hint=full_shape, device_kind=tensors.DeviceKind.CPU
-            )
+            tensor_spec = tensors.ArrayTensorSpec(dtype=impl["dtype"], shape_hint=full_shape, device="cpu")
             if impl["get"]:
                 self._register_impl(
                     impl["name"],

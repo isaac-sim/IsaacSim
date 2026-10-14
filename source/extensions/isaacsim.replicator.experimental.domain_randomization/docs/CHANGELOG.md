@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.12] - 2026-10-01
+### Fixed
+- `OgnIntervalFiltering`: emit a flat index array and always write `outputs:indices`, so frames with no matching environment clear the previous selection.
+
+### Added
+- Test covering `gate.on_interval` gravity updates on positive interval multiples.
+
+## [1.2.11] - 2026-09-23
+### Fixed
+- Use the normal distribution's standard deviation directly when deriving material-property bucket ranges.
+
 ## [1.2.10] - 2026-08-19
 ### Fixed
 - `get_reset_inds`: raise `RuntimeError` when the domain-randomization context is not initialized.

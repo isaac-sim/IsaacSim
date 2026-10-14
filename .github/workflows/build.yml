@@ -44,22 +44,6 @@ jobs:
           mkdir -p "${{ github.workspace }}/.cache/packman"
           mkdir -p "${{ github.workspace }}/.cache/ccache"
 
-      - name: Configure graphics build dependencies
-        run: |
-          set -euo pipefail
-          egl_runtime="$(ldconfig -p | awk '$1 == "libEGL.so.1" && !found { print $NF; found = 1 } END { exit !found }')"
-          mkdir -p "${RUNNER_TEMP}/isaacsim-ci-libs"
-          ln -sf "${egl_runtime}" "${RUNNER_TEMP}/isaacsim-ci-libs/libEGL.so"
-          echo "CMAKE_LIBRARY_PATH=${RUNNER_TEMP}/isaacsim-ci-libs${CMAKE_LIBRARY_PATH:+:${CMAKE_LIBRARY_PATH}}" >> "${GITHUB_ENV}"
-
-          ./source/libraries/build.sh --pull-only
-          khronos_header="$(find .pixi/bld/sdl3 -type f -path '*/work/src/video/khronos/GLES3/gl32.h' -print -quit)"
-          test -n "${khronos_header}"
-          khronos_include="${GITHUB_WORKSPACE}/${khronos_header%/GLES3/gl32.h}"
-          echo "CMAKE_INCLUDE_PATH=${khronos_include}${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}" >> "${GITHUB_ENV}"
-          echo "CFLAGS=${CFLAGS:+${CFLAGS} }-isystem ${khronos_include}" >> "${GITHUB_ENV}"
-          echo "CXXFLAGS=${CXXFLAGS:+${CXXFLAGS} }-isystem ${khronos_include}" >> "${GITHUB_ENV}"
-
       - name: Build and Package
         env:
           BUILD_CONFIG: ${{ inputs.config }}

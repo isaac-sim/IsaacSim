@@ -474,7 +474,10 @@ class Mesh(XformPrim):
         indices = ops_utils.resolve_indices(indices, count=len(self), device="cpu")
         data = []
         for index in indices.numpy():
-            data.append(ops_utils.place(np.array(self.geoms[index].GetNormalsAttr().Get()), device=self._device))
+            normals = self.geoms[index].GetNormalsAttr().Get()
+            if normals is None:
+                normals = np.array([], dtype=np.float32)
+            data.append(ops_utils.place(np.array(normals), device=self._device))
         return data
 
     def set_face_specs(

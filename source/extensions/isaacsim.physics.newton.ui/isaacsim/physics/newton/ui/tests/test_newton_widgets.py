@@ -32,9 +32,17 @@ class NewtonWidgetTests(AsyncTestCase):
     """Validate Newton custom widgets cover remove and ignore the auto parent path."""
 
     def test_custom_widgets_own_joint_and_solver_scene_schemas(self) -> None:
-        """Own Joint / XPBD / Kamino with NewtonWidgetBase so they get a remove button."""
+        """Own Joint and solver scene schemas with NewtonWidgetBase so they get a remove button."""
         owned = {item.schema for item in newton_schema_menu_items}
-        for schema in ("NewtonJointAPI", "NewtonXpbdSceneAPI", "NewtonKaminoSceneAPI"):
+        for schema in (
+            "NewtonJointAPI",
+            "NewtonXpbdSceneAPI",
+            "NewtonKaminoSceneAPI",
+            "NewtonMPMSceneAPI",
+            "NewtonPointsDeformableSimAPI",
+            "NewtonMPMMaterialAPI",
+            "NewtonCurvesDeformableMaterialAPI",
+        ):
             self.assertIn(schema, owned)
             self.assertIn(schema, ignored_schemas)
 

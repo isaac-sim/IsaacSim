@@ -35,6 +35,7 @@ from isaacsim.robot_setup.sysid.trajectory_segments import (
     TrajectorySegmentError,
     build_auto_chunks,
     build_trajectory_chunks,
+    build_validation_comparison,
     resolve_chunk_specs,
     split_train_validation_chunks,
     summarize_validation_metrics,
@@ -162,6 +163,82 @@ class TrajectoryChunkingAndResamplingTests(omni.kit.test.AsyncTestCase):
         )
         self.assertIn("step", summary)
         self.assertIn("qRMSE", summary)
+
+    async def test_validation_comparison_pairs_chunks_and_pools_rmse_by_sample_count(self) -> None:
+        """Pool paired validation RMSE using each chunk's sample count."""
+        untuned = [
+            ChunkValidationMetric("a", "validation", "step", 0.0, 1.0, 1, 1.0, 1.0, 1.0, 2.0),
+            ChunkValidationMetric("b", "validation", "sine", 1.0, 2.0, 3, 1.0, 1.0, 3.0, 4.0),
+        ]
+        tuned = [
+            ChunkValidationMetric("a", "validation", "step", 0.0, 1.0, 1, 1.0, 1.0, 0.5, 1.0),
+            ChunkValidationMetric("b", "validation", "sine", 1.0, 2.0, 3, 1.0, 1.0, 1.5, 2.0),
+        ]
+
+        comparison = build_validation_comparison(untuned, tuned)
+
+        self.assertTrue(comparison["available"])
+        self.assertEqual(comparison["chunk_count"], 2)
+        self.assertAlmostEqual(comparison["overall"]["position_rmse"]["untuned"], (7.0**0.5))
+        self.assertAlmostEqual(comparison["overall"]["position_rmse"]["tuned"], (1.75**0.5))
+        self.assertAlmostEqual(comparison["overall"]["position_rmse"]["percent_improvement"], 50.0)
+
+    async def test_validation_comparison_handles_zero_and_mismatched_baselines(self) -> None:
+        """Handle zero RMSE and reject mismatched validation chunk identities."""
+        zero = ChunkValidationMetric("a", "validation", "step", 0.0, 1.0, 2, 1.0, 1.0, 0.0, 0.0)
+        tuned = ChunkValidationMetric("a", "validation", "step", 0.0, 1.0, 2, 1.0, 1.0, 0.1, 0.0)
+        comparison = build_validation_comparison([zero], [tuned])
+        self.assertIsNone(comparison["overall"]["position_rmse"]["percent_improvement"])
+        self.assertEqual(comparison["overall"]["position_rmse"]["status"], "regressed")
+
+        mismatched = ChunkValidationMetric("other", "validation", "step", 0.0, 1.0, 2, 1.0, 1.0, 0.1, 0.0)
+        comparison = build_validation_comparison([zero], [mismatched])
+        self.assertFalse(comparison["available"])
+
+    async def test_validation_comparison_ignores_sub_threshold_rmse_noise(self) -> None:
+        """Do not label numerical noise as a meaningful holdout regression."""
+        untuned = ChunkValidationMetric("a", "validation", "step", 0.0, 1.0, 2, 1.0, 1.0, 1.0, 1.0)
+        tuned = ChunkValidationMetric("a", "validation", "step", 0.0, 1.0, 2, 1.0, 1.0, 1.005, 1.0)
+
+        comparison = build_validation_comparison(
+            [untuned],
+            [tuned],
+            source="configured_chunks",
+            holdout=True,
+        )
+
+        self.assertEqual(comparison["overall"]["position_rmse"]["status"], "unchanged")
+        self.assertTrue(comparison["holdout"])
+        self.assertEqual(comparison["source"], "configured_chunks")
+
+    async def test_validation_comparison_refuses_verdict_when_a_chunk_diverges(self) -> None:
+        """A chunk that diverges only after tuning must not be pooled away as an improvement."""
+        untuned = [
+            ChunkValidationMetric("chunk_a", "validation", "step", 0.0, 1.0, 10, 1.0, 1.0, 2.0, 1.0),
+            ChunkValidationMetric("chunk_b", "validation", "sine", 1.0, 2.0, 10, 1.0, 1.0, 2.0, 1.0),
+        ]
+        # `chunk_b` blew up after tuning, so its tuned RMSE is non-finite.
+        tuned = [
+            ChunkValidationMetric("chunk_a", "validation", "step", 0.0, 1.0, 10, 1.0, 1.0, 0.5, 1.0),
+            ChunkValidationMetric("chunk_b", "validation", "sine", 1.0, 2.0, 10, 1.0, 1.0, float("inf"), 1.0),
+        ]
+
+        comparison = build_validation_comparison(untuned, tuned)
+
+        channel = comparison["overall"]["position_rmse"]
+        self.assertEqual(channel["status"], "unavailable")
+        self.assertIsNone(channel["percent_improvement"])
+        self.assertEqual(channel["unpaired_chunks"], ["chunk_b"])
+
+    async def test_validation_comparison_pools_over_the_common_chunk_set(self) -> None:
+        """A channel absent from both passes is skipped without flagging a divergence."""
+        untuned = [ChunkValidationMetric("chunk_a", "validation", "step", 0.0, 1.0, 4, 1.0, 1.0, 2.0, None)]
+        tuned = [ChunkValidationMetric("chunk_a", "validation", "step", 0.0, 1.0, 4, 1.0, 1.0, 1.0, None)]
+
+        comparison = build_validation_comparison(untuned, tuned)
+
+        self.assertEqual(comparison["overall"]["position_rmse"]["unpaired_chunks"], [])
+        self.assertAlmostEqual(comparison["overall"]["position_rmse"]["percent_improvement"], 50.0)
 
     async def test_resampling_interpolates_measured_state_and_holds_commands(
         self,

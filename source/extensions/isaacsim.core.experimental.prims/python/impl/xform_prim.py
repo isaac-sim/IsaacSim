@@ -641,8 +641,8 @@ class XformPrim(Prim):
                 if positions is not None:
                     matrix.SetTranslateOnly(usdrt.Gf.Vec3d(*positions[0 if broadcast_positions else i]))
                 if orientations is not None:
-                    matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientations[0 if broadcast_orientations else i]))
                     scaling_matrix = usdrt.Gf.Matrix4d().SetIdentity().SetScale(usdrt.Gf.Transform(matrix).GetScale())
+                    matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientations[0 if broadcast_orientations else i]))
                     matrix = scaling_matrix * matrix
                 fabric_hierarchy.set_world_xform(path, matrix)
 
@@ -833,8 +833,8 @@ class XformPrim(Prim):
                 if translations is not None:
                     matrix.SetTranslateOnly(usdrt.Gf.Vec3d(*translations[0 if broadcast_translations else i]))
                 if orientations is not None:
-                    matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientations[0 if broadcast_orientations else i]))
                     scaling_matrix = usdrt.Gf.Matrix4d().SetIdentity().SetScale(usdrt.Gf.Transform(matrix).GetScale())
+                    matrix.SetRotateOnly(usdrt.Gf.Quatd(*orientations[0 if broadcast_orientations else i]))
                     matrix = scaling_matrix * matrix
                 fabric_hierarchy.set_local_xform(path, matrix)
         # Fabric API
@@ -865,8 +865,8 @@ class XformPrim(Prim):
                     translations,
                     orientations,
                     None,
-                    translations.shape[0] == 1,
-                    orientations.shape[0] == 1,
+                    translations is not None and translations.shape[0] == 1,
+                    orientations is not None and orientations.shape[0] == 1,
                     False,
                     indices,
                     fabric_data["mapping"],

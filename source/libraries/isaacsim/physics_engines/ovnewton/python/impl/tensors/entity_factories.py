@@ -22,6 +22,7 @@ operations.
 
 from __future__ import annotations
 
+import atexit
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -53,92 +54,28 @@ class _WarpFrontendShim:
     """Provide Warp-only tensor allocation for the Newton view implementations.
 
     Args:
-        device_ordinal: Warp device ordinal, with a negative value selecting the CPU.
+        device: Device string such as ``"cpu"`` or ``"cuda:0"``.
 
     """
 
     name: str = "warp"
     #: Frontend name used by the physics tensor registry.
 
-    def __init__(self, device_ordinal: int = -1) -> None:
-        from isaacsim.physics.manager.impl.tensors import frontends
+    def __init__(self, device: str = "cpu") -> None:
+        self.device = wp.get_device(device)
 
-        self.device_ordinal = device_ordinal
-        self.device = frontends.parse_device(device_ordinal)
-
-    @staticmethod
-    def wrap_tensor(value: Any) -> Any:
-        """Wrap a supported tensor for Warp access.
-
-        Args:
-            value: Tensor to wrap.
-
-        Returns:
-            Tensor wrapper produced by the manager frontend utilities.
-
-        """
-        from isaacsim.physics.manager.impl.tensors import frontends
-
-        return frontends.wrap_tensor(value)
-
-    @staticmethod
-    def unwrap_to_array(value: Any) -> Any:
-        """Return a tensor value without additional unwrapping.
-
-        Args:
-            value: Tensor value to preserve.
-
-        Returns:
-            The original value.
-
-        """
-        return value
-
-    @staticmethod
-    def dtype_to_warp(dtype: object) -> object:
-        """Convert a tensor-registry data type to its Warp representation.
-
-        Args:
-            dtype: Registry data type.
-
-        Returns:
-            Corresponding Warp data type.
-
-        """
-        from isaacsim.physics.manager.impl.tensors import frontends
-
-        return frontends.dtype_to_warp(dtype)
-
-    @staticmethod
-    def dtype_from_warp(dtype: object) -> object:
-        """Convert a Warp data type to its tensor-registry representation.
-
-        Args:
-            dtype: Warp data type.
-
-        Returns:
-            Corresponding registry data type.
-
-        """
-        from isaacsim.physics.manager.impl.tensors import frontends
-
-        return frontends.dtype_from_warp(dtype)
-
-    def create_tensor(self, shape: Sequence[int], dtype: object) -> tuple[object, None]:
-        """Create a tensor on the configured device.
+    def create_tensor(self, shape: Sequence[int], dtype: object) -> wp.array:
+        """Create a zero-initialized tensor on the configured device.
 
         Args:
             shape: Tensor dimensions.
             dtype: Tensor data type.
 
         Returns:
-            Created tensor and a None descriptor placeholder.
+            Contiguous Warp array with the requested shape and data type.
 
         """
-        from isaacsim.physics.manager.impl.tensors import frontends
-
-        tensor = frontends.create_tensor(shape, dtype, self.device_ordinal)
-        return tensor, None
+        return wp.zeros(tuple(shape), dtype=dtype, device=self.device)
 
 
 def _create_contiguous_indices(count: int, device: object) -> wp.array:
@@ -336,10 +273,9 @@ def _register_float_rows(
         name,
         t.ImplKind.Get,
         lambda indices, out: _read_float_rows(getter, shape[0], shape[1], device, indices, out),
-        t.TensorSpec(
-            dtype=t.DType.FLOAT32,
+        t.ArrayTensorSpec(
+            dtype=wp.float32,
             shape_hint=list(shape),
-            device_kind=t.DeviceKind.ENGINE_DEFAULT,
             supports=True,
             supports_indexed_read=True,
         ),
@@ -349,10 +285,9 @@ def _register_float_rows(
             name,
             t.ImplKind.Set,
             lambda data, indices: _write_float_rows(setter, shape[0], shape[1], device, data, indices),
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=list(shape),
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
                 supports_indexed_write=True,
             ),
@@ -480,10 +415,9 @@ def _register_float_matrix(
         name,
         t.ImplKind.Get,
         lambda indices, out: _read_float_matrix(getter, shape[0], shape[1], shape[2], device, indices, out),
-        t.TensorSpec(
-            dtype=t.DType.FLOAT32,
+        t.ArrayTensorSpec(
+            dtype=wp.float32,
             shape_hint=list(shape),
-            device_kind=t.DeviceKind.ENGINE_DEFAULT,
             supports=True,
             supports_indexed_read=True,
         ),
@@ -493,10 +427,9 @@ def _register_float_matrix(
             name,
             t.ImplKind.Set,
             lambda data, indices: _write_float_matrix(setter, shape[0], shape[1], shape[2], device, data, indices),
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=list(shape),
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
                 supports_indexed_write=True,
             ),
@@ -514,10 +447,9 @@ def _register_unsupported(view: t.EntityView, name: str, kind: t.ImplKind) -> No
         kind: Read or write implementation kind.
 
     """
-    spec = t.TensorSpec(
-        dtype=t.DType.FLOAT32,
+    spec = t.ArrayTensorSpec(
+        dtype=wp.float32,
         shape_hint=[],
-        device_kind=t.DeviceKind.ENGINE_DEFAULT,
         supports=False,
     )
     if kind == t.ImplKind.Get:
@@ -569,6 +501,7 @@ def _copy_multi_result(result: list[wp.array], out: Sequence[wp.array] | None) -
         raise ValueError(f"Expected {len(result)} output buffers, got {len(out)}")
     for index, (source, destination) in enumerate(zip(result, out)):
         _validate_output_like(destination, source, f"output buffer {index}")
+    for source, destination in zip(result, out):
         wp.copy(destination, source)
     return list(out)
 
@@ -602,6 +535,7 @@ def _make_indexed_raw_contact_buffers(
                 raise TypeError(f"output buffer {index} has dtype {buffer.dtype}, expected {dtype}")
             if buffer.device != device:
                 raise ValueError(f"output buffer {index} is on {buffer.device}, expected {device}")
+        for buffer in result:
             buffer.zero_()
         return result
 
@@ -713,9 +647,11 @@ class _NewtonArticulationViewAdapter(_LegacyAdapter):
         position_map_is_dense = legacy._backend.dof_position_indices.shape[0] == expected_dof_map_size
         velocity_map_is_dense = legacy._backend.dof_velocity_indices.shape[0] == expected_dof_map_size
         axis_map_is_dense = legacy._backend.dof_axis_indices.shape[0] == expected_dof_map_size
+        target_map_is_dense = legacy._dof_target_indices.shape[0] == expected_dof_map_size
         # Each op is guarded by the density of the specific DOF map its
         # getter/setter indexes: positions -> dof_position_indices, velocities
-        # -> dof_velocity_indices, targets/forces/stiffnesses -> dof_axis_indices.
+        # -> dof_velocity_indices, position targets -> model-selected target map,
+        # velocity targets/forces/stiffnesses -> dof_axis_indices.
         # These maps diverge for multi-DOF joints (free-floating, spherical), so
         # a shared guard would register an op against an under-sized index array.
         if uniform_dof_width and position_map_is_dense:
@@ -736,7 +672,7 @@ class _NewtonArticulationViewAdapter(_LegacyAdapter):
                 legacy.get_dof_velocities,
                 legacy.set_dof_velocities,
             )
-        if uniform_dof_width and axis_map_is_dense:
+        if uniform_dof_width and target_map_is_dense:
             _register_float_rows(
                 self,
                 "dof-position-targets",
@@ -745,6 +681,7 @@ class _NewtonArticulationViewAdapter(_LegacyAdapter):
                 legacy.get_dof_position_targets,
                 legacy.set_dof_position_targets,
             )
+        if uniform_dof_width and axis_map_is_dense:
             _register_float_rows(
                 self,
                 "dof-velocity-targets",
@@ -760,6 +697,13 @@ class _NewtonArticulationViewAdapter(_LegacyAdapter):
                 legacy._model.device,
                 legacy.get_dof_actuation_forces,
                 legacy.set_dof_actuation_forces,
+            )
+            _register_float_rows(
+                self,
+                "dof-projected-joint-forces",
+                [legacy.count, legacy.max_dofs],
+                legacy._model.device,
+                legacy.get_dof_projected_joint_forces,
             )
             _register_float_rows(
                 self,
@@ -861,6 +805,13 @@ class _NewtonArticulationViewAdapter(_LegacyAdapter):
             [legacy.count, legacy.max_links, 6],
             legacy._model.device,
             legacy.get_link_velocities,
+        )
+        _register_float_matrix(
+            self,
+            "link-incoming-joint-force",
+            [legacy.count, legacy.max_links, 6],
+            legacy._model.device,
+            legacy.get_link_incoming_joint_force,
         )
         # Read-only dynamics matrices, sized from the model's per-articulation
         # dimensions to match the eval_jacobian / eval_mass_matrix output shapes
@@ -989,10 +940,9 @@ class _NewtonArticulationViewAdapter(_LegacyAdapter):
             "apply-forces-and-torques-at-position",
             t.ImplKind.Set,
             apply_link_forces_and_torques_at_position,
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=[legacy.count, legacy.max_links, 9],
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
                 supports_indexed_write=True,
             ),
@@ -1097,10 +1047,9 @@ class _NewtonRigidBodyViewAdapter(_LegacyAdapter):
             "apply-forces",
             t.ImplKind.Set,
             apply_forces,
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=[legacy.count, 3],
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
                 supports_indexed_write=True,
             ),
@@ -1143,10 +1092,9 @@ class _NewtonRigidBodyViewAdapter(_LegacyAdapter):
             "apply-forces-and-torques-at-position",
             t.ImplKind.Set,
             apply_forces_and_torques_at_position,
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=[legacy.count, 9],
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
                 supports_indexed_write=True,
             ),
@@ -1179,9 +1127,8 @@ class _NewtonRigidContactViewAdapter(_LegacyAdapter):
             "raw-contact-data",
             t.ImplKind.Get,
             lambda indices, out: _read_raw_contact_data(legacy, indices, out),
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 supports=True,
                 supports_indexed_read=True,
             ),
@@ -1198,10 +1145,9 @@ class _NewtonRigidContactViewAdapter(_LegacyAdapter):
             "net-contact-forces",
             t.ImplKind.Get,
             _read_net_contact_forces,
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=[legacy.sensor_count, 3],
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
             ),
         )
@@ -1217,10 +1163,9 @@ class _NewtonRigidContactViewAdapter(_LegacyAdapter):
             "contact-force-matrix",
             t.ImplKind.Get,
             _read_contact_force_matrix,
-            t.TensorSpec(
-                dtype=t.DType.FLOAT32,
+            t.ArrayTensorSpec(
+                dtype=wp.float32,
                 shape_hint=[legacy.sensor_count, legacy.filter_count, 3],
-                device_kind=t.DeviceKind.ENGINE_DEFAULT,
                 supports=True,
             ),
         )
@@ -1261,12 +1206,12 @@ class _NewtonSimulationContext:
         self.newton_stage = newton_stage
         self._backend = NewtonSimView(newton_stage)
         # Direct view constructors use this frontend to allocate Warp storage.
-        self._frontend = _WarpFrontendShim(self._backend.device_ordinal)
+        self._frontend = _WarpFrontendShim(str(self._backend.device))
 
     @property
-    def device_ordinal(self) -> int:
-        """Ordinal of the device holding this simulation's tensors, or -1 for host memory."""
-        return self._backend.device_ordinal
+    def device(self) -> str:
+        """Device holding this simulation's tensors, as a string such as ``"cpu"`` or ``"cuda:0"``."""
+        return str(self._backend.device)
 
     def create_articulation_view(self, paths: Sequence[str]) -> t.EntityView:
         """Create an articulation view for matching USD paths.
@@ -1338,10 +1283,10 @@ class _NewtonSimulationContext:
             view: Entity view built from this context.
 
         Returns:
-            The same view, carrying this simulation's device ordinal.
+            The same view, carrying this simulation's device.
 
         """
-        view.device_ordinal = self.device_ordinal
+        view.device = self.device
         return view
 
 
@@ -1365,7 +1310,10 @@ def _active_simulation_context(simulation_name: str) -> _NewtonSimulationContext
 
     """
     # Lazy import to avoid a circular dependency at module load.
-    from isaacsim.physics.registration import get_active_simulation_id, k_invalid_simulation_id
+    from isaacsim.physics.registration import (
+        get_active_simulation_id,
+        k_invalid_simulation_id,
+    )
 
     from .. import get_registry as get_newton_registry
 
@@ -1569,3 +1517,12 @@ def unregister_from_umbrella(simulation_name: str = DEFAULT_SIMULATION_NAME) -> 
         t.get_registry().unregister_entity(simulation_name, entity)
 
     _REGISTERED.discard(simulation_name)
+
+
+def _unregister_at_shutdown() -> None:
+    """Release Newton factories while Python and the native registry are still alive."""
+    for simulation_name in tuple(_REGISTERED):
+        unregister_from_umbrella(simulation_name)
+
+
+atexit.register(_unregister_at_shutdown)

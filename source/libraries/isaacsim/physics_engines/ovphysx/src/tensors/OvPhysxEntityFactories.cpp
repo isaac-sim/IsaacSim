@@ -189,34 +189,28 @@ static std::shared_ptr<isaacsim::physics::tensors::EntityView> makeOvPhysxEntity
     {
         return makeUnsupportedView(paths.empty() ? std::string() : paths.front(), entityType);
     }
-    // One path is a pattern the engine expands itself; several are resolved here and bound as explicit prim
-    // paths, concatenated in caller order with first-wins de-duplication. Keeping the single-path case in
-    // pattern mode is what lets a view report the glob it was built from rather than the paths it matched.
-    const bool singlePattern = paths.size() == 1;
+    // Resolve every path pattern and bind the resulting explicit list. ovphysx 0.6.3 does not guarantee the
+    // old pattern-binding row order; the path-list constructors restore the frontend's deterministic natural
+    // ordering while retaining caller order between several patterns.
     if (entityType == "articulation")
     {
-        return singlePattern ? std::make_shared<OvPhysxArticulationEntityView>(handle, paths.front()) :
-                               std::make_shared<OvPhysxArticulationEntityView>(handle, paths);
+        return std::make_shared<OvPhysxArticulationEntityView>(handle, paths);
     }
     if (entityType == "rigid-body")
     {
-        return singlePattern ? std::make_shared<OvPhysxRigidBodyEntityView>(handle, paths.front()) :
-                               std::make_shared<OvPhysxRigidBodyEntityView>(handle, paths);
+        return std::make_shared<OvPhysxRigidBodyEntityView>(handle, paths);
     }
     if (entityType == "volume-deformable-body")
     {
-        return singlePattern ? std::make_shared<OvPhysxVolumeDeformableBodyEntityView>(handle, paths.front()) :
-                               std::make_shared<OvPhysxVolumeDeformableBodyEntityView>(handle, paths);
+        return std::make_shared<OvPhysxVolumeDeformableBodyEntityView>(handle, paths);
     }
     if (entityType == "surface-deformable-body")
     {
-        return singlePattern ? std::make_shared<OvPhysxSurfaceDeformableBodyEntityView>(handle, paths.front()) :
-                               std::make_shared<OvPhysxSurfaceDeformableBodyEntityView>(handle, paths);
+        return std::make_shared<OvPhysxSurfaceDeformableBodyEntityView>(handle, paths);
     }
     if (entityType == "deformable-material")
     {
-        return singlePattern ? std::make_shared<OvPhysxDeformableMaterialEntityView>(handle, paths.front()) :
-                               std::make_shared<OvPhysxDeformableMaterialEntityView>(handle, paths);
+        return std::make_shared<OvPhysxDeformableMaterialEntityView>(handle, paths);
     }
     // Contact and SDF views take a single pattern; there is no path-list form to fall back on, so a
     // multi-path request is rejected rather than silently narrowed to the first entry.

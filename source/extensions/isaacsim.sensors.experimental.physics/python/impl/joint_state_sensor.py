@@ -32,20 +32,19 @@ from isaacsim.core.simulation_manager import SimulationManager
 
 from ._sensor_base import _PhysicsSensorRuntimeBase
 
-_INVALID_JOINT_STATE_READING = None
-
 
 def _get_invalid_reading() -> object:
-    global _INVALID_JOINT_STATE_READING
-    if _INVALID_JOINT_STATE_READING is None:
-        from .. import _physics_sensors
+    from .. import _physics_sensors
 
-        _INVALID_JOINT_STATE_READING = _physics_sensors.JointStateSensorReading()
-    return _INVALID_JOINT_STATE_READING
+    return _physics_sensors.JointStateSensorReading()
 
 
 class JointStateSensorReading:
     """Joint state sensor reading data for all DOFs of an articulation.
+
+    Every attribute is read-only, matching the native snapshot: a reading
+    describes one capture, so its values do not change afterwards. The arrays
+    and the name list are owned by the reading and their contents stay mutable.
 
     Args:
         is_valid: Whether this reading contains valid data.
@@ -69,14 +68,54 @@ class JointStateSensorReading:
         dof_types: np.ndarray | None = None,
         stage_meters_per_unit: float = 0.0,
     ) -> None:
-        self.is_valid = is_valid
-        self.time = time
-        self.dof_names: list[str] = dof_names if dof_names is not None else []
-        self.positions: np.ndarray = positions if positions is not None else np.array([], dtype=np.float32)
-        self.velocities: np.ndarray = velocities if velocities is not None else np.array([], dtype=np.float32)
-        self.efforts: np.ndarray = efforts if efforts is not None else np.array([], dtype=np.float32)
-        self.dof_types: np.ndarray = dof_types if dof_types is not None else np.array([], dtype=np.uint8)
-        self.stage_meters_per_unit: float = stage_meters_per_unit
+        self._is_valid = is_valid
+        self._time = time
+        self._dof_names: list[str] = dof_names if dof_names is not None else []
+        self._positions: np.ndarray = positions if positions is not None else np.array([], dtype=np.float32)
+        self._velocities: np.ndarray = velocities if velocities is not None else np.array([], dtype=np.float32)
+        self._efforts: np.ndarray = efforts if efforts is not None else np.array([], dtype=np.float32)
+        self._dof_types: np.ndarray = dof_types if dof_types is not None else np.array([], dtype=np.uint8)
+        self._stage_meters_per_unit: float = stage_meters_per_unit
+
+    @property
+    def is_valid(self) -> bool:
+        """Whether the reading was valid when captured."""
+        return self._is_valid
+
+    @property
+    def time(self) -> float:
+        """Capture time in seconds."""
+        return self._time
+
+    @property
+    def dof_names(self) -> list[str]:
+        """Mutable list of degree-of-freedom names owned by the reading."""
+        return self._dof_names
+
+    @property
+    def positions(self) -> np.ndarray:
+        """Mutable position array (rad or m) owned by the reading."""
+        return self._positions
+
+    @property
+    def velocities(self) -> np.ndarray:
+        """Mutable velocity array (rad/s or m/s) owned by the reading."""
+        return self._velocities
+
+    @property
+    def efforts(self) -> np.ndarray:
+        """Mutable effort array (Nm or N) owned by the reading."""
+        return self._efforts
+
+    @property
+    def dof_types(self) -> np.ndarray:
+        """Mutable degree-of-freedom type array owned by the reading."""
+        return self._dof_types
+
+    @property
+    def stage_meters_per_unit(self) -> float:
+        """Stage scale in meters per unit at capture time."""
+        return self._stage_meters_per_unit
 
 
 class JointStateSensor(_PhysicsSensorRuntimeBase):
@@ -132,7 +171,11 @@ class JointStateSensor(_PhysicsSensorRuntimeBase):
         self._stage_open_sub = None
 
     def get_sensor_reading(self) -> JointStateSensorReading:
-        """Get the current joint state reading for all DOFs.
+        """Get a mutable owned snapshot of the joint state for all DOFs.
+
+        The snapshot and its NumPy arrays remain valid after later physics
+        steps, sensor reset, or removal. Its values and ``is_valid`` flag do
+        not change after capture.
 
         Returns:
             Reading with DOF names, positions, velocities, efforts, and validity.
@@ -155,6 +198,48 @@ class JointStateSensor(_PhysicsSensorRuntimeBase):
             dof_types=np.asarray(cpp_reading.dof_types, dtype=np.uint8),
             stage_meters_per_unit=cpp_reading.stage_meters_per_unit,
         )
+
+    def get_sensor_reading_view(self) -> object:
+        """Get a read-only zero-copy view of the live joint-state buffers.
+
+        Numeric arrays returned from the view retain its native backing frame
+        even if the view variable is released. Their values and ``view.time``
+        update on each physics step. ``view.is_valid`` becomes ``False`` after
+        reset, removal, or timeline stop; retained arrays then remain readable
+        with their last values. A numeric property lookup creates a NumPy array
+        header without copying data; cache the returned array in a tight loop.
+
+        The view performs no synchronization with the physics step that writes
+        its buffers, so reading it while a step is in flight yields torn values
+        that mix the current and the previous reading. Read it only from the
+        thread that drives physics and only between steps; use
+        :meth:`get_sensor_reading` when a reader cannot be ordered against the
+        step.
+
+        Returns:
+            A ``JointStateSensorReadingView`` with read-only NumPy arrays.
+
+        Example:
+
+        .. code-block:: python
+
+            view = sensor.get_sensor_reading_view()
+            if view.is_valid:
+                positions = view.positions  # read-only and owner-backed
+        """
+        from .. import _physics_sensors
+
+        if not self.enabled:
+            return _physics_sensors.JointStateSensorReadingView()
+        if not self._sensor_created and not self._ensure_sensor():
+            return _physics_sensors.JointStateSensorReadingView()
+        view = self._iface.get_sensor_reading_view(self._prim_path)
+        if not view.is_valid:
+            self._sensor_created = False
+            if not self._ensure_sensor():
+                return view
+            view = self._iface.get_sensor_reading_view(self._prim_path)
+        return view
 
     def get_data(self) -> dict:
         """Get the current joint state as a structured frame.

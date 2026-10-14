@@ -6,6 +6,7 @@
 
 ### Added
 
+- The `physics` / `time-step` simulation parameter configures remote physics and timestamp intervals before stage import.
 - Remote lifecycle management, readiness polling, drift-free stepping, latest-value reads, and position writes.
 - Insecure endpoint configuration and client-owned UUIDv4 simulation identities.
 - Asynchronous server failure status propagation during initialization.

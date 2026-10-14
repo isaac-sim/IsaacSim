@@ -38,7 +38,7 @@ includedirs {
     target_deps .. "/usd_ext_physics/%{cfg.buildcfg}/include",
     target_deps .. "/omni_physics/%{config}/include",
     extsbuild_dir .. "/usdrt.scenegraph/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     target_deps .. "/omni_client_library/include",
     target_deps .. "/python/include",
     "%{root}/source/extensions/isaacsim.core.nodes/include",

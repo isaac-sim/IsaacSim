@@ -13,21 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Validate force-sensor tensors with the Newton engine.
-
-Force/torque sensors are skipped because Newton does not provide joint-force reporting.
-Incoming-joint-force cases are skipped because the fixture cannot author the
-required external forces through a Newton API. The joint-friction scenario
-runs on each available device.
-"""
+"""Validate force-sensor tensors with the Newton engine."""
 
 from __future__ import annotations
 
 import os
 import sys
+from typing import Any
 
 import _physics_setup  # noqa: F401
-import pytest
+from isaacsim.physics_engines.ovnewton import SolverType
 
 _TENSORS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _TENSORS_DIR not in sys.path:
@@ -44,143 +39,220 @@ from common.force_sensors import (  # noqa: E402
     ForceTorqueSensorYCommon,
     ForceTorqueSensorZCommon,
     JointFrictionCommon,
-)
-
-_GAP_JOINT_FORCE_REPORTING = (
-    "Newton joint-force reporting (link-incoming-joint-force / "
-    "dof-projected-joint-forces) is deferred pending a design decision: computing them "
-    "requires requesting State.body_parent_f at model-build time, an always-on per-step "
-    "cost on every solver (a full RNE post-constraint pass under MuJoCo) whether or not "
-    "the tensor is read. Unconditional vs. opt-in gating is undecided; the ops stay "
-    "unregistered until then."
+    LinkIncomingJointForceChildXCommon,
+    LinkIncomingJointForceChildYCommon,
+    LinkIncomingJointForceChildZCommon,
+    LinkIncomingJointForceFixedXCommon,
+    LinkIncomingJointForceFixedYCommon,
+    LinkIncomingJointForceFixedZCommon,
 )
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
+class _NewtonJointForceOutputMixin:
+    """Enable optional Newton joint wrench computation."""
+
+    def configure_newton(self, config: Any) -> None:
+        """Request parent-joint wrench storage before Newton creates its states."""
+        config.solver_outputs.link_incoming_joint_force = True
+        config.solver.solver_type = SolverType.FEATHERSTONE
+
+
+class _NewtonLinkIncomingJointForceMixin(_NewtonJointForceOutputMixin):
+    """Adapt analytical incoming-link-force scenarios to Newton reporting."""
+
+    def on_start(self, sim: Any) -> None:
+        """Create tensor views and apply the force before the first Featherstone step."""
+        super().on_start(sim)
+        self._apply_ext_force()
+
+    def on_physics_step(self, sim: Any, stepno: int, dt: float) -> None:
+        """Validate the first Featherstone step, which directly reports inverse-dynamics reactions."""
+        if stepno == 0:
+            self._validate_link_incoming_joint_forces()
+            self.finish()
+
+
+class _ForceTorqueSensorY(_NewtonJointForceOutputMixin, ForceTorqueSensorYCommon):
+    pass
+
+
+class _ForceTorqueSensorX(_NewtonJointForceOutputMixin, ForceTorqueSensorXCommon):
+    pass
+
+
+class _ForceTorqueSensorZ(_NewtonJointForceOutputMixin, ForceTorqueSensorZCommon):
+    pass
+
+
+class _LinkIncomingJointActuationForce(_NewtonJointForceOutputMixin, ForceTorqueSensorYCommon):
+    """Validate the active wrench component away from equilibrium."""
+
+    def __init__(self, test_case: object, device_params: Any) -> None:
+        super().__init__(test_case, device_params)
+        self.motor_torque *= 0.5
+
+    def on_physics_step(self, sim: Any, stepno: int, dt: float) -> None:
+        """Compare the active incoming-link torque with the applied actuation."""
+        if stepno >= 1:
+            joint_forces = self.pendulums.get_data("link-incoming-joint-force").numpy().reshape(self.num_envs, 3, 6)
+            assert (
+                abs(joint_forces[:, 1, 4] - self.motor_torque) <= 0.05
+            ).all(), "active incoming-link torque matches applied actuation"
+            self.finish()
+
+
 class TestForceTorqueSensorY:
-    """Skip Y-axis force/torque sensing because Newton does not report joint forces."""
+    """Validate Y-axis force/torque sensing."""
 
     def test_force_torque_sensor_y_newton_cc(self) -> None:
         """Verify Y-axis force/torque sensing on the Newton CPU pipeline."""
-        run_scenario(self, ForceTorqueSensorYCommon, "newton", cpu_device())
+        run_scenario(self, _ForceTorqueSensorY, "newton", cpu_device())
 
     @gpu_only
     def test_force_torque_sensor_y_newton_gg(self) -> None:
         """Verify Y-axis force/torque sensing on the Newton GPU pipeline."""
-        run_scenario(self, ForceTorqueSensorYCommon, "newton", gpu_device())
+        run_scenario(self, _ForceTorqueSensorY, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceTorqueSensorX:
-    """Skip X-axis force/torque sensing because Newton does not report joint forces."""
+    """Validate X-axis force/torque sensing."""
 
     def test_force_torque_sensor_x_newton_cc(self) -> None:
         """Verify X-axis force/torque sensing on the Newton CPU pipeline."""
-        run_scenario(self, ForceTorqueSensorXCommon, "newton", cpu_device())
+        run_scenario(self, _ForceTorqueSensorX, "newton", cpu_device())
 
     @gpu_only
     def test_force_torque_sensor_x_newton_gg(self) -> None:
         """Verify X-axis force/torque sensing on the Newton GPU pipeline."""
-        run_scenario(self, ForceTorqueSensorXCommon, "newton", gpu_device())
+        run_scenario(self, _ForceTorqueSensorX, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceTorqueSensorZ:
-    """Skip Z-axis force/torque sensing because Newton does not report joint forces."""
+    """Validate Z-axis force/torque sensing."""
 
     def test_force_torque_sensor_z_newton_cc(self) -> None:
         """Verify Z-axis force/torque sensing on the Newton CPU pipeline."""
-        run_scenario(self, ForceTorqueSensorZCommon, "newton", cpu_device())
+        run_scenario(self, _ForceTorqueSensorZ, "newton", cpu_device())
 
     @gpu_only
     def test_force_torque_sensor_z_newton_gg(self) -> None:
         """Verify Z-axis force/torque sensing on the Newton GPU pipeline."""
-        run_scenario(self, ForceTorqueSensorZCommon, "newton", gpu_device())
+        run_scenario(self, _ForceTorqueSensorZ, "newton", gpu_device())
 
 
-# `LinkIncomingJointForceCommon` requires engine-specific external-force
-# authoring (PhysxForceAPI on ovphysx); Newton has no analogue today.
-# Skipped at the class level until Newton wires its own equivalent.
-@pytest.mark.skip(
-    reason=(
-        "LinkIncomingJointForce scenarios require engine-specific external-force "
-        "authoring (PhysxForceAPI on ovphysx); no Newton analogue yet."
-    )
-)
+class TestLinkIncomingJointActuationForce:
+    """Validate incoming-link actuation reporting away from equilibrium."""
+
+    def test_link_incoming_joint_actuation_force_newton_cc(self) -> None:
+        """Verify active link torque with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointActuationForce, "newton", cpu_device())
+
+    @gpu_only
+    def test_link_incoming_joint_actuation_force_newton_gg(self) -> None:
+        """Verify active link torque with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointActuationForce, "newton", gpu_device())
+
+
+class _LinkIncomingJointForceChildY(_NewtonLinkIncomingJointForceMixin, LinkIncomingJointForceChildYCommon):
+    pass
+
+
+class _LinkIncomingJointForceFixedY(_NewtonLinkIncomingJointForceMixin, LinkIncomingJointForceFixedYCommon):
+    pass
+
+
+class _LinkIncomingJointForceChildX(_NewtonLinkIncomingJointForceMixin, LinkIncomingJointForceChildXCommon):
+    pass
+
+
+class _LinkIncomingJointForceFixedX(_NewtonLinkIncomingJointForceMixin, LinkIncomingJointForceFixedXCommon):
+    pass
+
+
+class _LinkIncomingJointForceChildZ(_NewtonLinkIncomingJointForceMixin, LinkIncomingJointForceChildZCommon):
+    pass
+
+
+class _LinkIncomingJointForceFixedZ(_NewtonLinkIncomingJointForceMixin, LinkIncomingJointForceFixedZCommon):
+    pass
+
+
 class TestLinkIncomingJointForceChildY:
-    """Skip Y-axis child-link force checks without Newton force authoring."""
+    """Validate both joint reactions when a Y-axis pendulum child is forced."""
 
     def test_link_incoming_joint_force_child_y_newton_cc(self) -> None:
-        """Record the unimplemented Y-axis child-link force case for Newton."""
+        """Check child-forced Y-axis reactions with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceChildY, "newton", cpu_device())
 
     @gpu_only
     def test_link_incoming_joint_force_child_y_newton_gg(self) -> None:
-        """Record the unimplemented Y-axis child-link force case for Newton."""
+        """Check child-forced Y-axis reactions with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceChildY, "newton", gpu_device())
 
 
-@pytest.mark.skip(
-    reason=(
-        "LinkIncomingJointForce scenarios require engine-specific external-force "
-        "authoring (PhysxForceAPI on ovphysx); no Newton analogue yet."
-    )
-)
 class TestLinkIncomingJointForceFixedY:
-    """Skip Y-axis fixed-link force checks without Newton force authoring."""
+    """Validate both joint reactions when a Y-axis pendulum fixed link is forced."""
 
     def test_link_incoming_joint_force_fixed_y_newton_cc(self) -> None:
-        """Record the unimplemented Y-axis fixed-link force case for Newton."""
+        """Check fixed-link-forced Y reactions with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceFixedY, "newton", cpu_device())
 
     @gpu_only
     def test_link_incoming_joint_force_fixed_y_newton_gg(self) -> None:
-        """Record the unimplemented Y-axis fixed-link force case for Newton."""
+        """Check fixed-link-forced Y reactions with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceFixedY, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason="no Newton analogue for PhysxForceAPI external-force injection")
 class TestLinkIncomingJointForceChildX:
-    """Skip X-axis child-link force checks without Newton force authoring."""
+    """Validate both joint reactions when an X-axis pendulum child is forced."""
 
     def test_link_incoming_joint_force_child_x_newton_cc(self) -> None:
-        """Record the unimplemented X-axis child-link force case for Newton."""
+        """Check child-forced X-axis reactions with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceChildX, "newton", cpu_device())
 
     @gpu_only
     def test_link_incoming_joint_force_child_x_newton_gg(self) -> None:
-        """Record the unimplemented X-axis child-link force case for Newton."""
+        """Check child-forced X-axis reactions with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceChildX, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason="no Newton analogue for PhysxForceAPI external-force injection")
 class TestLinkIncomingJointForceFixedX:
-    """Skip X-axis fixed-link force checks without Newton force authoring."""
+    """Validate both joint reactions when an X-axis pendulum fixed link is forced."""
 
     def test_link_incoming_joint_force_fixed_x_newton_cc(self) -> None:
-        """Record the unimplemented X-axis fixed-link force case for Newton."""
+        """Check fixed-link-forced X reactions with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceFixedX, "newton", cpu_device())
 
     @gpu_only
     def test_link_incoming_joint_force_fixed_x_newton_gg(self) -> None:
-        """Record the unimplemented X-axis fixed-link force case for Newton."""
+        """Check fixed-link-forced X reactions with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceFixedX, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason="no Newton analogue for PhysxForceAPI external-force injection")
 class TestLinkIncomingJointForceChildZ:
-    """Skip Z-axis child-link force checks without Newton force authoring."""
+    """Validate both joint reactions when a Z-axis pendulum child is forced."""
 
     def test_link_incoming_joint_force_child_z_newton_cc(self) -> None:
-        """Record the unimplemented Z-axis child-link force case for Newton."""
+        """Check child-forced Z-axis reactions with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceChildZ, "newton", cpu_device())
 
     @gpu_only
     def test_link_incoming_joint_force_child_z_newton_gg(self) -> None:
-        """Record the unimplemented Z-axis child-link force case for Newton."""
+        """Check child-forced Z-axis reactions with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceChildZ, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason="no Newton analogue for PhysxForceAPI external-force injection")
 class TestLinkIncomingJointForceFixedZ:
-    """Skip Z-axis fixed-link force checks without Newton force authoring."""
+    """Validate both joint reactions when a Z-axis pendulum fixed link is forced."""
 
     def test_link_incoming_joint_force_fixed_z_newton_cc(self) -> None:
-        """Record the unimplemented Z-axis fixed-link force case for Newton."""
+        """Check fixed-link-forced Z reactions with CPU simulation and CPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceFixedZ, "newton", cpu_device())
 
     @gpu_only
     def test_link_incoming_joint_force_fixed_z_newton_gg(self) -> None:
-        """Record the unimplemented Z-axis fixed-link force case for Newton."""
+        """Check fixed-link-forced Z reactions with GPU simulation and GPU tensors."""
+        run_scenario(self, _LinkIncomingJointForceFixedZ, "newton", gpu_device())
 
 
 class TestJointFriction:

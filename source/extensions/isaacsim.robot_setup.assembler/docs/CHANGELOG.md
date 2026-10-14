@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.3.9] - 2026-10-02
+### Fixed
+- Reject articulated attachments without a base articulation before editing the stage, excluding the attachment subtree from base-root lookup.
+- Report validation errors from Assemble and Simulate while preserving editable assembly controls.
+- Document Physics variant selection in the UR10e assembly tutorial.
+
+## [3.3.8] - 2026-09-29
+### Added
+- `RobotAssembler.resolve_joint_body_path()` returns the rigid body a joint body target binds to.
+
+### Fixed
+- Assembling onto a mount frame with no rigid body at or above it now raises `ValueError` instead of producing an articulation that silently exposes only the base robot's degrees of freedom.
+- `begin_assembly()` validates both mount frames before editing the stage, so a rejected assembly leaves no session sublayer behind.
+- An empty mount frame is now rejected with an explanatory error; automatic mount frame creation was never implemented.
+
+## [3.3.7] - 2026-09-22
+### Fixed
+- Keep finalization and rollback in one event-loop turn to preserve unrelated queued stage edits on save failure.
+- Author saved assembly payloads in the requested variant even when the session overrides its selection.
+- Hide previous assembly variants only for the active session and restore them on cancellation.
+- Await durable saves, report failures in the UI, and retain failed sessions for retry or cancellation.
+- Preserve saved assembly payloads when a new assembly is cancelled or fails to begin.
+
 ## [3.3.6] - 2026-07-29
 ### Removed
 - Remove unused bundled font assets.

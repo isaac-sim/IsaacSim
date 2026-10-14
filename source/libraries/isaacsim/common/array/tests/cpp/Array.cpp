@@ -17,8 +17,12 @@
 
 #include <doctest/doctest.h>
 #include <isaacsim/common/array/Array.hpp>
+#include <isaacsim/common/array/Functions.hpp>
 
+#include <chrono>
 #include <cstring>
+#include <future>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -50,7 +54,7 @@ public:
 
     std::shared_ptr<std::byte[]> getProtectedData() const
     {
-        return std::get<details::CpuStorage>(m_storage).data;
+        return buffer();
     }
 };
 
@@ -77,6 +81,8 @@ TEST_SUITE("Array")
             CHECK_EQ(array.dtype(), dtype);
             CHECK_EQ(array.device(), device);
             CHECK_EQ(array.shape(), Shape());
+            CHECK_EQ(array.strides(), std::vector<int64_t>{});
+            CHECK_UNARY(array.isContiguous());
         }
 
         SUBCASE("1D Vector: 1-dim shape")
@@ -89,6 +95,8 @@ TEST_SUITE("Array")
             CHECK_EQ(array.dtype(), dtype);
             CHECK_EQ(array.device(), device);
             CHECK_EQ(array.shape(), Shape(3));
+            CHECK_EQ(array.strides(), std::vector<int64_t>{ 1 });
+            CHECK_UNARY(array.isContiguous());
         }
 
         SUBCASE("2D Vector: 2-dim shape")
@@ -101,6 +109,8 @@ TEST_SUITE("Array")
             CHECK_EQ(array.dtype(), dtype);
             CHECK_EQ(array.device(), device);
             CHECK_EQ(array.shape(), Shape({ 2, 3 }));
+            CHECK_EQ(array.strides(), std::vector<int64_t>{ 3, 1 });
+            CHECK_UNARY(array.isContiguous());
         }
     }
 
@@ -286,6 +296,19 @@ TEST_SUITE("Array")
             result.at(0).set(std::vector<float>{ 10.f, 20.f });
             CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 10.f, 20.f, 3.f, 4.f });
         }
+
+        SUBCASE("A non-contiguous array is compacted even when the shape is unchanged")
+        {
+            Array source(std::vector<std::vector<int32_t>>{ { 1, 2 }, { 3, 4 } }, Dtype::Int32(), device);
+            Array transposed = transposeView(source);
+            REQUIRE_FALSE(transposed.isContiguous());
+
+            Array result = transposed.reshape(Shape({ 2, 2 }));
+            CHECK_UNARY(result.isContiguous());
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 2, 1 });
+            CHECK_EQ(result.get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 1, 3 }, { 2, 4 } });
+        }
     }
 
     TEST_CASE("Array::flatten()")
@@ -310,6 +333,20 @@ TEST_SUITE("Array")
         {
             Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
             CHECK_EQ(array.flatten().shape(), Shape({ 3 }));
+        }
+
+        SUBCASE("A strided 1-D array is compacted even though its shape already matches")
+        {
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[6 * sizeof(int32_t)]());
+            const int32_t values[6] = { 1, 2, 3, 4, 5, 6 };
+            std::memcpy(data.get(), values, sizeof(values));
+            Array array = Array::fromBuffer(
+                data, sizeof(values), Shape({ 3 }), Dtype::Int32(), Device::Cpu(), 0, std::vector<int64_t>{ 2 });
+
+            Array result = array.flatten();
+            CHECK_UNARY(result.isContiguous());
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 1 });
+            CHECK_EQ(result.get<std::vector<int32_t>>(), std::vector<int32_t>{ 1, 3, 5 });
         }
 
         SUBCASE("0-D arrays become single-element 1-D arrays")
@@ -545,6 +582,178 @@ TEST_SUITE("Array")
         }
     }
 
+    TEST_CASE("Array::isWriteable()")
+    {
+        auto device = GENERATE(Device::Cpu(), Device::Cuda());
+        SKIP_IF_CUDA_UNAVAILABLE(device);
+
+        SUBCASE("Freshly allocated arrays are writeable")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            CHECK_UNARY(array.isWriteable());
+            array.set(std::vector<float>{ 4.f, 5.f, 6.f });
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 4.f, 5.f, 6.f });
+        }
+
+        SUBCASE("An empty array stays writeable whichever axis has length zero")
+        {
+            // A contiguous layout puts a 0 stride on every axis preceding a zero-length one, which
+            // must not be mistaken for a replicated axis.
+            for (const Shape& shape : { Shape({ 4, 0 }), Shape({ 0, 3 }), Shape({ 0 }) })
+            {
+                Array array = empty(shape, Dtype::Float32(), device);
+                CHECK_UNARY(array.isWriteable());
+                CHECK_NOTHROW(array.data());
+                CHECK_NOTHROW(array.set(0.f));
+                CHECK_UNARY(array.copy().isWriteable());
+                // Arithmetic writes into a freshly allocated result of the same shape.
+                CHECK_NOTHROW(negative(array));
+                CHECK_NOTHROW(add(array, array));
+            }
+        }
+
+        SUBCASE("A replicating broadcast view is read-only")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = array.broadcastView(Shape({ 2, 3 }));
+
+            CHECK_FALSE(view.isWriteable());
+            CHECK_THROWS_AS(view.set(0.f), std::runtime_error);
+            CHECK_THROWS_AS(view.data(), std::runtime_error);
+            // The operand must survive the rejected writes intact.
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+            // Reading through the view stays available.
+            CHECK_EQ(view.get<std::vector<std::vector<float>>>(),
+                     std::vector<std::vector<float>>{ { 1.f, 2.f, 3.f }, { 1.f, 2.f, 3.f } });
+        }
+
+        SUBCASE("A non-replicating broadcast stays writeable")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = array.broadcastView(Shape({ 3 }));
+            CHECK_UNARY(view.isWriteable());
+        }
+
+        SUBCASE("Materializing a broadcast yields a writeable array")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array materialized = array.broadcastView(Shape({ 2, 3 }), true);
+            CHECK_UNARY(materialized.isWriteable());
+            materialized.set(0.f);
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+        }
+
+        SUBCASE("copy() of a read-only view is writeable, and so is contiguous() when it compacts")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = array.broadcastView(Shape({ 2, 3 }));
+            CHECK_UNARY(view.copy().isWriteable());
+            // Only because the replicating strides force an allocation -- contiguous() decides on
+            // layout alone, so it does not lift the restriction from an already-contiguous view.
+            REQUIRE_FALSE(view.isContiguous());
+            CHECK_UNARY(view.contiguous().isWriteable());
+        }
+
+        SUBCASE("Read-only-ness follows the strides through derived views")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = array.broadcastView(Shape({ 2, 3 }));
+
+            // transposeView() and clone() keep the aliasing strides, so they stay read-only.
+            CHECK_FALSE(transposeView(view).isWriteable());
+            CHECK_FALSE(view.clone().isWriteable());
+        }
+
+        SUBCASE("Views created from a read-only array inherit the lock")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = array.broadcastView(Shape({ 2, 3 }));
+
+            // at() drops the replicated axis, so the slice no longer aliases itself -- but it still
+            // aliases the operand, and the lock follows it.
+            Array row = view.at(1);
+            CHECK_FALSE(row.isWriteable());
+            CHECK_THROWS_AS(row.set(0.f), std::runtime_error);
+            CHECK_FALSE(row.reshape(Shape({ 3 })).isWriteable());
+            CHECK_FALSE(transposeView(row).isWriteable());
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+
+            // copy() breaks the chain by allocating an independent buffer.
+            Array independent = row.copy();
+            CHECK_UNARY(independent.isWriteable());
+            independent.set(0.f);
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+        }
+
+        SUBCASE("Moving a read-only array to another device or dtype yields writeable storage")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = array.broadcastView(Shape({ 2, 3 }));
+            CHECK_UNARY(view.toDtype(Dtype::Int32()).isWriteable());
+        }
+
+        SUBCASE("A transposed view of a plain array stays writeable")
+        {
+            Array array(std::vector<std::vector<float>>{ { 1.f, 2.f }, { 3.f, 4.f } }, Dtype::Float32(), device);
+            Array view = transposeView(array);
+            REQUIRE_UNARY(view.isWriteable());
+            view.set(0.f);
+            CHECK_EQ(array.get<std::vector<std::vector<float>>>(),
+                     std::vector<std::vector<float>>{ { 0.f, 0.f }, { 0.f, 0.f } });
+        }
+    }
+
+    TEST_CASE("Array::contiguous()")
+    {
+        auto device = GENERATE(Device::Cpu(), Device::Cuda());
+        SKIP_IF_CUDA_UNAVAILABLE(device);
+
+        SUBCASE("Already contiguous arrays share storage")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array result = array.contiguous();
+            CHECK_UNARY(result.isContiguous());
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 1 });
+            CHECK_EQ(result.buffer().get(), array.buffer().get());
+        }
+
+        SUBCASE("Strided arrays are compacted in logical order")
+        {
+            Array source(std::vector<std::vector<int32_t>>{ { 1, 2, 3 }, { 4, 5, 6 } }, Dtype::Int32(), device);
+            Array array = transposeView(source);
+
+            Array result = array.contiguous();
+            CHECK_UNARY(result.isContiguous());
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 2, 1 });
+            CHECK_NE(result.buffer().get(), array.buffer().get());
+            CHECK_EQ(result.get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 1, 4 }, { 2, 5 }, { 3, 6 } });
+        }
+
+        SUBCASE("A contiguous read-only array is returned unchanged and stays read-only")
+        {
+            // Layout is the only thing contiguous() considers, so it has no reason to allocate here
+            // and cannot lift the inherited restriction. Slicing the replicating axis off a broadcast
+            // is what produces a view that is contiguous and read-only at the same time.
+            Array source(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            Array view = source.broadcastView(Shape({ 2, 3 }));
+            Array slice = view.at(0);
+            REQUIRE_UNARY(slice.isContiguous());
+            REQUIRE_FALSE(slice.isWriteable());
+
+            Array result = slice.contiguous();
+            CHECK_EQ(result.buffer().get(), slice.buffer().get());
+            CHECK_FALSE(result.isWriteable());
+            CHECK_THROWS_AS(result.set(0.f), std::runtime_error);
+            CHECK_EQ(result.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+
+            // copy() is the escape hatch the read-only error message points at.
+            Array writeable = slice.copy();
+            CHECK_UNARY(writeable.isWriteable());
+            CHECK_NE(writeable.buffer().get(), slice.buffer().get());
+        }
+    }
+
     TEST_CASE("Array::clone()")
     {
         auto device = GENERATE(Device::Cpu(), Device::Cuda());
@@ -584,7 +793,7 @@ TEST_SUITE("Array")
         }
     }
 
-    TEST_CASE("Array::broadcastTo()")
+    TEST_CASE("Array::broadcastView()")
     {
         auto device = GENERATE(Device::Cpu(), Device::Cuda());
         SKIP_IF_CUDA_UNAVAILABLE(device);
@@ -595,7 +804,7 @@ TEST_SUITE("Array")
             Array result(0);
 
             // Argument: copy=true (no mutation of array)
-            result = array.broadcastTo(Shape({ 3 }), true);
+            result = array.broadcastView(Shape({ 3 }), true);
             CHECK_EQ(result.shape(), Shape({ 3 }));
             CHECK_EQ(result.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
             result.set(std::vector<float>{ 10.f, 20.f, 30.f });
@@ -603,7 +812,7 @@ TEST_SUITE("Array")
             CHECK_EQ(result.get<std::vector<float>>(), std::vector<float>{ 10.f, 20.f, 30.f });
 
             // Argument: copy=false (mutation of result propagates to array)
-            result = array.broadcastTo(Shape({ 3 }), false);
+            result = array.broadcastView(Shape({ 3 }), false);
             CHECK_EQ(result.shape(), Shape({ 3 }));
             CHECK_EQ(result.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
             result.set(std::vector<float>{ 10.f, 20.f, 30.f });
@@ -618,7 +827,7 @@ TEST_SUITE("Array")
 
             // Scalar (0-dim) broadcast to N-dim
             array = Array(7.f, Dtype::Float32(), device);
-            result = array.broadcastTo(Shape({ 2, 3 }));
+            result = array.broadcastView(Shape({ 2, 3 }));
             CHECK_EQ(result.device(), device);
             CHECK_EQ(result.shape(), Shape({ 2, 3 }));
             CHECK_EQ(result.get<std::vector<std::vector<float>>>(),
@@ -626,21 +835,25 @@ TEST_SUITE("Array")
 
             // 1-D array broadcast to 2-D (trailing dimension matches)
             array = Array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
-            result = array.broadcastTo(Shape({ 2, 3 }));
+            result = array.broadcastView(Shape({ 2, 3 }));
             CHECK_EQ(result.shape(), Shape({ 2, 3 }));
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 0, 1 });
+            CHECK_EQ(result.buffer().get(), array.buffer().get());
+            CHECK_FALSE(result.isContiguous());
             CHECK_EQ(result.get<std::vector<std::vector<float>>>(),
                      std::vector<std::vector<float>>{ { 1.f, 2.f, 3.f }, { 1.f, 2.f, 3.f } });
 
             // 2-D array with a size-1 axis broadcast to a larger 2-D shape
             array = Array(std::vector<std::vector<float>>{ { 1.f }, { 2.f } }, Dtype::Float32(), device);
-            result = array.broadcastTo(Shape({ 2, 3 }));
+            result = array.broadcastView(Shape({ 2, 3 }));
             CHECK_EQ(result.shape(), Shape({ 2, 3 }));
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 1, 0 });
             CHECK_EQ(result.get<std::vector<std::vector<float>>>(),
                      std::vector<std::vector<float>>{ { 1.f, 1.f, 1.f }, { 2.f, 2.f, 2.f } });
 
             // 2-D array with a leading size-1 axis broadcast to more rows
             array = Array(std::vector<std::vector<float>>{ { 1.f, 2.f, 3.f } }, Dtype::Float32(), device);
-            result = array.broadcastTo(Shape({ 4, 3 }));
+            result = array.broadcastView(Shape({ 4, 3 }));
             CHECK_EQ(result.shape(), Shape({ 4, 3 }));
             CHECK_EQ(result.get<std::vector<std::vector<float>>>(),
                      std::vector<std::vector<float>>{
@@ -648,7 +861,7 @@ TEST_SUITE("Array")
 
             // 1-D array broadcast to 3-D adds leading broadcast axes
             array = Array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
-            result = array.broadcastTo(Shape({ 2, 2, 3 }));
+            result = array.broadcastView(Shape({ 2, 2, 3 }));
             CHECK_EQ(result.shape(), Shape({ 2, 2, 3 }));
             for (int64_t i = 0; i < 2; ++i)
             {
@@ -660,7 +873,7 @@ TEST_SUITE("Array")
 
             // Non-contiguous broadcast of a wider dtype (element size > 4 bytes)
             array = Array(std::vector<std::vector<double>>{ { 1.0 }, { 2.0 } }, Dtype::Float64(), device);
-            result = array.broadcastTo(Shape({ 2, 3 }));
+            result = array.broadcastView(Shape({ 2, 3 }));
             CHECK_EQ(result.dtype(), Dtype::Float64());
             CHECK_EQ(result.get<std::vector<std::vector<double>>>(),
                      std::vector<std::vector<double>>{ { 1.0, 1.0, 1.0 }, { 2.0, 2.0, 2.0 } });
@@ -670,14 +883,51 @@ TEST_SUITE("Array")
         {
             Array array(
                 std::vector<std::vector<float>>{ { 1.f, 2.f, 3.f }, { 4.f, 5.f, 6.f } }, Dtype::Float32(), device);
-            CHECK_THROWS_AS(array.broadcastTo(Shape({ 2, 4 })), std::invalid_argument);
-            CHECK_THROWS_AS(array.broadcastTo(Shape({ 2, 2 })), std::invalid_argument);
-            CHECK_THROWS_AS(array.broadcastTo(Shape({ 3, 3 })), std::invalid_argument);
+            CHECK_THROWS_AS(array.broadcastView(Shape({ 2, 4 })), std::invalid_argument);
+            CHECK_THROWS_AS(array.broadcastView(Shape({ 2, 2 })), std::invalid_argument);
+            CHECK_THROWS_AS(array.broadcastView(Shape({ 3, 3 })), std::invalid_argument);
         }
     }
 
     TEST_CASE("Array::set()")
     {
+        auto device = GENERATE(Device::Cpu(), Device::Cuda());
+        SKIP_IF_CUDA_UNAVAILABLE(device);
+
+        SUBCASE("A source that aliases the destination is read before it is overwritten")
+        {
+            Array array(std::vector<std::vector<float>>{ { 1.f, 2.f }, { 3.f, 4.f } }, Dtype::Float32(), device);
+            array.set(transposeView(array));
+            CHECK_EQ(array.get<std::vector<std::vector<float>>>(),
+                     std::vector<std::vector<float>>{ { 1.f, 3.f }, { 2.f, 4.f } });
+        }
+
+        SUBCASE("Assigning an array to itself leaves it unchanged")
+        {
+            Array array(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
+            array.set(array);
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+
+            array.set(array.broadcastView(Shape({ 3 })));
+            CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
+        }
+
+        SUBCASE("A strided destination is written through its strides")
+        {
+            Array array(std::vector<std::vector<int32_t>>{ { 1, 2, 3 }, { 4, 5, 6 } }, Dtype::Int32(), device);
+            Array view = transposeView(array);
+            view.set(
+                Array(std::vector<std::vector<int32_t>>{ { 10, 40 }, { 20, 50 }, { 30, 60 } }, Dtype::Int32(), device));
+            CHECK_EQ(array.get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 10, 20, 30 }, { 40, 50, 60 } });
+        }
+
+        SUBCASE("A shape-incompatible source is rejected even when the destination is empty")
+        {
+            Array array = empty(Shape({ 0, 3 }), Dtype::Float32(), device);
+            CHECK_THROWS_AS(
+                array.set(Array(std::vector<float>{ 1.f, 2.f }, Dtype::Float32(), device)), std::invalid_argument);
+        }
     }
 
     TEST_CASE("Array::fromBuffer()")
@@ -688,10 +938,11 @@ TEST_SUITE("Array")
             const int32_t values[6] = { 1, 2, 3, 4, 5, 6 };
             std::memcpy(data.get(), values, sizeof(values));
 
-            Array array = Array::fromBuffer(data, Shape({ 2, 3 }), Dtype::Int32());
+            Array array = Array::fromBuffer(data, sizeof(values), Shape({ 2, 3 }), Dtype::Int32());
             CHECK_EQ(array.shape(), Shape({ 2, 3 }));
             CHECK_EQ(array.dtype(), Dtype::Int32());
             CHECK_EQ(array.device(), Device::Cpu());
+            CHECK_EQ(array.capacity(), sizeof(values));
             CHECK_EQ(array.get<std::vector<std::vector<int32_t>>>(),
                      std::vector<std::vector<int32_t>>{ { 1, 2, 3 }, { 4, 5, 6 } });
 
@@ -713,8 +964,130 @@ TEST_SUITE("Array")
             std::memcpy(data.get(), values, sizeof(values));
 
             // Skip the first element via the byte offset.
-            Array array = Array::fromBuffer(data, Shape({ 3 }), Dtype::Float32(), Device::Cpu(), sizeof(float));
+            Array array =
+                Array::fromBuffer(data, sizeof(values), Shape({ 3 }), Dtype::Float32(), Device::Cpu(), sizeof(float));
             CHECK_EQ(array.get<std::vector<float>>(), std::vector<float>{ 20.f, 30.f, 40.f });
+            CHECK_EQ(array.capacity(), sizeof(values));
+        }
+
+        SUBCASE("Preserves explicit element strides")
+        {
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[6 * sizeof(int32_t)]());
+            const int32_t values[6] = { 1, 2, 3, 4, 5, 6 };
+            std::memcpy(data.get(), values, sizeof(values));
+
+            Array array = Array::fromBuffer(
+                data, sizeof(values), Shape({ 3, 2 }), Dtype::Int32(), Device::Cpu(), 0, std::vector<int64_t>{ 1, 3 });
+            CHECK_EQ(array.strides(), std::vector<int64_t>{ 1, 3 });
+            CHECK_FALSE(array.isContiguous());
+            CHECK_EQ(array.get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 1, 4 }, { 2, 5 }, { 3, 6 } });
+
+            array.set(std::vector<std::vector<int32_t>>{ { 10, 40 }, { 20, 50 }, { 30, 60 } });
+            CHECK_EQ(*reinterpret_cast<int32_t*>(data.get()), 10);
+            CHECK_EQ(array.contiguous().get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 10, 40 }, { 20, 50 }, { 30, 60 } });
+        }
+
+        SUBCASE("Rejects invalid strides")
+        {
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[4 * sizeof(float)]());
+            CHECK_THROWS_AS(Array::fromBuffer(data, 4 * sizeof(float), Shape({ 2, 2 }), Dtype::Float32(), Device::Cpu(),
+                                              0, std::vector<int64_t>{ 1 }),
+                            std::invalid_argument);
+            CHECK_THROWS_AS(Array::fromBuffer(data, 4 * sizeof(float), Shape({ 2, 2 }), Dtype::Float32(), Device::Cpu(),
+                                              0, std::vector<int64_t>{ 2, -1 }),
+                            std::invalid_argument);
+        }
+
+        SUBCASE("Rejects a strided span that overflows size_t")
+        {
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[4 * sizeof(float)]());
+            const int64_t hugeStride = int64_t{ 1 } << 62;
+            CHECK_THROWS_AS(Array::fromBuffer(data, 4 * sizeof(float), Shape({ 2, 2 }), Dtype::Float32(), Device::Cpu(),
+                                              0, std::vector<int64_t>{ hugeStride, 1 }),
+                            std::overflow_error);
+        }
+
+        SUBCASE("Rejects views outside the declared allocation")
+        {
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[4 * sizeof(float)]());
+            CHECK_THROWS_AS(
+                Array::fromBuffer(data, 3 * sizeof(float), Shape({ 4 }), Dtype::Float32()), std::invalid_argument);
+            CHECK_THROWS_AS(Array::fromBuffer(data, 4 * sizeof(float), Shape({ 2, 2 }), Dtype::Float32(), Device::Cpu(),
+                                              0, std::vector<int64_t>{ 3, 1 }),
+                            std::invalid_argument);
+            CHECK_THROWS_AS(Array::fromBuffer(data, 4 * sizeof(float), Shape({ 1 }), Dtype::Float32(), Device::Cpu(),
+                                              4 * sizeof(float)),
+                            std::invalid_argument);
+        }
+
+        SUBCASE("Rejects a null buffer for non-empty views")
+        {
+            std::shared_ptr<std::byte[]> data;
+            CHECK_THROWS_AS(
+                Array::fromBuffer(data, sizeof(float), Shape({ 1 }), Dtype::Float32()), std::invalid_argument);
+            CHECK_NOTHROW(Array::fromBuffer(data, 0, Shape({ 0 }), Dtype::Float32()));
+        }
+
+        SUBCASE("Rejects a host pointer declared as CUDA storage")
+        {
+            const Device device = Device::Cuda();
+            SKIP_IF_CUDA_UNAVAILABLE(device);
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[sizeof(float)]);
+            CHECK_THROWS_AS(Array::fromBuffer(std::move(data), sizeof(float), Shape({ 1 }), Dtype::Float32(), device),
+                            std::invalid_argument);
+        }
+
+        SUBCASE("A buffer round-trip preserves storage access serialization")
+        {
+            using namespace std::chrono_literals;
+
+            Array source(std::vector<int32_t>{ 1, 2, 3 });
+            Array alias =
+                Array::fromBuffer(source.buffer(), source.capacity(), source.shape(), source.dtype(), source.device());
+            ArrayReadAccess reader = acquireRead(source);
+            auto writer = std::async(std::launch::async, [&] { return acquireWrite(alias); });
+            CHECK_EQ(writer.wait_for(20ms), std::future_status::timeout);
+            reader.release();
+            CHECK_EQ(writer.wait_for(1s), std::future_status::ready);
+            ArrayWriteAccess writeAccess = writer.get();
+            CHECK_EQ(writeAccess.data(), alias.data());
+            CHECK_THROWS_AS(Array::fromBuffer(source.buffer(), sizeof(int32_t), Shape({ 2 }), Dtype::Int32()),
+                            std::invalid_argument);
+        }
+
+        SUBCASE("An empty array with unbounded strides rejects an overflowing at()")
+        {
+            // An empty array reaches no element, so its span is 0 and the constructor's
+            // offset-plus-span check cannot bound its strides. Indexing axis 0 still scales by
+            // that stride, so at() has to reject the overflow itself rather than wrapping to a
+            // pointer outside the allocation.
+            auto data = std::shared_ptr<std::byte[]>(new std::byte[4 * sizeof(float)]());
+            const int64_t hugeStride = static_cast<int64_t>(std::numeric_limits<size_t>::max() / sizeof(float));
+            Array empty = Array::fromBuffer(data, 4 * sizeof(float), Shape({ 3, 0 }), Dtype::Float32(), Device::Cpu(),
+                                            0, std::vector<int64_t>{ hugeStride, 1 });
+            REQUIRE_EQ(empty.size(), 0);
+            CHECK_THROWS_AS(empty.at(2), std::overflow_error);
+            // Index 0 scales the stride to nothing, so it stays a valid (empty) view.
+            CHECK_NOTHROW(empty.at(0));
+        }
+
+        SUBCASE("Preserves explicit element strides on a device buffer")
+        {
+            SKIP_IF_CUDA_UNAVAILABLE(Device::Cuda());
+
+            Array source(std::vector<std::vector<int32_t>>{ { 1, 2, 3 }, { 4, 5, 6 } }, Dtype::Int32(), Device::Cuda());
+            Array array = Array::fromBuffer(source.buffer(), source.capacity(), Shape({ 3, 2 }), Dtype::Int32(),
+                                            Device::Cuda(), 0, std::vector<int64_t>{ 1, 3 });
+            CHECK_EQ(array.strides(), std::vector<int64_t>{ 1, 3 });
+            CHECK_FALSE(array.isContiguous());
+            CHECK_EQ(array.get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 1, 4 }, { 2, 5 }, { 3, 6 } });
+
+            array.set(std::vector<std::vector<int32_t>>{ { 10, 40 }, { 20, 50 }, { 30, 60 } });
+            CHECK_EQ(source.get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 10, 20, 30 }, { 40, 50, 60 } });
         }
 
         SUBCASE("Aliases a device buffer without copying")
@@ -724,7 +1097,7 @@ TEST_SUITE("Array")
             Array source(std::vector<std::vector<float>>{ { 1.f, 2.f }, { 3.f, 4.f } }, Dtype::Float32(), Device::Cuda());
             std::shared_ptr<std::byte[]> data = source.buffer();
 
-            Array array = Array::fromBuffer(data, Shape({ 2, 2 }), Dtype::Float32(), Device::Cuda());
+            Array array = Array::fromBuffer(data, source.capacity(), Shape({ 2, 2 }), Dtype::Float32(), Device::Cuda());
             CHECK_EQ(array.device(), Device::Cuda());
             CHECK_EQ(static_cast<const void*>(data.get()), array.data());
             CHECK_EQ(array.get<std::vector<std::vector<float>>>(),
@@ -736,12 +1109,13 @@ TEST_SUITE("Array")
                      std::vector<std::vector<float>>{ { 10.f, 20.f }, { 3.f, 4.f } });
 
             // The buffer's own deleter is preserved: the device memory outlives the source Array.
-            Array kept = Array::fromBuffer(data, Shape({ 4 }), Dtype::Float32(), Device::Cuda());
+            Array kept = Array::fromBuffer(data, source.capacity(), Shape({ 4 }), Dtype::Float32(), Device::Cuda());
             source = Array(0);
             CHECK_EQ(kept.get<std::vector<float>>(), std::vector<float>{ 10.f, 20.f, 3.f, 4.f });
 
             // Honors a non-zero offset into the shared device buffer.
-            Array offsetArray = Array::fromBuffer(data, Shape({ 3 }), Dtype::Float32(), Device::Cuda(), sizeof(float));
+            Array offsetArray =
+                Array::fromBuffer(data, kept.capacity(), Shape({ 3 }), Dtype::Float32(), Device::Cuda(), sizeof(float));
             CHECK_EQ(offsetArray.get<std::vector<float>>(), std::vector<float>{ 20.f, 3.f, 4.f });
         }
     }
@@ -763,7 +1137,7 @@ TEST_SUITE("Array")
         if (device.isCuda())
         {
             float values[2] = {};
-            CudaRuntime::getInstance().cudaMemcpy(values, subarray.data(), sizeof(values), cudaMemcpyDeviceToHost);
+            CudaRuntime::getInstance().cudaMemcpy(values, subarray.data(), sizeof(values));
             CHECK_EQ(values[0], doctest::Approx(3.f));
             CHECK_EQ(values[1], doctest::Approx(4.f));
         }
@@ -831,6 +1205,15 @@ TEST_SUITE("Array")
             keepalive = temporary.buffer();
         }
         CHECK_UNARY(keepalive != nullptr);
-        CHECK_EQ(keepalive.use_count(), 1);
+        // CUDA retirement may temporarily hold another owner until the constructor's
+        // asynchronous copy completes. CPU storage has no deferred retirement.
+        if (device.isCpu())
+        {
+            CHECK_EQ(keepalive.use_count(), 1);
+        }
+        else
+        {
+            CHECK_GE(keepalive.use_count(), 1);
+        }
     }
 }

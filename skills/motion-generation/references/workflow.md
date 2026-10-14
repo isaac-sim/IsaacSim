@@ -16,6 +16,33 @@ cuMotion `RmpFlowController` specifics see `cumotion.md`.
 - **Interactive `BaseSample` extension**: use only after the core sequence is
   stable. Port setup/reset/callback structure, not old IK APIs.
 
+## Python-server iteration
+
+For a Kit demo, invoke `isaac-sim-remote` and follow its
+[launch and health-check procedure](../../isaac-sim-remote/references/workflows.md).
+Reuse a healthy session or launch a server-enabled application and wait for its
+health check to succeed before controller development. From the `skills/`
+directory, the host-side client commands are:
+
+```bash
+python3 isaac-sim-remote/scripts/isaacsim_send.py --file isaac-sim-remote/scripts/health_check.py
+python3 isaac-sim-remote/scripts/isaacsim_send.py --file /tmp/motion_iteration.py
+```
+
+Create `/tmp/motion_iteration.py` with scene setup/control logic for the already
+running application. Do not put `SimulationApp` construction or standalone
+startup in it. Iterate by editing and resending this file, resetting scene and
+controller state between attempts. Step asynchronously using
+`await app_utils.update_app_async()` so the server remains responsive. Inspect
+client responses for execution errors and retain phase/physics validation
+results from the server session.
+
+Only after live validation, package the standalone entry point and run its
+handoff/capture check. A video request authorizes recording; it does not select
+standalone development. A user-requested standalone validation is an explicit
+exception. If server setup fails, report the actual error and incomplete
+workflow validation instead of claiming success through a standalone fallback.
+
 ## Demo checklist
 
 1. Define task success as measured state transitions, not just tool motion.
@@ -54,6 +81,10 @@ not apply to the task.
 
 Motion phases should converge on measured state. A timeout in a motion phase is
 a failed or incomplete phase, even if a final pose oracle happens to pass.
+Terminate the attempt and emit failure with the phase, elapsed time, and measured
+pose errors on timeout. Never advance or release the object after a failed
+required phase. Overall PASS requires all required phases and physical gates
+to pass in the same run; an interrupted run is incomplete.
 Fixed-frame completion is only acceptable for intentional dwell, hold-open, or
 settle phases.
 
@@ -61,7 +92,12 @@ settle phases.
 
 Use [`scripts/cumotion/standalone_demo_template.py`](../scripts/cumotion/standalone_demo_template.py)
 as a starting point for standalone demos. It owns `SimulationApp` construction and
-the required post-app imports.
+the required post-app imports. It measures tool pose convergence and fails on
+timeout, including with `--test`; it does not implement physical pick-and-place
+validation. Its `MOTION_COMPLETE` result only covers tool motion. Add measured
+grasp/hold, transport, release, and settled object-pose gates before reporting
+task PASS. Resolve the controller tool frame to its measured scene prim; if it
+is a virtual frame, implement the calibrated frame transform explicitly.
 
 Do not copy standalone startup calls into Python-server probes. In particular,
 `SimulationManager.setup_simulation(...)` belongs in standalone `SimulationApp`

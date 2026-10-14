@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.11.0] - 2026-09-29
+### Added
+- `GainTuner.apply_self_collision_override` / `restore_self_collision_override` / `self_collision_override_active`: disable articulation self-collisions under PhysX and Newton for a test run, without modifying the asset. Applying reports when a stronger opinion on the stage keeps them enabled.
+
+### Changed
+- Joint setup and the inertia link tree read the robot's `robotJoints` and `robotLinks` relationships, including nested robots those relationships name.
+
+### Fixed
+- Joints listed after a DOF the robot schema does not cover no longer show another joint's name and type.
+- Joint setup names the articulation DOFs missing from the robot schema.
+
 ## [3.10.0] - 2026-08-30
 ### Added
 - `joint_schema_attrs`: the advanced joint params (armature, joint friction, max joint velocity) as per-backend values. `resolve_joint_param` / `resolve_joint_params` return a `JointParamResolution` naming every schema's authored value, the schema the given backend and solver actually resolve, the effective value, and which authored values are shadowed or never read. Reads follow Newton's real schema-resolver order rather than assuming one schema per backend: under Newton an unauthored `newton:armature` / `newton:velocityLimit` falls back to `physxJoint:*`, `newton:friction` has no PhysX fallback at all, and under the MuJoCo solver `mjc:armature` and `mjc:frictionloss` resolve ahead of PhysX. `resolver_chain` / `param_resolver_chain` / `candidate_param_chains` expose the chain, and report it as undetermined when the solver is unknown rather than assuming the non-MuJoCo order.

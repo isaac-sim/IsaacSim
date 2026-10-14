@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve the M1 display-color getter names and `shapes::ColorType` spelling while retaining the newer color setters.
+  The getters retain their historical placeholder values; they do not read authored colors. The Mesh Python getter
+  returns a zero-dimensional NumPy int32 array because Warp cannot represent the native scalar placeholder.
+
+- Initialize the dependency-owned OVStage runtime before loading the Python bindings.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

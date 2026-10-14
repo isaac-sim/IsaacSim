@@ -24,9 +24,10 @@ import numpy as np
 import omni.kit.stage_templates
 import omni.kit.test
 import omni.usd
+import omni.usd.editor
 import usdrt
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Usd, UsdGeom, UsdLux, UsdPhysics, UsdUtils
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, UsdUtils
 
 
 class TestStage(omni.kit.test.AsyncTestCase):
@@ -42,7 +43,9 @@ class TestStage(omni.kit.test.AsyncTestCase):
     async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         # ------------------
-        stage_utils.close_stage()
+        if omni.usd.get_context().get_stage() is not None:
+            stage_utils.close_stage()
+            await omni.kit.app.get_app().next_update_async()
         # ------------------
         super().tearDown()
 
@@ -164,6 +167,33 @@ class TestStage(omni.kit.test.AsyncTestCase):
             self.assertIsNotNone(omni.usd.get_context().get_stage())
             self.assertTrue(stage.GetPrimAtPath("/World/panda/panda_hand").IsValid())
 
+    async def test_save_stage_in_place(self) -> None:
+        """Test saving an opened stage back to the same file."""
+        await stage_utils.create_new_stage_async()
+        stage_utils.define_prim("/World/Original")
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+            tmp_file = os.path.join(tmp_dir, "test_save_stage_in_place.usda")
+            self.assertTrue(stage_utils.save_stage(tmp_file))
+            self.assertTrue(stage_utils.close_stage())
+
+            result, stage = stage_utils.open_stage(tmp_file)
+            self.assertTrue(result)
+            stage_utils.define_prim("/World/InPlaceEdit")
+            self.assertTrue(stage_utils.save_stage(tmp_file))
+
+            if os.name != "nt":
+                symlink_dir = os.path.join(tmp_dir, "symlink")
+                os.symlink(tmp_dir, symlink_dir, target_is_directory=True)
+                stage_utils.define_prim("/World/SymlinkEdit")
+                self.assertTrue(stage_utils.save_stage(os.path.join(symlink_dir, os.path.basename(tmp_file))))
+
+            self.assertTrue(stage_utils.close_stage())
+            result, stage = stage_utils.open_stage(tmp_file)
+            self.assertTrue(result)
+            self.assertTrue(stage.GetPrimAtPath("/World/InPlaceEdit").IsValid())
+            if os.name != "nt":
+                self.assertTrue(stage.GetPrimAtPath("/World/SymlinkEdit").IsValid())
+
     async def test_add_reference_to_stage(self) -> None:
         """Test add reference to stage."""
         assets_root_path = await get_assets_root_path_async(skip_check=True)
@@ -277,6 +307,244 @@ class TestStage(omni.kit.test.AsyncTestCase):
         self.assertRaisesRegex(ValueError, "not a valid path string", stage_utils.move_prim, "/World/B", "?")
         # - destination path has unexisting parents
         self.assertRaisesRegex(ValueError, "unexisting parent", stage_utils.move_prim, "/World/B", "/World/X/Y")
+
+    async def test_delete_and_move_prim_use_stage_override(self) -> None:
+        """Test deleting and moving prims on a detached stage override."""
+        context_stage = await stage_utils.create_new_stage_async()
+        stage_utils.define_prim("/World/DeleteTarget")
+        stage_utils.define_prim("/World/MoveTarget")
+
+        detached_stage = Usd.Stage.CreateInMemory()
+        detached_stage.DefinePrim("/World", "Xform")
+        detached_stage.DefinePrim("/World/DeleteTarget", "Xform")
+        detached_stage.DefinePrim("/World/MoveTarget", "Xform")
+
+        with stage_utils.use_stage(detached_stage):
+            self.assertTrue(stage_utils.delete_prim("/World/DeleteTarget"))
+            result, path = stage_utils.move_prim("/World/MoveTarget", "/World/Moved")
+
+        self.assertTrue(result)
+        self.assertEqual(path, "/World/Moved")
+        self.assertFalse(detached_stage.GetPrimAtPath("/World/DeleteTarget").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/World/MoveTarget").IsValid())
+        self.assertTrue(detached_stage.GetPrimAtPath("/World/Moved").IsValid())
+        self.assertTrue(context_stage.GetPrimAtPath("/World/DeleteTarget").IsValid())
+        self.assertTrue(context_stage.GetPrimAtPath("/World/MoveTarget").IsValid())
+        self.assertFalse(context_stage.GetPrimAtPath("/World/Moved").IsValid())
+
+    async def test_delete_and_move_prim_use_layered_stage_override(self) -> None:
+        """Test detached-stage mutations across the local layer stack."""
+        sublayer = Sdf.Layer.CreateAnonymous()
+        Sdf.CreatePrimInLayer(sublayer, "/DeleteTarget").specifier = Sdf.SpecifierDef
+        Sdf.CreatePrimInLayer(sublayer, "/MoveTarget").specifier = Sdf.SpecifierDef
+        root_layer = Sdf.Layer.CreateAnonymous()
+        root_layer.subLayerPaths.append(sublayer.identifier)
+        detached_stage = Usd.Stage.Open(root_layer)
+
+        detached_stage.OverridePrim("/DeleteTarget").CreateAttribute("rootOpinion", Sdf.ValueTypeNames.Bool).Set(True)
+        detached_stage.OverridePrim("/MoveTarget").CreateAttribute("rootOpinion", Sdf.ValueTypeNames.Bool).Set(True)
+        observer = detached_stage.DefinePrim("/Observer", "Xform")
+        observer.CreateRelationship("target").SetTargets(["/MoveTarget"])
+        detached_stage.SetDefaultPrim(detached_stage.GetPrimAtPath("/MoveTarget"))
+
+        with stage_utils.use_stage(detached_stage):
+            self.assertTrue(stage_utils.delete_prim("/DeleteTarget"))
+            result, path = stage_utils.move_prim("/MoveTarget", "/Moved")
+
+        self.assertTrue(result)
+        self.assertEqual(path, "/Moved")
+        self.assertFalse(detached_stage.GetPrimAtPath("/DeleteTarget").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/MoveTarget").IsValid())
+        self.assertTrue(detached_stage.GetPrimAtPath("/Moved").IsValid())
+        for layer in [root_layer, sublayer]:
+            self.assertIsNone(layer.GetPrimAtPath("/DeleteTarget"))
+            self.assertIsNone(layer.GetPrimAtPath("/MoveTarget"))
+            self.assertIsNotNone(layer.GetPrimAtPath("/Moved"))
+        self.assertEqual(detached_stage.GetPrimAtPath("/Observer").GetRelationship("target").GetTargets(), ["/Moved"])
+        self.assertEqual(detached_stage.GetDefaultPrim().GetPath(), "/Moved")
+
+    async def test_detached_prim_mutations_reject_ancestral_prims(self) -> None:
+        """Test that unsupported composed mutations do not partially edit a detached stage."""
+        asset_layer = Sdf.Layer.CreateAnonymous()
+        Sdf.CreatePrimInLayer(asset_layer, "/Model").specifier = Sdf.SpecifierDef
+        Sdf.CreatePrimInLayer(asset_layer, "/Model/Child").specifier = Sdf.SpecifierDef
+        asset_layer.defaultPrim = "Model"
+
+        detached_stage = Usd.Stage.CreateInMemory()
+        detached_stage.DefinePrim("/Reference", "Xform").GetReferences().AddReference(asset_layer.identifier)
+        original_contents = detached_stage.GetRootLayer().ExportToString()
+
+        with stage_utils.use_stage(detached_stage):
+            self.assertFalse(stage_utils.delete_prim("/Reference/Child"))
+            result, path = stage_utils.move_prim("/Reference/Child", "/Moved")
+
+        self.assertFalse(result)
+        self.assertEqual(path, "/Moved")
+        self.assertEqual(detached_stage.GetRootLayer().ExportToString(), original_contents)
+        self.assertTrue(detached_stage.GetPrimAtPath("/Reference/Child").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/Moved").IsValid())
+
+    async def test_detached_prim_mutations_respect_no_delete(self) -> None:
+        """Test that detached-stage mutations honor Kit's no-delete metadata."""
+        detached_stage = Usd.Stage.CreateInMemory()
+        delete_target = detached_stage.DefinePrim("/DeleteTarget", "Xform")
+        move_target = detached_stage.DefinePrim("/MoveTarget", "Xform")
+        omni.usd.editor.set_no_delete(delete_target, True)
+        omni.usd.editor.set_no_delete(move_target, True)
+        original_contents = detached_stage.GetRootLayer().ExportToString()
+
+        with stage_utils.use_stage(detached_stage):
+            self.assertFalse(stage_utils.delete_prim(delete_target))
+            result, path = stage_utils.move_prim(move_target, "/Moved")
+
+        self.assertFalse(result)
+        self.assertEqual(path, "/Moved")
+        self.assertEqual(detached_stage.GetRootLayer().ExportToString(), original_contents)
+        self.assertTrue(detached_stage.GetPrimAtPath("/DeleteTarget").IsValid())
+        self.assertTrue(detached_stage.GetPrimAtPath("/MoveTarget").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/Moved").IsValid())
+
+    async def test_move_prim_preserves_detached_stage_load_rules(self) -> None:
+        """Test that payload load rules follow a prim moved on a detached stage."""
+        payload_layer = Sdf.Layer.CreateAnonymous()
+        Sdf.CreatePrimInLayer(payload_layer, "/Payload").specifier = Sdf.SpecifierDef
+        Sdf.CreatePrimInLayer(payload_layer, "/Payload/Child").specifier = Sdf.SpecifierDef
+        payload_layer.defaultPrim = "Payload"
+
+        detached_stage = Usd.Stage.CreateInMemory()
+        detached_stage.DefinePrim("/World", "Xform")
+        source = detached_stage.DefinePrim("/World/Source", "Xform")
+        source.GetPayloads().AddPayload(payload_layer.identifier)
+        load_rules = Usd.StageLoadRules.LoadAll()
+        load_rules.AddRule("/World/Source", Usd.StageLoadRules.NoneRule)
+        detached_stage.SetLoadRules(load_rules)
+        self.assertFalse(source.IsLoaded())
+
+        with stage_utils.use_stage(detached_stage):
+            result, path = stage_utils.move_prim("/World/Source", "/World/Moved")
+
+        self.assertTrue(result)
+        self.assertEqual(path, "/World/Moved")
+        moved = detached_stage.GetPrimAtPath("/World/Moved")
+        self.assertTrue(moved.IsValid())
+        self.assertFalse(moved.IsLoaded())
+        self.assertEqual(
+            detached_stage.GetLoadRules().GetEffectiveRuleForPath("/World/Moved"), Usd.StageLoadRules.NoneRule
+        )
+        self.assertFalse(any(path.HasPrefix("/World/Source") for path, _ in detached_stage.GetLoadRules().GetRules()))
+
+    async def test_move_prim_rejects_hidden_detached_dependency(self) -> None:
+        """Test that a hidden relationship dependency prevents a partial detached-stage move."""
+        detached_stage = Usd.Stage.CreateInMemory()
+        detached_stage.DefinePrim("/World", "Xform")
+        detached_stage.DefinePrim("/World/MoveTarget", "Xform")
+        controller = detached_stage.DefinePrim("/World/Controller", "Xform")
+        variants = controller.GetVariantSets().AddVariantSet("mode")
+        variants.AddVariant("selected")
+        variants.AddVariant("hidden")
+        variants.SetVariantSelection("selected")
+        with variants.GetVariantEditContext():
+            controller.CreateRelationship("target").SetTargets(["/World/Other"])
+        variants.SetVariantSelection("hidden")
+        with variants.GetVariantEditContext():
+            controller.CreateRelationship("target").SetTargets(["/World/MoveTarget"])
+        variants.SetVariantSelection("selected")
+        original_contents = detached_stage.GetRootLayer().ExportToString()
+
+        with stage_utils.use_stage(detached_stage):
+            result, path = stage_utils.move_prim("/World/MoveTarget", "/World/Moved")
+
+        self.assertFalse(result)
+        self.assertEqual(path, "/World/Moved")
+        self.assertEqual(detached_stage.GetRootLayer().ExportToString(), original_contents)
+        self.assertTrue(detached_stage.GetPrimAtPath("/World/MoveTarget").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/World/Moved").IsValid())
+        variants.SetVariantSelection("hidden")
+        self.assertEqual(controller.GetRelationship("target").GetTargets(), ["/World/MoveTarget"])
+
+    async def test_move_prim_rejects_hidden_detached_composition_arc(self) -> None:
+        """Test that a hidden internal reference prevents a partial detached-stage move."""
+        detached_stage = Usd.Stage.CreateInMemory()
+        detached_stage.DefinePrim("/World", "Xform")
+        detached_stage.DefinePrim("/World/MoveTarget", "Xform")
+        detached_stage.DefinePrim("/World/Other", "Xform")
+        controller = detached_stage.DefinePrim("/World/Controller", "Xform")
+        variants = controller.GetVariantSets().AddVariantSet("mode")
+        variants.AddVariant("selected")
+        variants.AddVariant("hidden")
+        variants.SetVariantSelection("selected")
+        with variants.GetVariantEditContext():
+            controller.GetReferences().AddInternalReference("/World/Other")
+        variants.SetVariantSelection("hidden")
+        with variants.GetVariantEditContext():
+            controller.GetReferences().AddInternalReference("/World/MoveTarget")
+        variants.SetVariantSelection("selected")
+        original_contents = detached_stage.GetRootLayer().ExportToString()
+
+        with stage_utils.use_stage(detached_stage):
+            result, path = stage_utils.move_prim("/World/MoveTarget", "/World/Moved")
+
+        self.assertFalse(result)
+        self.assertEqual(path, "/World/Moved")
+        self.assertEqual(detached_stage.GetRootLayer().ExportToString(), original_contents)
+        self.assertTrue(detached_stage.GetPrimAtPath("/World/MoveTarget").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/World/Moved").IsValid())
+        hidden_spec = detached_stage.GetRootLayer().GetPrimAtPath("/World/Controller{mode=hidden}")
+        self.assertEqual(
+            [reference.primPath for reference in hidden_spec.referenceList.prependedItems],
+            ["/World/MoveTarget"],
+        )
+
+    async def test_move_prim_rejects_unsafe_detached_transform_move(self) -> None:
+        """Test that a detached cross-parent move does not change a prim's default-time world transform."""
+        detached_stage = Usd.Stage.CreateInMemory()
+        UsdGeom.Xform.Define(detached_stage, "/World")
+        source_parent = UsdGeom.Xform.Define(detached_stage, "/World/SourceParent")
+        source_parent.AddTranslateOp().Set(Gf.Vec3d(1, 0, 0))
+        destination_parent = UsdGeom.Xform.Define(detached_stage, "/World/DestinationParent")
+        destination_parent.AddTranslateOp().Set(Gf.Vec3d(2, 0, 0))
+        child = UsdGeom.Xform.Define(detached_stage, "/World/SourceParent/Child")
+        child.AddTranslateOp().Set(Gf.Vec3d(3, 0, 0))
+        original_contents = detached_stage.GetRootLayer().ExportToString()
+
+        with stage_utils.use_stage(detached_stage):
+            with self.assertRaisesRegex(RuntimeError, "preserving its default-time world transform"):
+                stage_utils.move_prim("/World/SourceParent/Child", "/World/DestinationParent/Child")
+
+        self.assertEqual(detached_stage.GetRootLayer().ExportToString(), original_contents)
+        self.assertTrue(detached_stage.GetPrimAtPath("/World/SourceParent/Child").IsValid())
+        self.assertFalse(detached_stage.GetPrimAtPath("/World/DestinationParent/Child").IsValid())
+
+    async def test_move_prim_allows_transform_independent_detached_subtrees(self) -> None:
+        """Test cross-parent moves that cannot change default-time world transforms."""
+        detached_stage = Usd.Stage.CreateInMemory()
+        UsdGeom.Xform.Define(detached_stage, "/World")
+        source_parent = UsdGeom.Xform.Define(detached_stage, "/World/SourceParent")
+        source_parent.AddTranslateOp().Set(Gf.Vec3d(1, 0, 0))
+        destination_parent = UsdGeom.Xform.Define(detached_stage, "/World/DestinationParent")
+        destination_parent.AddTranslateOp().Set(Gf.Vec3d(2, 0, 0))
+        UsdGeom.Scope.Define(detached_stage, "/World/SourceParent/Scope")
+        reset_xform = UsdGeom.Xform.Define(detached_stage, "/World/SourceParent/ResetXform")
+        reset_xform.AddTranslateOp().Set(Gf.Vec3d(3, 0, 0))
+        reset_xform.SetResetXformStack(True)
+        world_transform = reset_xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+
+        with stage_utils.use_stage(detached_stage):
+            scope_result, scope_path = stage_utils.move_prim(
+                "/World/SourceParent/Scope", "/World/DestinationParent/Scope"
+            )
+            reset_result, reset_path = stage_utils.move_prim(
+                "/World/SourceParent/ResetXform", "/World/DestinationParent/ResetXform"
+            )
+
+        self.assertTrue(scope_result)
+        self.assertEqual(scope_path, "/World/DestinationParent/Scope")
+        self.assertTrue(reset_result)
+        self.assertEqual(reset_path, "/World/DestinationParent/ResetXform")
+        moved_reset_xform = UsdGeom.Xformable(detached_stage.GetPrimAtPath(reset_path))
+        self.assertTrue(
+            Gf.IsClose(moved_reset_xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default()), world_transform, 1e-6)
+        )
 
     async def test_stage_units(self) -> None:
         """Test stage units."""

@@ -20,7 +20,6 @@ from __future__ import annotations
 import gc
 import importlib
 import inspect
-import logging
 import math
 import time
 from contextlib import nullcontext
@@ -29,6 +28,7 @@ from importlib import metadata
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+import carb
 import numpy as np
 import torch
 
@@ -41,6 +41,7 @@ from .actuator_compatibility import (
     is_actuator_delay_parameter,
     resolve_actuator_dof_plan,
 )
+from .backend_capabilities import NEWTON_MUJOCO_CAPABILITIES
 from .env_bridge import SysIdEnvironmentBridgeError
 from .errors import SysIdRuntimeUnavailableError
 from .feedforward import (
@@ -65,8 +66,6 @@ from .trajectory_csv import TrajectoryDataset
 if TYPE_CHECKING:
     from .usd_parameter_io import JointUsdSnapshot
 
-_LOGGER = logging.getLogger(__name__)
-
 NEWTON_ACTUATOR_SOURCE_DRIVE_DEFAULTS = "drive_defaults"
 NEWTON_ACTUATOR_SOURCE_USD = "usd"
 NEWTON_CONTROLLER_PD = "pd"
@@ -82,19 +81,7 @@ _NEWTON_NEURAL_CONTROLLERS = {
     NEWTON_CONTROLLER_NEURAL_LSTM,
 }
 
-_NEWTON_SUPPORTED_PARAMETERS = {
-    SysIdParameterType.JOINT_FRICTION,
-    SysIdParameterType.JOINT_STIFFNESS,
-    SysIdParameterType.JOINT_DAMPING,
-    SysIdParameterType.JOINT_INTEGRAL_GAIN,
-    SysIdParameterType.JOINT_ARMATURE,
-    SysIdParameterType.ACTUATOR_COMMAND_DELAY_SECONDS,
-    SysIdParameterType.LINK_MASS,
-    SysIdParameterType.LINK_COM_OFFSET_X,
-    SysIdParameterType.LINK_COM_OFFSET_Y,
-    SysIdParameterType.LINK_COM_OFFSET_Z,
-    SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY,
-}
+_NEWTON_SUPPORTED_PARAMETERS = NEWTON_MUJOCO_CAPABILITIES.parameter_types
 
 _NEWTON_LINK_INERTIAL_PARAMETERS = {
     SysIdParameterType.LINK_MASS,
@@ -106,6 +93,14 @@ _NEWTON_LINK_INERTIAL_PARAMETERS = {
 
 _MUJOCO_IO_KERNEL_CACHE: dict[int, tuple[Any, ...]] = {}
 _INVALID_CANDIDATE_SENTINEL = 1.0e6
+# Joint rates beyond this magnitude (rad/s or m/s, ~95,000 rpm) mark a diverged
+# integration even while still finite. An explicit-stiffness blow-up exceeds it
+# within a sample or two while MuJoCo keeps the state bounded, and runaway body
+# poses can overrun MuJoCo's contact buffers before the state turns NaN.
+_DIVERGED_RATE_LIMIT = 1.0e4
+# Beyond this many MuJoCo substeps per sample, the divergence diagnostic points
+# at the asset instead of recommending a substep count.
+_PRACTICAL_MUJOCO_SUBSTEPS = 64
 
 
 def _physical_inertia_is_valid(inertia: np.ndarray) -> bool:
@@ -157,17 +152,23 @@ def _load_mujoco_io_kernels(wp) -> tuple[Any, ...]:  # noqa: ANN001
         return cached
 
     @wp.kernel
-    def scatter_control_row(  # noqa: ANN202
+    def scatter_position_target_row(  # noqa: ANN202
         target_pos_stage: wp.array2d(dtype=wp.float32),
+        step: int,
+        joint_target_pos: wp.array(dtype=wp.float32),
+    ):
+        tid = wp.tid()
+        joint_target_pos[tid] = target_pos_stage[step, tid]
+
+    @wp.kernel
+    def scatter_dof_control_row(  # noqa: ANN202
         target_vel_stage: wp.array2d(dtype=wp.float32),
         feedforward_stage: wp.array2d(dtype=wp.float32),
         step: int,
-        joint_target_pos: wp.array(dtype=wp.float32),
         joint_target_vel: wp.array(dtype=wp.float32),
         joint_f: wp.array(dtype=wp.float32),
     ):
         tid = wp.tid()
-        joint_target_pos[tid] = target_pos_stage[step, tid]
         joint_target_vel[tid] = target_vel_stage[step, tid]
         joint_f[tid] = feedforward_stage[step, tid]
 
@@ -191,6 +192,7 @@ def _load_mujoco_io_kernels(wp) -> tuple[Any, ...]:  # noqa: ANN001
         joint_qd: wp.array(dtype=wp.float32),
         coord_index_map: wp.array(dtype=wp.int32),
         dof_index_map: wp.array(dtype=wp.int32),
+        target_pos_index_map: wp.array(dtype=wp.int32),
         target_pos_stage: wp.array2d(dtype=wp.float32),
         target_vel_stage: wp.array2d(dtype=wp.float32),
         feedforward_stage: wp.array2d(dtype=wp.float32),
@@ -204,9 +206,10 @@ def _load_mujoco_io_kernels(wp) -> tuple[Any, ...]:  # noqa: ANN001
     ):
         tid = wp.tid()
         dof = dof_index_map[tid]
+        target_pos = target_pos_index_map[tid]
         compact_q[tid] = joint_q[coord_index_map[tid]]
         compact_qd[tid] = joint_qd[dof]
-        compact_target_pos[tid] = target_pos_stage[step, dof]
+        compact_target_pos[tid] = target_pos_stage[step, target_pos]
         compact_target_vel[tid] = target_vel_stage[step, dof]
         compact_feedforward[tid] = feedforward_stage[step, dof]
         compact_effort[tid] = 0.0
@@ -240,13 +243,57 @@ def _load_mujoco_io_kernels(wp) -> tuple[Any, ...]:  # noqa: ANN001
         tid = wp.tid()
         effort_stage[target_step, tid] = effort_stage[source_step, tid]
 
+    @wp.kernel
+    def reset_diverged_steps(  # noqa: ANN202
+        diverged_step: wp.array(dtype=wp.int32),
+    ):
+        diverged_step[wp.tid()] = -1
+
+    @wp.kernel
+    def quarantine_diverged_worlds(  # noqa: ANN202
+        joint_q: wp.array(dtype=wp.float32),
+        joint_qd: wp.array(dtype=wp.float32),
+        initial_joint_q: wp.array(dtype=wp.float32),
+        initial_joint_qd: wp.array(dtype=wp.float32),
+        coords_per_world: int,
+        dofs_per_world: int,
+        step: int,
+        rate_limit: float,
+        diverged_step: wp.array(dtype=wp.int32),
+    ):
+        # Record the first diverged step of each world and put that world back
+        # on its finite initial state, so the next MuJoCo step never runs
+        # collision detection on NaN or runaway body poses. The world's
+        # remaining samples are discarded by the caller.
+        world = wp.tid()
+        q_start = world * coords_per_world
+        qd_start = world * dofs_per_world
+        diverged = int(0)  # noqa: UP018 - Warp needs a typed local to mutate it inside a dynamic loop
+        for i in range(coords_per_world):
+            if not wp.isfinite(joint_q[q_start + i]):
+                diverged = 1
+        for i in range(dofs_per_world):
+            value = joint_qd[qd_start + i]
+            if not wp.isfinite(value) or wp.abs(value) > rate_limit:
+                diverged = 1
+        if diverged != 0:
+            if diverged_step[world] < 0:
+                diverged_step[world] = step
+            for i in range(coords_per_world):
+                joint_q[q_start + i] = initial_joint_q[q_start + i]
+            for i in range(dofs_per_world):
+                joint_qd[qd_start + i] = initial_joint_qd[qd_start + i]
+
     _MUJOCO_IO_KERNEL_CACHE[id(wp)] = (
-        scatter_control_row,
+        scatter_position_target_row,
+        scatter_dof_control_row,
         gather_joint_state,
         gather_actuator_inputs,
         scatter_explicit_effort,
         gather_explicit_effort,
         copy_explicit_effort_row,
+        reset_diverged_steps,
+        quarantine_diverged_worlds,
     )
     return _MUJOCO_IO_KERNEL_CACHE[id(wp)]
 
@@ -271,15 +318,26 @@ def _record_mujoco_rollout_launches(bridge, ctx, num_steps: int, dt: float) -> N
     state0, state1 = ctx.state0, ctx.state1
     control = ctx.control
     (
-        scatter_control_row,
+        scatter_position_target_row,
+        scatter_dof_control_row,
         gather_joint_state,
         gather_actuator_inputs,
         scatter_explicit_effort,
         gather_explicit_effort,
         copy_explicit_effort_row,
+        reset_diverged_steps,
+        quarantine_diverged_worlds,
     ) = _load_mujoco_io_kernels(wp)
     mapped_width = int(ctx.world_count * ctx.num_dof)
+    joint_target_q_count = int(control.joint_target_q.shape[0])
     joint_dof_count = int(model.joint_dof_count)
+    # Controls and explicit actuators update once per telemetry sample; MuJoCo
+    # integrates that interval in `substeps` equal physics steps.
+    substeps = max(1, int(getattr(bridge, "_mujoco_substeps", 1)))
+    sub_dt = float(dt) / substeps
+    diverged_step = getattr(ctx, "diverged_step", None)
+    if diverged_step is not None:
+        wp.launch(reset_diverged_steps, dim=int(ctx.world_count), outputs=[diverged_step], device=model.device)
 
     # MuJoCo carries acceleration warm-start, actuator activation, applied-force,
     # and control buffers across steps. Clear those rollout-local values while
@@ -318,16 +376,24 @@ def _record_mujoco_rollout_launches(bridge, ctx, num_steps: int, dt: float) -> N
             nxt.reset()
     for step in range(num_steps - 1):
         wp.launch(
-            scatter_control_row,
-            dim=joint_dof_count,
+            scatter_position_target_row,
+            dim=joint_target_q_count,
             inputs=[
                 ctx.target_pos_stage,
+                step,
+            ],
+            outputs=[control.joint_target_q],
+            device=model.device,
+        )
+        wp.launch(
+            scatter_dof_control_row,
+            dim=joint_dof_count,
+            inputs=[
                 ctx.target_vel_stage,
                 ctx.feedforward_stage,
                 step,
             ],
             outputs=[
-                control.joint_target_q,
                 control.joint_target_qd,
                 control.joint_f,
             ],
@@ -342,6 +408,7 @@ def _record_mujoco_rollout_launches(bridge, ctx, num_steps: int, dt: float) -> N
                     state0.joint_qd,
                     ctx.coord_map_wp,
                     ctx.dof_map_wp,
+                    ctx.target_pos_map_wp,
                     ctx.target_pos_stage,
                     ctx.target_vel_stage,
                     ctx.feedforward_stage,
@@ -389,8 +456,26 @@ def _record_mujoco_rollout_launches(bridge, ctx, num_steps: int, dt: float) -> N
                 outputs=[ctx.sim_explicit_effort_stage],
                 device=model.device,
             )
-        solver.step(state0, state1, control, None, dt)
-        state0, state1 = state1, state0
+        for _substep in range(substeps):
+            solver.step(state0, state1, control, None, sub_dt)
+            state0, state1 = state1, state0
+            if diverged_step is not None:
+                wp.launch(
+                    quarantine_diverged_worlds,
+                    dim=int(ctx.world_count),
+                    inputs=[
+                        state0.joint_q,
+                        state0.joint_qd,
+                        ctx.initial_joint_q_stage,
+                        ctx.initial_joint_qd_stage,
+                        int(ctx.coords_per_world),
+                        int(ctx.dofs_per_world),
+                        step + 1,
+                        _DIVERGED_RATE_LIMIT,
+                    ],
+                    outputs=[diverged_step],
+                    device=model.device,
+                )
         wp.launch(
             gather_joint_state,
             dim=mapped_width,
@@ -445,23 +530,18 @@ def _capture_mujoco_rollout_graph(
     except Exception as exc:  # noqa: BLE001 - capture must always degrade safely
         ctx.capture_cache.clear()
         ctx.capture_failed = True
-        _LOGGER.warning(
+        carb.log_warn(
             "SysId: CUDA graph capture failed for the Newton MuJoCo rollout "
-            "(steps=%d, worlds=%d): %s. Falling back to uncaptured rollouts "
-            "for this model.",
-            num_steps,
-            ctx.world_count,
-            exc,
+            f"(steps={num_steps}, worlds={ctx.world_count}): {exc}. Falling back to uncaptured rollouts "
+            "for this model."
         )
         return None
     while len(ctx.capture_cache) >= 4:
         ctx.capture_cache.pop(next(iter(ctx.capture_cache)))
     ctx.capture_cache[capture_key] = record
-    _LOGGER.info(
-        "SysId: captured Newton MuJoCo rollout into a CUDA graph in %.1f s " "(steps=%d, worlds=%d).",
-        time.perf_counter() - start,
-        num_steps,
-        ctx.world_count,
+    carb.log_info(
+        f"SysId: captured Newton MuJoCo rollout into a CUDA graph in {time.perf_counter() - start:.1f} s "
+        f"(steps={num_steps}, worlds={ctx.world_count})."
     )
     return record
 
@@ -606,16 +686,16 @@ def newton_modules_available() -> tuple[bool, str]:
 
 
 def newton_dependency_compatibility() -> tuple[bool, str]:
-    """Validate the Newton 1.5 coupled package family used by this bridge.
+    """Validate the Newton 1.6 coupled package family used by this bridge.
 
     Returns:
         Result produced by the operation.
     """
     expected = {
-        "newton": ("newton", "1.5."),
-        "newton-usd-schemas": ("newton_usd_schemas", "0.4."),
-        "mujoco": ("mujoco", "3.11."),
-        "mujoco-warp": ("mujoco_warp", "3.11."),
+        "newton": ("newton", "1.6."),
+        "newton-usd-schemas": ("newton_usd_schemas", "0.5."),
+        "mujoco": ("mujoco", "3.12."),
+        "mujoco-warp": ("mujoco_warp", "3.12."),
     }
     mismatches = []
     for distribution, (module_name, prefix) in expected.items():
@@ -632,7 +712,7 @@ def newton_dependency_compatibility() -> tuple[bool, str]:
         if not installed.startswith(prefix):
             mismatches.append(f"{distribution}=={installed} (expected {prefix}x)")
     if mismatches:
-        return False, "Newton 1.5 dependency set mismatch: " + ", ".join(mismatches)
+        return False, "Newton 1.6 dependency set mismatch: " + ", ".join(mismatches)
     return True, ""
 
 
@@ -887,6 +967,12 @@ class NewtonSysIdBridge:
                 "expected 'none', 'gravity', or 'inverse_dynamics'."
             )
         self._feedforward_mode = mode
+        self._mujoco_substeps = int(getattr(self.newton_config, "mujoco_substeps", 1))
+        if self._mujoco_substeps < 1:
+            raise SysIdEnvironmentBridgeError(
+                f"simulation.newton.mujoco_substeps must be at least 1; got {self._mujoco_substeps}."
+            )
+        self._divergence_warnings: set[tuple[int, int]] = set()
         self._capture_enabled = bool(getattr(self.newton_config, "cuda_graph_capture", True))
         self._ff_cache: dict[int, FeedforwardCacheEntry] = {}
         self._actuator_configs: list[NewtonActuatorConfig] = []
@@ -943,6 +1029,7 @@ class NewtonSysIdBridge:
             "actuator_source": self.newton_config.actuator_source,
             "actuator_runtime": self.actuator_runtime,
             "physics_dt": self._physics_dt,
+            "mujoco_substeps": self._mujoco_substeps,
             "explicit_actuator_policy": self.explicit_actuator_policy,
             "temporary_promotions": [str(getattr(item, "prim_path", "")) for item in self._actuator_promotions],
             "controller": self.newton_config.controller,
@@ -1092,7 +1179,7 @@ class NewtonSysIdBridge:
             try:
                 synchronize(model.device)
             except Exception as exc:
-                _LOGGER.debug("Could not synchronize Newton context before release: %s", exc)
+                carb.log_verbose(f"Could not synchronize Newton context before release: {exc}")
         ctx.capture_cache.clear()
         ctx.capture_warm_keys.clear()
         for name in ("runtime_actuators", "runtime_actuator_states", "runtime_next_actuator_states"):
@@ -1112,6 +1199,7 @@ class NewtonSysIdBridge:
             "sim_q_stage",
             "sim_qd_stage",
             "sim_explicit_effort_stage",
+            "diverged_step",
             "actuator_q",
             "actuator_qd",
             "actuator_target_pos",
@@ -1252,6 +1340,7 @@ class NewtonSysIdBridge:
         capture_key = (
             int(num_steps),
             float(dt),
+            int(self._mujoco_substeps),
             parameter_layout,
             self._feedforward_mode,
             id(ctx.model),
@@ -1267,6 +1356,7 @@ class NewtonSysIdBridge:
             id(ctx.sim_q_stage),
             id(ctx.sim_qd_stage),
             id(ctx.sim_explicit_effort_stage),
+            id(ctx.diverged_step),
             tuple(ctx.explicit_columns),
             *(id(actuator) for actuator in ctx.runtime_actuators),
             id(ctx.model.body_mass),
@@ -1279,10 +1369,8 @@ class NewtonSysIdBridge:
             wp.capture_launch(record.graph)
             if not record.replay_logged:
                 record.replay_logged = True
-                _LOGGER.info(
-                    "SysId: Newton MuJoCo CUDA graph replay active " "(steps=%d, worlds=%d).",
-                    num_steps,
-                    world_count,
+                carb.log_info(
+                    f"SysId: Newton MuJoCo CUDA graph replay active (steps={num_steps}, worlds={world_count})."
                 )
         elif use_capture and capture_key in ctx.capture_warm_keys:
             record = _capture_mujoco_rollout_graph(self, ctx, num_steps, dt, capture_key)
@@ -1332,7 +1420,161 @@ class NewtonSysIdBridge:
         positions = positions.permute(1, 0, 2).contiguous().clone().to(self.device)
         velocities = velocities.permute(1, 0, 2).contiguous().clone().to(self.device)
         torques = torques.permute(1, 0, 2).contiguous().to(self.device)
+        if ctx.diverged_step is not None:
+            diverged_step = np.asarray(ctx.diverged_step.numpy(), dtype=np.int64)[:world_count]
+            if np.any(diverged_step >= 0):
+                self._report_mujoco_divergence(
+                    ctx,
+                    diverged_step,
+                    ke_tensor.detach().cpu().numpy(),
+                    num_steps=num_steps,
+                    dt=dt,
+                )
+                invalid_candidates = np.asarray(invalid_candidates, dtype=bool) | (diverged_step >= 0)
         return _replace_invalid_rollout_worlds(positions, velocities, torques, invalid_candidates)
+
+    def _report_mujoco_divergence(
+        self,
+        ctx: Any,
+        diverged_step: np.ndarray,
+        ke_rows: np.ndarray,
+        *,
+        num_steps: int,
+        dt: float,
+    ) -> None:
+        """Explain a diverged MuJoCo rollout, failing when no world stayed stable.
+
+        Diverged worlds are scored as invalid candidates so an optimizer can
+        still rank the rest of its population. When every world diverged there
+        is nothing to rank, and a sentinel cost would read as a legitimately poor
+        fit, so the rollout fails with the stability estimate instead.
+
+        Args:
+            ctx: MuJoCo rollout context that produced the rollout.
+            diverged_step: First diverged step per world, or -1 for stable worlds.
+            ke_rows: Candidate drive stiffness per world and trajectory DOF.
+            num_steps: Rollout length in telemetry samples.
+            dt: Telemetry sample interval of the rollout.
+
+        Raises:
+            SysIdEnvironmentBridgeError: If every world in the rollout diverged.
+        """
+        diverged = diverged_step >= 0
+        world_count = int(diverged.shape[0])
+        diverged_count = int(np.count_nonzero(diverged))
+        first_step = int(diverged_step[diverged].min())
+        message = (
+            f"SysId: Newton MuJoCo rollout diverged in {diverged_count}/{world_count} world(s); the first "
+            f"non-finite or runaway (>{_DIVERGED_RATE_LIMIT:.0e} per second) joint rate appeared at step "
+            f"{first_step} of {num_steps} "
+            f"(dt={dt * 1e3:.3g} ms, mujoco_substeps={self._mujoco_substeps})."
+        )
+        estimate = self._drive_stability_estimate(ctx, ke_rows[diverged], dt)
+        if estimate is not None:
+            message += " " + estimate
+        message += (
+            " Check that the asset's drive gains, link inertias, and joint armature are physically plausible "
+            "(USD angular drive stiffness is per degree, so a value meant per radian is 57.3x too stiff)."
+        )
+        if diverged_count == world_count:
+            raise SysIdEnvironmentBridgeError(
+                message + " No candidate produced a stable rollout, so there is no cost to report."
+            )
+        warned = getattr(self, "_divergence_warnings", None)
+        if warned is None:
+            warned = self._divergence_warnings = set()
+        key = (world_count, int(num_steps))
+        if key not in warned:
+            warned.add(key)
+            carb.log_warn(message + " The diverged candidates were scored as invalid.")
+
+    def _drive_stability_estimate(self, ctx: Any, ke_rows: np.ndarray, dt: float) -> str:
+        """Describe the stiffest mapped drive against MuJoCo's explicit-stiffness step bound.
+
+        MuJoCo integrates drive damping implicitly but drive stiffness
+        explicitly, so a drive of stiffness ``k`` on inertia ``I`` needs a step
+        ``h`` with ``h * sqrt(k / I)`` well below 2. The inertia is the child
+        link about the joint axis plus armature, a lower bound on the
+        articulated inertia, so the suggested substep count is conservative.
+
+        Args:
+            ctx: MuJoCo rollout context with the nominal model.
+            ke_rows: Drive stiffness per diverged world and trajectory DOF.
+            dt: Telemetry sample interval of the rollout.
+
+        Returns:
+            Diagnostic sentence, or an empty string when no estimate is available.
+        """
+        try:
+            model = ctx.model
+            joint_type = np.asarray(model.joint_type.numpy())
+            joint_child = np.asarray(model.joint_child.numpy())
+            joint_qd_start = np.asarray(model.joint_qd_start.numpy())
+            joint_x_c = np.asarray(model.joint_X_c.numpy(), dtype=np.float64).reshape(-1, 7)
+            joint_axis = np.asarray(model.joint_axis.numpy(), dtype=np.float64).reshape(-1, 3)
+            prismatic = int(self._modules.newton.JointType.PRISMATIC)
+            # Candidate armature is written to the model per world; the smallest
+            # value over the batch keeps the suggested substep count conservative.
+            armature = (
+                np.asarray(model.joint_armature.numpy(), dtype=np.float64)
+                .reshape(int(ctx.world_count), int(ctx.dofs_per_world))
+                .min(axis=0)
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not mask the divergence
+            carb.log_verbose(f"SysId: MuJoCo stability estimate unavailable: {exc}")
+            return ""
+        explicit_columns = set(getattr(ctx, "explicit_columns", ()))
+        worst: tuple[float, int, float, float, float] | None = None
+        for column in range(min(int(ctx.num_dof), int(ke_rows.shape[1]))):
+            stiffness = float(np.max(ke_rows[:, column]))
+            if not math.isfinite(stiffness) or stiffness <= 0.0:
+                continue
+            dof = int(ctx.dof_map_np[column])
+            joint = int(np.searchsorted(joint_qd_start, dof, side="right") - 1)
+            body = int(joint_child[joint])
+            if not 0 <= body < int(ctx.bodies_per_world):
+                continue
+            mass = float(ctx.baseline_body_mass_world0[body])
+            if int(joint_type[joint]) == prismatic:
+                inertia = mass
+            else:
+                rotation = joint_x_c[joint, 3:]
+                axis = joint_axis[dof]
+                # Rotate the joint-frame axis into the child body frame (xyzw quaternion).
+                cross = 2.0 * np.cross(rotation[:3], axis)
+                axis = axis + rotation[3] * cross + np.cross(rotation[:3], cross)
+                axis = axis / max(float(np.linalg.norm(axis)), 1e-12)
+                lever = np.asarray(ctx.baseline_body_com_world0[body], dtype=np.float64) - joint_x_c[joint, :3]
+                body_inertia = np.asarray(ctx.baseline_body_inertia_world0[body], dtype=np.float64)
+                inertia = float(axis @ body_inertia @ axis) + mass * float(lever @ lever - float(lever @ axis) ** 2)
+            inertia += max(float(armature[dof]), 0.0)
+            if inertia <= 0.0:
+                continue
+            omega = math.sqrt(stiffness / inertia)
+            step = dt if column in explicit_columns else dt / self._mujoco_substeps
+            ratio = omega * step
+            if worst is None or ratio > worst[0]:
+                worst = (ratio, column, stiffness, inertia, omega)
+        if worst is None:
+            return ""
+        ratio, column, stiffness, inertia, omega = worst
+        name = self._joint_paths[column] if column < len(self._joint_paths) else f"DOF {column}"
+        text = (
+            f"Stiffest drive: trajectory DOF {column} ({name}) with stiffness {stiffness:.4g} on an estimated "
+            f"inertia of {inertia:.3g} gives omega*h = {ratio:.2f}; explicit stiffness needs it well below 2."
+        )
+        if column in explicit_columns:
+            return text + (
+                " This DOF uses an explicit actuator that updates once per telemetry sample, so substeps do not "
+                "stabilize it; lower its gains, raise its armature, or log telemetry at a higher rate."
+            )
+        recommended = max(self._mujoco_substeps + 1, int(math.ceil(omega * dt)))
+        if recommended > _PRACTICAL_MUJOCO_SUBSTEPS:
+            return text + (
+                f" Stabilizing it would take about {recommended} simulation.newton.mujoco_substeps, so the asset "
+                "itself needs correcting."
+            )
+        return text + f" Set simulation.newton.mujoco_substeps to at least {recommended}."
 
     def _ensure_feedforward(self, ctx, num_steps: int, commands_np: np.ndarray) -> None:  # noqa: ANN001
         """Load the per-step controller feedforward, computing and caching per trajectory.
@@ -1509,7 +1751,7 @@ class NewtonSysIdBridge:
             )
             error.feedforward_configuration = True
             raise error
-        _warn_kit_visible(
+        carb.log_warn(
             f"SysId: Newton MuJoCo bridge '{self._feedforward_mode}' feedforward active over "
             f"{num_steps} steps (|ff| max {float(np.abs(feedforward).max()):.2f} Nm)."
         )
@@ -1589,10 +1831,17 @@ class NewtonSysIdBridge:
         bodies_per_world = body_count // world_count
         coords_per_world = int(model.joint_coord_count) // world_count
         dofs_per_world = int(model.joint_dof_count) // world_count
-        coord0, dof0, actuated_world0 = self._actuated_joint_maps(model, joints_per_world, num_dof)
+        coord0, dof0, target_pos0, actuated_world0 = self._actuated_joint_maps(model, joints_per_world, num_dof)
         world_index = np.repeat(np.arange(world_count, dtype=np.int64), num_dof)
         coord_map_np = (np.tile(coord0, world_count) + world_index * coords_per_world).astype(np.int64)
         dof_map_np = (np.tile(dof0, world_count) + world_index * dofs_per_world).astype(np.int64)
+        target_pos_count = int(model.joint_target_q_start.numpy()[-1])
+        if target_pos_count < 1 or target_pos_count % world_count != 0:
+            raise SysIdEnvironmentBridgeError(
+                f"Newton model position-target count {target_pos_count} is not divisible by world count {world_count}."
+            )
+        targets_per_world = target_pos_count // world_count
+        target_pos_map_np = (np.tile(target_pos0, world_count) + world_index * targets_per_world).astype(np.int64)
 
         if self._feedforward_mode != "none":
             # Feedforward modes model a trajectory-tracking controller whose
@@ -1622,24 +1871,27 @@ class NewtonSysIdBridge:
         wp = self._modules.warp
         control = model.control()
         if control.joint_target_q is None:
-            control.joint_target_q = wp.zeros(int(model.joint_dof_count), dtype=wp.float32)
+            control.joint_target_q = wp.zeros(target_pos_count, dtype=wp.float32, device=model.device)
         if control.joint_target_qd is None:
-            control.joint_target_qd = wp.zeros(int(model.joint_dof_count), dtype=wp.float32)
+            control.joint_target_qd = wp.zeros(int(model.joint_dof_count), dtype=wp.float32, device=model.device)
 
         # Hold-position targets: every actuated 1-DOF joint defaults to its import
         # configuration; the per-step command scatter overwrites the mapped subset.
-        # Held joints also keep their imported drive gains: MuJoCo's implicit solve
-        # is stable for stiff drives, so the explicit-integrator gain cap of the
-        # differentiable bridge is not needed here.
+        # Held joints also keep their imported drive gains. MuJoCo integrates
+        # drive damping implicitly but drive stiffness explicitly, so a stiff
+        # drive on a light link can still diverge at the telemetry step; the
+        # rollout detects that per world and `mujoco_substeps` shortens the step.
         default_joint_q = model.joint_q.numpy().astype(np.float32).copy()
         default_joint_qd = model.joint_qd.numpy().astype(np.float32).copy()
         if model.joint_target_q is not None:
             default_joint_target = model.joint_target_q.numpy().astype(np.float32).copy()
         else:
-            default_joint_target = np.zeros(int(model.joint_dof_count), dtype=np.float32)
-        for coord, dof in actuated_world0:
+            default_joint_target = np.zeros(target_pos_count, dtype=np.float32)
+        for coord, _dof, target_pos in actuated_world0:
             for world in range(world_count):
-                default_joint_target[dof + world * dofs_per_world] = default_joint_q[coord + world * coords_per_world]
+                default_joint_target[target_pos + world * targets_per_world] = default_joint_q[
+                    coord + world * coords_per_world
+                ]
 
         def _default_array(name: str):  # noqa: ANN202
             arr = getattr(model, name, None)
@@ -1680,13 +1932,16 @@ class NewtonSysIdBridge:
             num_dof=num_dof,
             coords_per_world=coords_per_world,
             dofs_per_world=dofs_per_world,
+            targets_per_world=targets_per_world,
             joints_per_world=joints_per_world,
             bodies_per_world=bodies_per_world,
             world_count=world_count,
             coord_map_np=coord_map_np,
             dof_map_np=dof_map_np,
+            target_pos_map_np=target_pos_map_np,
             coord_map_wp=wp.array(coord_map_np.astype(np.int32), dtype=wp.int32, device=model.device),
             dof_map_wp=wp.array(dof_map_np.astype(np.int32), dtype=wp.int32, device=model.device),
+            target_pos_map_wp=wp.array(target_pos_map_np.astype(np.int32), dtype=wp.int32, device=model.device),
             default_joint_q=default_joint_q,
             default_joint_qd=default_joint_qd,
             initial_joint_q_stage=wp.array(default_joint_q, dtype=wp.float32, device=model.device),
@@ -1720,6 +1975,7 @@ class NewtonSysIdBridge:
             sim_q_stage=None,
             sim_qd_stage=None,
             sim_explicit_effort_stage=None,
+            diverged_step=wp.full(world_count, -1, dtype=wp.int32, device=model.device),
             capture_cache={},
             capture_warm_keys=set(),
             capture_failed=False,
@@ -1813,7 +2069,10 @@ class NewtonSysIdBridge:
             if cfg.controller_kind in _NEWTON_NEURAL_CONTROLLERS:
                 controller = self._construct_controller(self._modules.actuators, cfg, delay=None, clamping=None)
             elif cfg.controller_kind == NEWTON_CONTROLLER_PID:
-                cls = _resolve_actuator_class(self._modules.actuators, ("ControllerPID", "PIDController", "ControlPID"))
+                cls = _resolve_actuator_class(
+                    self._modules.actuators,
+                    ("DrivePID", "ControllerPID", "PIDController", "ControlPID"),
+                )
                 controller = _construct_optional(
                     cls,
                     kp=values(cfg.stiffness),
@@ -1823,7 +2082,10 @@ class NewtonSysIdBridge:
                     const_effort=values(cfg.const_effort),
                 )
             else:
-                cls = _resolve_actuator_class(self._modules.actuators, ("ControllerPD", "PDController", "ControlPD"))
+                cls = _resolve_actuator_class(
+                    self._modules.actuators,
+                    ("DrivePD", "ControllerPD", "PDController", "ControlPD"),
+                )
                 controller = _construct_optional(
                     cls,
                     kp=values(cfg.stiffness),
@@ -1860,7 +2122,7 @@ class NewtonSysIdBridge:
             )
             actuator = actuator_cls(
                 indices=indices,
-                controller=controller,
+                drive=controller,
                 delay=delay,
                 clamping=clamping or None,
                 effort_indices=indices,
@@ -1888,9 +2150,10 @@ class NewtonSysIdBridge:
         ctx.capture_warm_keys.clear()
         wp = self._modules.warp
         capacity = int(num_steps)
+        joint_target_q_count = int(ctx.control.joint_target_q.shape[0])
         joint_dof_count = int(ctx.model.joint_dof_count)
         mapped_width = int(ctx.world_count * ctx.num_dof)
-        ctx.target_pos_stage = wp.zeros((capacity, joint_dof_count), dtype=wp.float32, device=ctx.model.device)
+        ctx.target_pos_stage = wp.zeros((capacity, joint_target_q_count), dtype=wp.float32, device=ctx.model.device)
         ctx.target_vel_stage = wp.zeros((capacity, joint_dof_count), dtype=wp.float32, device=ctx.model.device)
         ctx.feedforward_stage = wp.zeros((capacity, joint_dof_count), dtype=wp.float32, device=ctx.model.device)
         ctx.sim_q_stage = wp.zeros((capacity, mapped_width), dtype=wp.float32, device=ctx.model.device)
@@ -1920,7 +2183,7 @@ class NewtonSysIdBridge:
 
         target_pos = np.tile(ctx.default_joint_target, (capacity, 1)).astype(np.float32, copy=False)
         mapped_targets = delayed_np.transpose(1, 0, 2).reshape(num_steps, -1)
-        target_pos[:num_steps, ctx.dof_map_np] = mapped_targets
+        target_pos[:num_steps, ctx.target_pos_map_np] = mapped_targets
         target_vel = np.zeros((capacity, joint_dof_count), dtype=np.float32)
         feedforward = np.zeros((capacity, joint_dof_count), dtype=np.float32)
 
@@ -1951,9 +2214,9 @@ class NewtonSysIdBridge:
 
         Same joint-path mapping as the differentiable bridge: the trajectory may
         cover a subset of the model's actuated joints; the unmatched joints are
-        simulated but held at their default configuration. Returns
-        ``(coord0, dof0, actuated_world0)`` where ``actuated_world0`` lists
-        ``(coord, dof)`` for ALL actuated 1-DOF joints in world 0.
+        simulated but held at their default configuration. Returns coordinate,
+        DOF, and position-target maps for selected joints plus all actuated
+        1-DOF joints in world 0.
 
         Args:
             model: Value supplied for ``model``.
@@ -1965,9 +2228,10 @@ class NewtonSysIdBridge:
         """  # noqa: DOC107
         joint_q_start = model.joint_q_start.numpy()
         joint_qd_start = model.joint_qd_start.numpy()
+        joint_target_q_start = model.joint_target_q_start.numpy()
         labels = [str(label) for label in getattr(model, "joint_label", [])]
 
-        actuated: list[tuple[int, int, int]] = []  # (joint index, coord index, dof index)
+        actuated: list[tuple[int, int, int, int]] = []  # joint, coordinate, DOF, target coordinate
         for joint in range(joints_per_world):
             coord_span = int(joint_q_start[joint + 1] - joint_q_start[joint])
             dof_span = int(joint_qd_start[joint + 1] - joint_qd_start[joint])
@@ -1976,7 +2240,19 @@ class NewtonSysIdBridge:
             if coord_span == 7 and dof_span == 6:
                 continue  # floating base (free joint): tolerated, not actuated
             if coord_span == 1 and dof_span == 1:
-                actuated.append((joint, int(joint_q_start[joint]), int(joint_qd_start[joint])))
+                target_span = int(joint_target_q_start[joint + 1] - joint_target_q_start[joint])
+                if target_span != 1:
+                    raise SysIdEnvironmentBridgeError(
+                        f"Joint {joint} has {target_span} position targets; expected one for a 1-DOF joint."
+                    )
+                actuated.append(
+                    (
+                        joint,
+                        int(joint_q_start[joint]),
+                        int(joint_qd_start[joint]),
+                        int(joint_target_q_start[joint]),
+                    )
+                )
                 continue
             raise SysIdEnvironmentBridgeError(
                 f"Joint {joint} has {dof_span} DOFs; the Newton MuJoCo bridge maps only 1-DOF "
@@ -1990,14 +2266,14 @@ class NewtonSysIdBridge:
 
         # Prefer USD-path label matching to fix the DOF order; fall back to import order.
         ordered = actuated[:num_dof]
-        matched: list[tuple[int, int, int]] = []
+        matched: list[tuple[int, int, int, int]] = []
         if self._joint_paths and len(self._joint_paths) >= num_dof and len(labels) >= joints_per_world:
             for path in self._joint_paths[:num_dof]:
                 found = None
-                for joint, coord, dof in actuated:
+                for joint, coord, dof, target_pos in actuated:
                     label = labels[joint]
                     if label == path or label.endswith(path) or path.endswith(label.rsplit("/", 1)[-1]):
-                        found = (joint, coord, dof)
+                        found = (joint, coord, dof, target_pos)
                         break
                 if found is None:
                     matched = []
@@ -2006,14 +2282,14 @@ class NewtonSysIdBridge:
         if matched and len({item[0] for item in matched}) == num_dof:
             ordered = matched
         elif len(actuated) == num_dof:
-            _warn_kit_visible(
+            carb.log_warn(
                 "SysId: Newton MuJoCo bridge could not match joint paths to Newton joint labels; "
                 "assuming import order matches trajectory DOF order."
             )
         else:
             extra = len(actuated) - num_dof
-            unmatched = [labels[j] if j < len(labels) else f"joint {j}" for j, _c, _d in actuated[num_dof:]]
-            _warn_kit_visible(
+            unmatched = [labels[j] if j < len(labels) else f"joint {j}" for j, _c, _d, _t in actuated[num_dof:]]
+            carb.log_warn(
                 f"SysId: Newton MuJoCo bridge: model has {extra} more actuated joints than the trajectory "
                 f"and joint paths did not resolve; assuming the FIRST {num_dof} imported joints match the "
                 f"trajectory order and holding the remainder ({', '.join(unmatched)}) at their default "
@@ -2021,12 +2297,13 @@ class NewtonSysIdBridge:
             )
         coord0 = np.asarray([item[1] for item in ordered], dtype=np.int64)
         dof0 = np.asarray([item[2] for item in ordered], dtype=np.int64)
-        actuated_world0 = [(int(c), int(d)) for _j, c, d in actuated]
+        target_pos0 = np.asarray([item[3] for item in ordered], dtype=np.int64)
+        actuated_world0 = [(int(c), int(d), int(t)) for _j, c, d, t in actuated]
         self._joint_mapping_summary = [
             f"tele[{i}]->{labels[j].rsplit('/', 1)[-1] if j < len(labels) else j}(dof {d})"
-            for i, (j, _c, d) in enumerate(ordered)
+            for i, (j, _c, d, _t) in enumerate(ordered)
         ]
-        return coord0, dof0, actuated_world0
+        return coord0, dof0, target_pos0, actuated_world0
 
     def _apply_candidate_params(
         self,
@@ -2085,13 +2362,13 @@ class NewtonSysIdBridge:
             model_kd[:, list(ctx.explicit_columns)] = 0.0
             for runtime_index, column in enumerate(ctx.explicit_columns):
                 actuator = ctx.runtime_actuators[runtime_index]
-                actuator.controller.kp.assign(
+                actuator.drive.kp.assign(
                     np.ascontiguousarray(ke_tensor[:, column].detach().cpu().numpy(), dtype=np.float32)
                 )
-                actuator.controller.kd.assign(
+                actuator.drive.kd.assign(
                     np.ascontiguousarray(kd_tensor[:, column].detach().cpu().numpy(), dtype=np.float32)
                 )
-                controller_ki = getattr(actuator.controller, "ki", None)
+                controller_ki = getattr(actuator.drive, "ki", None)
                 if controller_ki is not None:
                     ki_values = np.full(world_count, self._actuator_configs[column].integral_gain, dtype=np.float32)
                     for world, state in enumerate(states):
@@ -2738,7 +3015,10 @@ class NewtonSysIdBridge:
             kwargs["model_path"] = str(model_path)
             return _construct_optional(controller_cls, **kwargs)
         if cfg.controller_kind == NEWTON_CONTROLLER_PID:
-            controller_cls = _resolve_actuator_class(actuators, ("ControllerPID", "PIDController", "ControlPID"))
+            controller_cls = _resolve_actuator_class(
+                actuators,
+                ("DrivePID", "ControllerPID", "PIDController", "ControlPID"),
+            )
             return _construct_optional(
                 controller_cls,
                 kp=kp,
@@ -2747,7 +3027,10 @@ class NewtonSysIdBridge:
                 integral_max=self._wp_float_array(cfg.integral_max),
                 const_effort=const_effort,
             )
-        controller_cls = _resolve_actuator_class(actuators, ("ControllerPD", "PDController", "ControlPD"))
+        controller_cls = _resolve_actuator_class(
+            actuators,
+            ("DrivePD", "ControllerPD", "PDController", "ControlPD"),
+        )
         return _construct_optional(
             controller_cls,
             kp=kp,
@@ -2757,9 +3040,9 @@ class NewtonSysIdBridge:
 
     def _resolve_neural_controller_class(self, actuators, cfg: NewtonActuatorConfig):  # noqa: ANN001, ANN202
         if cfg.controller_kind == NEWTON_CONTROLLER_NEURAL_MLP:
-            names = ("ControllerNeuralMLP",)
+            names = ("DriveNeuralMLP", "ControllerNeuralMLP")
         elif cfg.controller_kind == NEWTON_CONTROLLER_NEURAL_LSTM:
-            names = ("ControllerNeuralLSTM",)
+            names = ("DriveNeuralLSTM", "ControllerNeuralLSTM")
         else:
             names = ()
         if cfg.controller_class_name:
@@ -2776,7 +3059,7 @@ class NewtonSysIdBridge:
         device = self.newton_config.device or "cpu"
         actuator = actuator_cls(
             indices=_wp_array(wp, [0], "uint32", device),
-            controller=controller,
+            drive=controller,
             delay=delay,
             clamping=None,
             effort_indices=_wp_array(wp, [0], "uint32", device),
@@ -2839,15 +3122,6 @@ class NewtonSysIdBridge:
         if joint is not None and math.isfinite(float(joint.max_force)):
             return max(float(joint.max_force), 0.0)
         return float("inf")
-
-
-def _warn_kit_visible(message: str) -> None:
-    """Warn through the package logger (forwarded to Carb when Kit is active).
-
-    Args:
-        message: Value supplied for ``message``.
-    """
-    _LOGGER.warning(message)
 
 
 def _looks_like_newton_actuator(prim) -> bool:  # noqa: ANN001
@@ -2985,9 +3259,14 @@ def classify_newton_neural_prim(actuators, prim) -> dict[str, Any]:  # noqa: ANN
     except Exception as exc:
         result["unsupported_schemas"].append(f"NewtonNeuralControlAPI:parse_error:{exc}")
         return result
-    controller_class = getattr(parsed, "controller_class", None)
-    class_name = getattr(controller_class, "__name__", str(controller_class or ""))
-    kwargs = _stringify_kwargs(getattr(parsed, "controller_kwargs", {}) or {})
+    drive_class = getattr(parsed, "drive_class", None)
+    if drive_class is None:
+        drive_class = getattr(parsed, "controller_class", None)
+    class_name = getattr(drive_class, "__name__", str(drive_class or ""))
+    drive_kwargs = getattr(parsed, "drive_kwargs", None)
+    if drive_kwargs is None:
+        drive_kwargs = getattr(parsed, "controller_kwargs", {})
+    kwargs = _stringify_kwargs(drive_kwargs or {})
     if kwargs.get("model_path"):
         result["model_path"] = str(kwargs["model_path"])
     kind = _neural_controller_kind_from_class_name(class_name)
@@ -3005,9 +3284,9 @@ def classify_newton_neural_prim(actuators, prim) -> dict[str, Any]:  # noqa: ANN
 
 
 def _neural_controller_kind_from_class_name(class_name: str) -> str:
-    if class_name == "ControllerNeuralMLP":
+    if class_name in {"DriveNeuralMLP", "ControllerNeuralMLP"}:
         return NEWTON_CONTROLLER_NEURAL_MLP
-    if class_name == "ControllerNeuralLSTM":
+    if class_name in {"DriveNeuralLSTM", "ControllerNeuralLSTM"}:
         return NEWTON_CONTROLLER_NEURAL_LSTM
     return ""
 
@@ -3084,7 +3363,7 @@ def _load_newton_core_modules() -> NewtonCoreModules:
         optional_roots = ("newton", "warp")
         if any(missing == root or missing.startswith(f"{root}.") for root in optional_roots):
             raise SysIdRuntimeUnavailableError(
-                "Newton SysID requires the Newton and Warp packages from the 'newton' optional dependency group."
+                "Newton SysID requires the Newton and Warp packages delivered by isaacsim.pip.newton."
             ) from exc
         raise
     return NewtonCoreModules(newton=newton, warp=warp)
@@ -3099,8 +3378,8 @@ def _load_newton_modules() -> NewtonModules:
         optional_roots = ("newton", "mujoco", "mujoco_warp")
         if any(missing == root or missing.startswith(f"{root}.") for root in optional_roots):
             raise SysIdRuntimeUnavailableError(
-                "Newton MuJoCo SysID requires the 'newton' optional dependency group "
-                "(Newton 1.5 with built-in actuators, MuJoCo, and Warp)."
+                "Newton MuJoCo SysID requires Newton 1.6 with built-in actuators, MuJoCo, and Warp as delivered "
+                "by isaacsim.pip.newton."
             ) from exc
         raise
     return NewtonModules(newton=core.newton, warp=core.warp, actuators=actuators)

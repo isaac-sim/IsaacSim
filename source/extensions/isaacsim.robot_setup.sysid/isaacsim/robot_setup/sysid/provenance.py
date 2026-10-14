@@ -266,6 +266,7 @@ def build_provenance_record(
     optimizer_backend: str,
     robot_prim_path: str,
     validation_metrics: list[Any] | None = None,
+    validation_comparison: dict[str, Any] | None = None,
     simulation_engine: str = "",
     newton_config: dict[str, Any] | None = None,
 ) -> SysIdProvenanceRecord:
@@ -277,6 +278,7 @@ def build_provenance_record(
         optimizer_backend: Concrete backend used for the solve.
         robot_prim_path: Robot prim associated with the result.
         validation_metrics: Optional held-out validation summaries.
+        validation_comparison: Optional authored-versus-tuned validation comparison.
         simulation_engine: Rollout engine used for optimization.
         newton_config: Optional serialized Newton runtime settings.
 
@@ -310,7 +312,10 @@ def build_provenance_record(
         validation_metrics=metric_payloads,
         simulation_engine=str(simulation_engine),
         newton_config=newton_config,
-        extra={"accepted": bool(getattr(final_status, "accepted", False))},
+        extra={
+            "accepted": bool(getattr(final_status, "accepted", False)),
+            "validation_comparison": dict(validation_comparison or {}),
+        },
     )
 
 

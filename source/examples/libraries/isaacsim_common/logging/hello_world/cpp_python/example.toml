@@ -17,10 +17,9 @@ path = "main.py"
 
 [requirements]
 system = ["cmake", "cpp", "python", "python_development"]
-
-[[requirements.modules]]
-name = "isaacsim_common"
-surfaces = ["native_sdk"]
+modules = [
+    { name = "isaacsim_common", surfaces = ["native_sdk"] },
+]
 
 [[test]]
 name = "default"

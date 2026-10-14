@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1] - 2026-09-22
+### Fixed
+- Adapt the spatial Jacobian to end-effector point velocity in the LM solver.
+- Keep scaled-robot FK and IK consistent with posed joint distances and orientations.
+- Preserve uniform authored scale and coincident joint anchors while posing; support matrix, Euler, pivot, and units-resolution stacks while rejecting nonuniform scale and shear before editing.
+- Invalidate articulation handles after stage and topology changes without retaining the USD stage.
+- Validate pose imports and native joint-value representability before USD writes; document empty joint mappings as valid no-ops.
+
 ## [2.0.0] - 2026-07-30
 ### Changed
 - Own the kinematics, math, and IK APIs previously shipped by `isaacsim.robot.schema`.

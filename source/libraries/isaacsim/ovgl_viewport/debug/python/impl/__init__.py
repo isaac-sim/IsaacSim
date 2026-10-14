@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .api import (
+from .runtime import setup as _setup_runtime
+
+_setup_runtime()
+
+from .api import (  # noqa: E402
     DEFAULT_CAMERA_PATH,
     DEFAULT_RENDER_PRODUCT_PATH,
     DEFAULT_RENDER_VAR_PATH,

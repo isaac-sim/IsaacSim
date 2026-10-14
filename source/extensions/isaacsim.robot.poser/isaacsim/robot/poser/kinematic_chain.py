@@ -163,8 +163,8 @@ def _compute_zero_config_poses(tree_root: Any) -> dict[str, Any]:
                 local0 = _get_joint_local_transform(joint_usd, 0)
                 local1 = _get_joint_local_transform(joint_usd, 1)
                 if local0 is not None and local1 is not None:
-                    zero_world[child_path] = (
-                        pxr.Gf.Matrix4d(local1).GetInverse() * pxr.Gf.Matrix4d(local0) * parent_zero
+                    zero_world[child_path] = _compute_child_world_pose(
+                        parent_zero, _get_world_transform_matrix(child.prim), local0, local1, pxr.Gf.Matrix4d(1)
                     )
                 else:
                     zero_world[child_path] = parent_zero
@@ -243,52 +243,141 @@ def _joint_motion_matrix(joint_prim: Any, q_value: float) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _apply_world_transform(prim: Any, world_mat: Any) -> None:
-    """Set prim's local Xform so its world transform equals world_mat.
-
-    Decomposes into translate, orient, scale xformOps, preserving existing
-    precision settings to avoid USD mismatch warnings.
+def _validate_pose_xform(prim: Any) -> None:
+    """Validate effective scale/shear, independent of the authored operation names.
 
     Args:
-        prim: USD prim to update.
-        world_mat: Desired world-space pxr.Gf.Matrix4d.
+        prim: Body or ancestor whose local transform is validated.
 
+    Raises:
+        ValueError: If its transform is non-finite, reflected, singular, nonuniform or sheared.
     """
     import pxr
 
+    matrix = np.asarray(pxr.UsdGeom.Xformable(prim).GetLocalTransformation())
+    linear = matrix[:3, :3]
+    gram = linear @ linear.T
+    scale_squared = np.trace(gram) / 3
+    if (
+        not np.all(np.isfinite(matrix))
+        or scale_squared <= 0
+        or np.linalg.det(linear) <= 0
+        or not np.allclose(gram / scale_squared, np.eye(3), rtol=1e-6, atol=1e-6)
+    ):
+        raise ValueError(f"Posing requires positive uniform scale without shear on {prim.GetPath()}")
+
+
+def _validate_pose_subtree(node: Any) -> None:
+    """Validate bodies and their contributing ancestors before writing pose state.
+
+    Args:
+        node: Root of the body tree to validate.
+    """
+    import pxr
+
+    checked = set()
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        pending.extend(current.children)
+        prim = current.prim
+        while prim and not prim.IsPseudoRoot() and prim.GetPath() not in checked:
+            checked.add(prim.GetPath())
+            xform = pxr.UsdGeom.Xformable(prim)
+            if xform:
+                _validate_pose_xform(prim)
+                if xform.GetResetXformStack():
+                    break
+            prim = prim.GetParent()
+
+
+def _compute_child_world_pose(parent_world: Any, child_world: Any, local0: Any, local1: Any, motion: Any) -> Any:
+    """Solve scaled joint anchors using rigid frames and retain the child's scale.
+
+    Args:
+        parent_world: Parent body's world transform.
+        child_world: Child body's world transform before posing.
+        local0: Joint frame relative to the parent.
+        local1: Joint frame relative to the child.
+        motion: Joint motion transform.
+
+    Returns:
+        Child world transform with its original uniform world scale.
+    """
+    import pxr
+
+    parent_world = pxr.Gf.Matrix4d(parent_world)
+    child_scale = pxr.Gf.Vec3d(child_world[0][:3]).GetLength()
+    parent_scale = pxr.Gf.Vec3d(parent_world[0][:3]).GetLength()
+    parent_joint = pxr.Gf.Matrix4d(local0)
+    child_joint = pxr.Gf.Matrix4d(local1)
+    parent_joint.SetTranslateOnly(parent_joint.ExtractTranslation() * parent_scale)
+    child_joint.SetTranslateOnly(child_joint.ExtractTranslation() * child_scale)
+    rigid = child_joint.GetInverse() * motion * parent_joint * parent_world.RemoveScaleShear()
+    return pxr.Gf.Matrix4d().SetScale(child_scale) * rigid
+
+
+def _apply_world_transform(prim: Any, world_mat: Any) -> None:
+    """Update the local pose while retaining the authored uniform scale.
+
+    Unsupported transform stacks raise ValueError before editing the prim.
+
+    Args:
+        prim: Body prim to pose.
+        world_mat: Requested rigid world transform.
+    """
+    import pxr
+
+    _validate_pose_xform(prim)
+    current_world = _get_world_transform_matrix(prim)
+    world_scale = pxr.Gf.Vec3d(current_world[0][:3]).GetLength()
+    world_mat = pxr.Gf.Matrix4d().SetScale(world_scale) * pxr.Gf.Matrix4d(world_mat).RemoveScaleShear()
     parent = prim.GetParent()
-    if parent and parent.IsValid():
+    if parent and parent.IsValid() and not pxr.UsdGeom.Xformable(prim).GetResetXformStack():
         parent_world = pxr.Gf.Matrix4d(_get_world_transform_matrix(parent))
         local = world_mat * parent_world.GetInverse()
     else:
         local = pxr.Gf.Matrix4d(world_mat)
 
-    translate = local.ExtractTranslation()
-    quat = local.ExtractRotation().GetQuat()
-    orient_quatd = pxr.Gf.Quatd(quat.GetReal(), quat.GetImaginary())
-    scale_vec3d = pxr.Gf.Vec3d(1.0, 1.0, 1.0)
-
     xformable = pxr.UsdGeom.Xformable(prim)
-    prec_d = pxr.UsdGeom.XformOp.PrecisionDouble
-    prec_f = pxr.UsdGeom.XformOp.PrecisionFloat
-    prec_t = prec_d
-    prec_o = prec_d
-    prec_s = prec_d
-    for op in xformable.GetOrderedXformOps():
-        t = op.GetOpType()
-        p = op.GetPrecision()
-        if t == pxr.UsdGeom.XformOp.TypeTranslate:
-            prec_t = p
-        elif t == pxr.UsdGeom.XformOp.TypeOrient:
-            prec_o = p
-        elif t == pxr.UsdGeom.XformOp.TypeScale:
-            prec_s = p
+    ordered_ops = xformable.GetOrderedXformOps()
+    names = [op.GetOpName() for op in ordered_ops]
+    canonical = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+    if names != [name for name in canonical if name in names]:
+        # Retain matrix/Euler/pivot/unit-conversion operations verbatim. A single
+        # outer correction changes the pose without flattening authored data.
+        correction_name = "xformOp:transform:robotPoser"
+        correction = next((op for op in ordered_ops if op.GetOpName() == correction_name), None)
+        original_ops = [op for op in ordered_ops if op != correction]
+        original = pxr.Gf.Matrix4d(1)
+        for op in original_ops:
+            original = op.GetOpTransform(pxr.Usd.TimeCode.Default()) * original
+        if correction is None:
+            correction = xformable.AddTransformOp(opSuffix="robotPoser")
+        # USD lists outer operations first, but Gf uses row vectors: the
+        # resulting matrix is original * correction, not correction * original.
+        # Thus original * (original^-1 * local) equals the requested local pose.
+        correction.Set(original.GetInverse() * local)
+        xformable.SetXformOpOrder([correction, *original_ops], xformable.GetResetXformStack())
+        return
 
-    xformable.ClearXformOpOrder()
-    # Convert to single precision only when the existing xformOp uses PrecisionFloat.
-    xformable.AddTranslateOp(prec_t).Set(pxr.Gf.Vec3f(translate) if prec_t == prec_f else translate)
-    xformable.AddOrientOp(prec_o).Set(pxr.Gf.Quatf(orient_quatd) if prec_o == prec_f else orient_quatd)
-    xformable.AddScaleOp(prec_s).Set(pxr.Gf.Vec3f(scale_vec3d) if prec_s == prec_f else scale_vec3d)
+    translate = local.ExtractTranslation()
+    orientation = local.RemoveScaleShear().ExtractRotationQuat()
+    xformable = pxr.UsdGeom.Xformable(prim)
+    ops = {op.GetOpType(): op for op in xformable.GetOrderedXformOps()}
+    op_type = pxr.UsdGeom.XformOp
+    translate_op = ops.get(op_type.TypeTranslate)
+    if translate_op is None:
+        translate_op = xformable.AddTranslateOp(op_type.PrecisionDouble)
+    orient_op = ops.get(op_type.TypeOrient)
+    if orient_op is None:
+        orient_op = xformable.AddOrientOp(op_type.PrecisionDouble)
+    translate_op.Set(pxr.Gf.Vec3f(translate) if translate_op.GetPrecision() == op_type.PrecisionFloat else translate)
+    orient_op.Set(pxr.Gf.Quatf(orientation) if orient_op.GetPrecision() == op_type.PrecisionFloat else orientation)
+    ordered = [translate_op, orient_op]
+    if op_type.TypeScale in ops:
+        ordered.append(ops[op_type.TypeScale])
+    xformable.SetXformOpOrder(ordered, xformable.GetResetXformStack())
 
 
 def _read_subtree_transforms(node: Any, transforms: dict[str, Any]) -> None:
@@ -361,8 +450,13 @@ def _fk_propagate_node(
             local1 = _get_joint_local_transform(joint_usd, 1)
 
             if local0 is not None and local1 is not None:
-                motion = _joint_motion_matrix(joint_prim, joint_dict[joint_path])
-                body_new = pxr.Gf.Matrix4d(local1).GetInverse() * motion * pxr.Gf.Matrix4d(local0) * parent_world
+                body_new = _compute_child_world_pose(
+                    parent_world,
+                    old_transforms[str(node.prim.GetPath())],
+                    local0,
+                    local1,
+                    _joint_motion_matrix(joint_prim, joint_dict[joint_path]),
+                )
                 _apply_world_transform(node.prim, body_new)
                 node_affected = True
 
@@ -476,6 +570,7 @@ class KinematicChain:
         zero_world = _compute_zero_config_poses(self._tree_root)
         robot_world = pxr.Gf.Matrix4d(_get_world_transform_matrix(self._robot_prim))
         robot_inv = robot_world.GetInverse()
+        robot_world_scale = pxr.Gf.Vec3d(robot_world[0][:3]).GetLength()
 
         # ---- 2. Resolve each prim to its tree node (parent Link for Sites) ----
         def _resolve_node(prim: Any) -> Any:
@@ -576,7 +671,9 @@ class KinematicChain:
                 local_axis = -local_axis
 
             w = local_axis if is_rev else np.zeros(3)
-            v = np.zeros(3) if is_rev else local_axis
+            # Joint displacement is in world distance units, whereas numerical
+            # FK is expressed in the uniformly scaled robot-base frame.
+            v = np.zeros(3) if is_rev else local_axis / robot_world_scale
 
             if debug:
                 jtype = "REV" if is_rev else "PRI"
@@ -729,6 +826,9 @@ class KinematicChain:
 
         Returns:
             ``(end_effector_transform, 6×N_jacobian)`` in chain-local frame.
+            Rows are angular velocity followed by the space-twist linear
+            component at the frame origin. End-effector point velocity is
+            ``J[3:] + np.cross(J[:3].T, end_effector_transform.t).T``.
 
         """
         joints = self._joints
@@ -836,6 +936,7 @@ class KinematicChain:
         if not joint_dict or self._tree_root is None:
             return
 
+        _validate_pose_subtree(self._tree_root)
         _set_joint_attributes_stage(self._stage, joint_dict)
 
         old_transforms: dict[str, Any] = {}
@@ -866,6 +967,7 @@ class KinematicChain:
         if not joint_dict or self._tree_root is None or anchor is None:
             return
 
+        _validate_pose_subtree(self._tree_root)
         _set_joint_attributes_stage(self._stage, joint_dict)
 
         full_joints = self._read_all_joint_states()

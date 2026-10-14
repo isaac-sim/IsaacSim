@@ -183,4 +183,19 @@ TEST_SUITE("Attribute")
 
         closeStage(stageId);
     }
+
+    TEST_CASE("getPrimAttributeValues decodes OVStage 0.2 asset IDs")
+    {
+        const std::string usdPath =
+            isaacsim::common::test::resolveResourcePath("isaacsim.foundation.usd.ovstage", "attributes.usda");
+        const int64_t stageId = openStage(usdPath);
+
+        CHECK_EQ(std::get<std::vector<std::string>>(getPrimAttributeValues(stageId, { "/Prim" }, "attribute:Asset")),
+                 std::vector<std::string>{ "./variant.usda" });
+        CHECK_EQ(std::get<std::vector<std::vector<std::string>>>(
+                     getPrimAttributeValues(stageId, { "/Prim" }, "attribute:AssetArray")),
+                 (std::vector<std::vector<std::string>>{ { "./variant.usda" } }));
+
+        closeStage(stageId);
+    }
 }

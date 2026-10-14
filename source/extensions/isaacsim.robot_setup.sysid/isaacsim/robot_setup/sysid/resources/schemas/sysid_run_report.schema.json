@@ -14,8 +14,13 @@
     "newton_config",
     "robot_prim_path",
     "train_chunks",
+    "untuned_validation_metrics",
+    "tuned_validation_metrics",
     "validation_metrics",
+    "untuned_validation_summary",
+    "tuned_validation_summary",
     "validation_summary",
+    "validation_comparison",
     "validation_artifacts",
     "resampling_diagnostics",
     "tuning_assessment",
@@ -31,7 +36,7 @@
     "extra"
   ],
   "properties": {
-    "report_schema_version": { "const": 3 },
+    "report_schema_version": { "const": 4 },
     "run_spec": { "$ref": "sysid_run_spec.schema.json" },
     "schema_issues": { "type": "array", "items": { "type": "object" } },
     "telemetry_quality": { "type": "object" },
@@ -43,9 +48,41 @@
     "parameters": { "type": "array", "items": { "type": "object" } },
     "command_alignment_seconds": { "type": "number" },
     "actuator_command_delay_seconds": { "type": "object" },
-    "parameters_written": { "type": "boolean" },
-    "validation_metrics": { "type": "array", "items": { "type": "object" } },
-    "validation_summary": { "type": "object" },
+    "parameters_written": {
+      "type": "boolean",
+      "description": "True when selected values were authored to the requested USD edit targets. This does not prove that the layers were saved or that a fresh process composed the tuned values."
+    },
+    "untuned_validation_metrics": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Validation metrics evaluated with the authored launch parameters, before analytical presolve or optimization."
+    },
+    "tuned_validation_metrics": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Validation metrics evaluated with the selected accepted optimizer output."
+    },
+    "validation_metrics": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Backward-compatible alias of tuned_validation_metrics."
+    },
+    "untuned_validation_summary": {
+      "type": "object",
+      "description": "Aggregate summary of untuned_validation_metrics."
+    },
+    "tuned_validation_summary": {
+      "type": "object",
+      "description": "Aggregate summary of tuned_validation_metrics."
+    },
+    "validation_summary": {
+      "type": "object",
+      "description": "Backward-compatible alias of tuned_validation_summary."
+    },
+    "validation_comparison": {
+      "type": "object",
+      "description": "Paired untuned-versus-tuned comparison and verdict using the run-spec thresholds."
+    },
     "validation_artifacts": { "type": "object" },
     "resampling_diagnostics": {
       "type": "array",
@@ -57,7 +94,10 @@
     "last_accepted_status": { "type": ["object", "null"] },
     "selected_status": { "type": ["object", "null"] },
     "parameter_confidence": { "type": "object" },
-    "extra": { "type": "object" }
+    "extra": {
+      "type": "object",
+      "description": "Additional evidence. extra.writeback.live_parameters_applied reports verified mutation of the current live articulation separately from USD authoring."
+    }
   },
   "$defs": {
     "resampling_diagnostic": {

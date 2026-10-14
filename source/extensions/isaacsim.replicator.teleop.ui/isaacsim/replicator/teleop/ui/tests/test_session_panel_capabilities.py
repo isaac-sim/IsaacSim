@@ -44,6 +44,7 @@ class TestSessionPanelCapabilities(omni.kit.test.AsyncTestCase):
         manager.carry_tracking_space_enabled = False
         with patch("isaacsim.replicator.teleop.ui.session_panel.get_teleop_capabilities", return_value=capabilities):
             panel = SessionPanel(manager, MagicMock(), {})
+        self.addCleanup(panel.destroy)
 
         panel._connect_btn = SimpleNamespace(enabled=True)
         panel._debug_tracking_cb = SimpleNamespace(enabled=False)

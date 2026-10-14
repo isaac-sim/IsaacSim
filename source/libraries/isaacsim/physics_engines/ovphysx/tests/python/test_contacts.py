@@ -287,13 +287,17 @@ class _MultiGetAllocFailureScenario(_RigidContactsScenario):
         if stepno < 2:
             return
         cv = sim.create_rigid_contact_view("/envs/*/box", max_contact_data_count=self.num_envs * 4)
-        # The DirectGPU alloc path routes every output through create_tensor; a real
+        # The DirectGPU alloc path allocates every output with wp.zeros; a real
         # OOM there is an error, not a reason to fall back to the CPU-staged read.
-        with patch(
-            "isaacsim.physics.manager.impl.tensors.frontends.create_tensor", side_effect=RuntimeError("simulated OOM")
-        ):
+        with patch("warp.zeros", side_effect=RuntimeError("simulated OOM")) as zeros:
             with pytest.raises(RuntimeError, match="simulated OOM"):
                 cv.get_data_multi("raw-contact-data")
+        # `warp.zeros` is a broader seam than the alloc path alone, so pin the lane: the
+        # failing allocation must be a device-side output buffer. Without this a future
+        # fallback that swallowed the error and re-raised from its own CPU-staged
+        # allocation would still satisfy the `raises` above.
+        assert zeros.call_count == 1, f"expected one output allocation, saw {zeros.call_count}"
+        assert "cuda" in str(zeros.call_args.kwargs["device"]), "allocation was not on the simulation device"
         self.finish()
 
 

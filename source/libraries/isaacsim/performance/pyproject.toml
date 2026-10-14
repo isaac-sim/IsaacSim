@@ -12,12 +12,17 @@ description = "Isaac Sim benchmark authoring and measurement"
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 authors = [{ name = "NVIDIA Corporation" }]
-dependencies = ["nvidia-ml-py>=13.610.43"]
+dependencies = [
+    "nvidia-ml-py>=13.610.43",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
+
+[project.optional-dependencies]
+ovperf = ["ovperf-collector==0.3.1; sys_platform == 'linux' and platform_machine == 'x86_64'"]
 
 [[tool.dynamic-metadata]]
 provider = "scikit_build_core.metadata.regex"

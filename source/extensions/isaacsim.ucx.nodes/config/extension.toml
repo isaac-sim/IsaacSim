@@ -1,5 +1,5 @@
 [package]
-version = "1.6.10"
+version = "1.8.1"
 category = "Simulation"
 title = "UCX Nodes"
 description = "The UCX Nodes extension provides high-performance communication capabilities using UCX (Unified Communication X) for distributed simulation scenarios with low-latency data transfer"

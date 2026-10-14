@@ -6,6 +6,7 @@
 
 ### Added
 
+- The `physics` / `time-step` simulation parameter configures the native physics step in seconds.
 - Physics interfaces for OV SIM, including `timestamp`-based data callbacks and the exception accessors
   `getComponent()`, `getAttributeName()`, and `getValidAttributeNames()`.
 - Simulation parameter requests reject unsupported names.

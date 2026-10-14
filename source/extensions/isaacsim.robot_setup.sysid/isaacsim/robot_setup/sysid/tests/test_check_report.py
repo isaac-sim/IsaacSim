@@ -122,6 +122,15 @@ class CheckReportTests(omni.kit.test.AsyncTestCase):
         report = build_sysid_check_report(spec, stage=None, trajectory=_trajectory())
         self.assertEqual(report.parameter_verdicts, [])
 
+    async def test_check_report_exposes_quality_object_for_downstream_reuse(self) -> None:
+        """The built assessment is handed back as an object, not just its dict."""
+        report = build_sysid_check_report(_spec_with_selection(), stage=None, trajectory=_trajectory())
+
+        self.assertIsNotNone(report.telemetry_quality_report)
+        self.assertEqual(report.telemetry_quality_report.to_dict(), report.telemetry_quality)
+        # The object is a reuse channel only; it must stay out of the JSON contract.
+        self.assertNotIn("telemetry_quality_report", report.to_dict())
+
     async def test_presolve_stacks_all_training_chunks_without_boundary_acceleration(self) -> None:
         from isaacsim.robot_setup.sysid.check_report import (
             _stack_presolve_training_data,

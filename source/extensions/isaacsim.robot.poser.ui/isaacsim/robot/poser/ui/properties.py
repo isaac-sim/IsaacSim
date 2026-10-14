@@ -541,6 +541,9 @@ class NamedPosePropertiesWidget(SimplePropertyWidget):
                     compute_fk_and_write_transform(stage, self._robot_prim, self._prim_path, pose)
                     if self._is_tracking and pose.joints and self._poser is not None:
                         self._poser.apply_pose(pose.joints)
+        except ValueError as exc:
+            carb.log_warn(f"Robot Poser: {exc}")
+            return
         finally:
             self._updating = False
 
@@ -753,7 +756,11 @@ class NamedPosePropertiesWidget(SimplePropertyWidget):
         if pose and pose.success and pose.joints:
             self._ensure_poser(stage, pose)
             if self._poser is not None:
-                self._poser.apply_pose(pose.joints)
+                try:
+                    self._poser.apply_pose(pose.joints)
+                except ValueError as exc:
+                    carb.log_warn(f"Robot Poser: {exc}")
+                    return
                 force_manipulator_refresh()
 
     def _on_track_target_toggled(self) -> None:
@@ -819,7 +826,13 @@ class NamedPosePropertiesWidget(SimplePropertyWidget):
         if pose and pose.success and pose.joints:
             self._ensure_poser(stage, pose)
             if self._poser is not None:
-                self._poser.apply_pose(pose.joints)
+                try:
+                    self._poser.apply_pose(pose.joints)
+                except ValueError as exc:
+                    carb.log_warn(f"Robot Poser: {exc}")
+                    self._is_tracking = False
+                    self._stop_standalone_tracking()
+                    return
                 force_manipulator_refresh()
 
         if self._tracking_update_sub is None:
@@ -889,6 +902,9 @@ class NamedPosePropertiesWidget(SimplePropertyWidget):
                 jv_attr = pose_prim.GetAttribute(robot_schema.Attributes.POSE_JOINT_VALUES.name)
                 if jv_attr:
                     jv_attr.Set(joint_values_native)
+        except ValueError as exc:
+            carb.log_warn(f"Robot Poser: {exc}")
+            return
         finally:
             self._updating = False
 

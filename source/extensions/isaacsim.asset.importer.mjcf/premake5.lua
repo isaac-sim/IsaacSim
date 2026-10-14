@@ -14,17 +14,15 @@
 -- limitations under the License.
 
 local ext = get_current_extension_info()
-project_ext(ext)
+dofile(root .. "/tools/isaac_build/extension_wheel.lua")
 
--- Link Python source directories to target
+project_ext(ext)
+stage_isaacsim_extension_wheel_with_python_overlays(ext, "isaacsim.asset.importer.mjcf", {
+    "isaacsim/asset/importer/mjcf/impl/extension.py",
+})
+
 repo_build.prebuild_link {
-    { "python/impl", ext.target_dir .. "/isaacsim/asset/importer/mjcf/impl" },
-    { "python/tests", ext.target_dir .. "/isaacsim/asset/importer/mjcf/tests" },
     { "docs", ext.target_dir .. "/docs" },
     { "data", ext.target_dir .. "/data" },
-}
-
--- Copy Python module files
-repo_build.prebuild_copy {
-    { "python/*.py", ext.target_dir .. "/isaacsim/asset/importer/mjcf" },
+    { "isaacsim/asset/importer/mjcf/tests", ext.target_dir .. "/isaacsim/asset/importer/mjcf/tests" },
 }

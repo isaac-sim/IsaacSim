@@ -16,6 +16,7 @@
 """Verifies Prim path resolution behavior for explicit paths and matching expressions. Covers how prim collections normalize and resolve target prim paths."""
 
 import isaacsim.core.experimental.utils.stage as stage_utils
+import omni.kit.app
 import omni.kit.test
 from isaacsim.core.experimental.prims import Prim
 
@@ -64,3 +65,27 @@ class TestPrim(omni.kit.test.AsyncTestCase):
         # incomplete non-existing paths
         with self.assertRaises(ValueError):
             Prim.resolve_paths(["/World/C", "/World/A_.*/C"])
+
+    async def test_unrelated_deletion_does_not_invalidate_regex_view(self) -> None:
+        """Deleting a similarly named sibling must not invalidate resolved view paths."""
+        await stage_utils.create_new_stage_async()
+        for path in [
+            "/World/envs_a",
+            "/World/envs_a/Cube",
+            "/World/envs_b",
+            "/World/envs_b/Cube",
+            "/World/envs_backup",
+        ]:
+            stage_utils.define_prim(path, "Xform")
+
+        stage = stage_utils.get_current_stage(backend="usd")
+        prim = Prim("/World/envs.*/Cube")
+        stage.RemovePrim("/World/envs_backup")
+        await omni.kit.app.get_app().next_update_async()
+
+        self.assertTrue(prim.valid)
+        self.assertTrue(all(stage.GetPrimAtPath(path).IsValid() for path in prim.paths))
+
+        stage.RemovePrim("/World/envs_a")
+        await omni.kit.app.get_app().next_update_async()
+        self.assertFalse(prim.valid)

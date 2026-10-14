@@ -1,5 +1,5 @@
 [package]
-version = "0.4.4"
+version = "0.4.5"
 category = "Utility"
 title = "Deprecation manager"
 description = "Manage deprecated OmniGraph nodes and app/extension settings"
@@ -17,6 +17,9 @@ writeTarget.kit = true
 
 [[python.module]]
 name = "isaacsim.core.deprecation_manager"
+
+[[python.module]]
+name = "isaacsim.core.deprecation_manager.tests"
 
 [settings]
 # List of deprecated settings and their replacements.
@@ -71,8 +74,9 @@ exts."isaacsim.core.deprecation_manager".omnigraph = [
     { deprecated = "omni.isaac.sensor.IsaacReadLightBeamSensor", new = "isaacsim.sensors.physx.IsaacReadLightBeamSensor" },
     { deprecated = "omni.isaac.sensor.IsaacReadRTXLidarData", new = "isaacsim.sensors.rtx.IsaacReadRTXLidarData" },
     { deprecated = "omni.isaac.surface_gripper", new = "isaacsim.robot.surface_gripper" },
+    # no automatic migration: I/O differs from isaacsim.robot.wheeled_robots.AckermannController
+    { deprecated = "omni.isaac.wheeled_robots.AckermannController", new = "" },
     { deprecated = "omni.isaac.wheeled_robots", new = "isaacsim.robot.wheeled_robots" },
-    { deprecated = "omni.isaac.wheeled_robots.AckermannController", new = "isaacsim.robot.wheeled_robots.AckermannControllerDeprecated" },
     { deprecated = "omni.replicator.isaac.OgnCountIndices", new = "isaacsim.replicator.domain_randomization.OgnCountIndices" },
     { deprecated = "omni.replicator.isaac.OgnIntervalFiltering", new = "isaacsim.replicator.domain_randomization.OgnIntervalFiltering" },
     { deprecated = "omni.replicator.isaac.OgnOnRLFrame", new = "isaacsim.replicator.domain_randomization.OgnOnRLFrame" },
@@ -85,6 +89,17 @@ exts."isaacsim.core.deprecation_manager".omnigraph = [
     { deprecated = "omni.replicator.isaac.OgnSampleOnSphere", new = "isaacsim.replicator.examples.OgnSampleOnSphere" },
     { deprecated = "omni.replicator.isaac.OgnDope", new = "isaacsim.replicator.writers.OgnDope" },
     { deprecated = "omni.replicator.isaac.OgnPose", new = "isaacsim.replicator.writers.OgnPose" },
+]
+
+[[test]]
+dependencies = ["omni.kit.test"]
+
+stdoutFailPatterns.exclude = [
+    '*The NumPy module was reloaded*',
+    # expected output of test_overlapping_deprecated_entry_does_not_abort_migration:
+    # the Ackermann node is deliberately left un-migrated and reported via carb.log_error
+    '*[isaacsim.core.deprecation_manager.extension] The stage contains deprecated nodes with no automatic migration*',
+    '*[isaacsim.core.deprecation_manager.extension]*a_ackermann*',
 ]
 
 [documentation]

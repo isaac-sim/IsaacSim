@@ -15,6 +15,7 @@
 
 # preload USD libraries
 import isaacsim.foundation.usd.openusd  # noqa: F401 - initialize OpenUSD bindings
+import isaacsim.foundation.usd.ovstage  # noqa: F401 - initialize OVStage bindings
 
 # register third-party USD schemas
 import newton_usd_schemas  # noqa: F401 - register Newton schemas

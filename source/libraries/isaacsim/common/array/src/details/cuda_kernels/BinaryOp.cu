@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cuda_runtime_api.h>
+#include <type_traits>
 
 using isaacsim::common::array::Dtype;
 using isaacsim::common::array::details::BinaryOp;
@@ -46,6 +47,17 @@ __device__ T applyOperation(T source1, T source2, BinaryOp operation)
         return static_cast<T>(source1 * source2);
     case BinaryOp::eDivide:
         return static_cast<T>(source1 / source2);
+    case BinaryOp::ePower:
+        // Boolean and integer operands are promoted to float64 on the host, so only the
+        // floating-point instantiations reach this arm.
+        if constexpr (std::is_floating_point_v<T>)
+        {
+            return static_cast<T>(::pow(source1, source2));
+        }
+        else
+        {
+            return T{};
+        }
     }
     return T{};
 }

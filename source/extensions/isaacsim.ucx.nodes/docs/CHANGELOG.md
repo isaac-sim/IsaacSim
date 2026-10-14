@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.8.1] - 2026-09-29
+### Fixed
+- Tests wait for deferred Replicator writer detach after stopping the timeline, before the next test opens a new stage.
+
+## [1.8.0] - 2026-09-16
+### Changed
+- `UCXSubscribeJointCommand`: receives asynchronously; `compute()` posts, polls, and returns without blocking. `inputs:timeoutMs` now bounds the posted request (`0` keeps it outstanding) and applies to one already posted.
+- UCX publisher nodes: `inputs:timeoutMs` defaults to `100` ms; `0` is clamped to `100` ms with a one-time warning.
+
+### Fixed
+- UCX nodes no longer hang the application when a peer is connected but no message is pending.
+- UCX nodes no longer free the buffer of a cancelled request before it completes; `UCXPublishImage` cancels and drains in-flight sends on teardown.
+- `UCXSubscribeJointCommand`: changing `inputs:port` or `inputs:tag` reposts the receive; warnings latch per category and re-arm with it.
+
+## [1.7.0] - 2026-09-15
+### Changed
+- Adopt the pinned Holoscan sensor schemas and shared tensor joint definitions (protocol 2). This breaks compatibility with the legacy Isaac OS wire codecs.
+- Store capture timestamps in Header.capture_timestamp_ns and IMU orientation as the SDK xyzw quaternion with validity flags.
+- Expose optional joint command stiffness and damping as node outputs.
+- Describe image tensors using their actual element type and layout, including planar image metadata.
+
+### Fixed
+- Treat empty optional command gain tensors as absent while retaining validation for required command arrays.
+- Validate command identifiers, tensor types, lengths, and CPU storage before reading command values.
+
 ## [1.6.10] - 2026-07-21
 ### Changed
 - Migrated robot asset references from `Isaac/Robots/` to `Isaac/Robots_Multiphysics/` for the new multiphysics-ready USDA assets.

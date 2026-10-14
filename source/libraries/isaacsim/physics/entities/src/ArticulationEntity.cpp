@@ -84,21 +84,44 @@ void setSplitData(PhysicsEntity& entity,
     entity.setData(name, details::joinArrays(components), indices);
 }
 
-// Extracts slice [:, :, componentIndex] from a 3D array (N, D, K) → (N, D).
-array::Array extractComponent(const array::Array& data, size_t componentIndex)
+// Validates the (N, D, K) layout both component helpers index by hand. Their loops derive the element
+// offsets from shape[0..2] and never re-check them, so a wrong rank or an out-of-range component would
+// read or write outside the buffer.
+void checkComponentOperand(const char* context, const array::Array& data, size_t componentIndex)
 {
     if (!data.device().isCpu())
     {
-        throw std::logic_error("extractComponent: not implemented for non-CPU devices");
+        throw std::logic_error(std::string(context) + ": not implemented for non-CPU devices");
     }
+    if (data.ndim() != 3)
+    {
+        throw std::invalid_argument(std::string(context) + ": expected a 3-D (N, D, K) array, got shape " +
+                                    data.shape().toString());
+    }
+    if (componentIndex >= static_cast<size_t>(data.shape()[2]))
+    {
+        throw std::out_of_range(std::string(context) + ": component " + std::to_string(componentIndex) +
+                                " is out of range for shape " + data.shape().toString());
+    }
+}
+
+// Extracts slice [:, :, componentIndex] from a 3D array (N, D, K) → (N, D).
+array::Array extractComponent(const array::Array& data, size_t componentIndex)
+{
+    checkComponentOperand("extractComponent", data, componentIndex);
     const auto shape = data.shape().shape();
     const int64_t entityCount = shape[0];
     const int64_t itemCount = shape[1];
     const int64_t componentCount = shape[2];
     const size_t elemSize = data.dtype().size();
 
+    // The gather below indexes the source as one dense row-major block, so compact a strided or
+    // broadcast input first; this is a view when the input is already contiguous.
+    const array::Array source = data.contiguous();
+
     auto buffer = std::shared_ptr<std::byte[]>(new std::byte[static_cast<size_t>(entityCount * itemCount) * elemSize]);
-    const auto* src = static_cast<const std::byte*>(data.data());
+    array::ArrayReadAccess sourceAccess = array::acquireRead(source);
+    const auto* src = static_cast<const std::byte*>(sourceAccess.data());
 
     for (int64_t i = 0; i < entityCount * itemCount; ++i)
     {
@@ -107,16 +130,18 @@ array::Array extractComponent(const array::Array& data, size_t componentIndex)
                     elemSize);
     }
 
-    return array::Array::fromBuffer(
-        std::move(buffer), array::Shape({ entityCount, itemCount }), data.dtype(), data.device());
+    return array::Array::fromBuffer(std::move(buffer), static_cast<size_t>(entityCount * itemCount) * elemSize,
+                                    array::Shape({ entityCount, itemCount }), data.dtype(), data.device());
 }
 
 // Writes values (N, D) into slice [:, :, componentIndex] of a mutable 3D array (N, D, K).
 void replaceComponent(array::Array& data, size_t componentIndex, const array::Array& values)
 {
-    if (!data.device().isCpu())
+    checkComponentOperand("replaceComponent", data, componentIndex);
+    // `data` is written in place, so it cannot be compacted -- a copy would take the writes instead.
+    if (!data.isContiguous() || !data.isWriteable())
     {
-        throw std::logic_error("replaceComponent: not implemented for non-CPU devices");
+        throw std::invalid_argument("replaceComponent: destination must be a contiguous, writeable array");
     }
     const auto shape = data.shape().shape();
     const int64_t entityCount = shape[0];
@@ -124,8 +149,29 @@ void replaceComponent(array::Array& data, size_t componentIndex, const array::Ar
     const int64_t componentCount = shape[2];
     const size_t elemSize = data.dtype().size();
 
-    auto* dst = static_cast<std::byte*>(data.data());
-    const auto* src = static_cast<const std::byte*>(values.data());
+    // The loop below walks `values` as N*D elements of the destination's element size, so a shorter
+    // source would be read past its allocation. Checked on element count rather than shape so that the
+    // equivalent (N, D), (N, D, 1) and (N*D,) spellings are all accepted.
+    if (values.size() != static_cast<size_t>(entityCount * itemCount))
+    {
+        throw std::invalid_argument("replaceComponent: source holds " + std::to_string(values.size()) +
+                                    " elements, expected " + std::to_string(entityCount * itemCount) +
+                                    " for destination shape " + data.shape().toString());
+    }
+
+    // The source is only read, so unlike the destination it can simply be converted: the cast matches the
+    // element size the loop assumes (a float64 source into a float32 destination would otherwise be
+    // misread), and the compaction handles a strided or broadcast input.
+    array::Array contiguousValues = values.toDtype(data.dtype()).contiguous();
+    if (contiguousValues.buffer().get() == data.buffer().get())
+    {
+        contiguousValues = contiguousValues.copy();
+    }
+
+    array::ArrayReadAccess sourceAccess = array::acquireRead(contiguousValues);
+    array::ArrayWriteAccess destinationAccess = array::acquireWrite(data);
+    auto* dst = static_cast<std::byte*>(destinationAccess.data());
+    const auto* src = static_cast<const std::byte*>(sourceAccess.data());
 
     for (int64_t i = 0; i < entityCount * itemCount; ++i)
     {
@@ -174,8 +220,13 @@ array::Array gatherRows(const array::Array& data, const std::optional<array::Arr
     const std::vector<int64_t> rows = indices->toDtype(array::Dtype::Int64()).get<std::vector<int64_t>>();
     dimensions[0] = static_cast<int64_t>(rows.size());
 
+    // Rows are copied out as dense blocks, so compact a strided or broadcast input first; this is a
+    // view when the input is already contiguous.
+    const array::Array contiguousData = data.contiguous();
+
     auto buffer = std::shared_ptr<std::byte[]>(new std::byte[rows.size() * rowSize]);
-    const auto* source = static_cast<const std::byte*>(data.data());
+    array::ArrayReadAccess sourceAccess = array::acquireRead(contiguousData);
+    const auto* source = static_cast<const std::byte*>(sourceAccess.data());
     for (size_t i = 0; i < rows.size(); ++i)
     {
         if (rows[i] < 0 || rows[i] >= count)
@@ -186,7 +237,8 @@ array::Array gatherRows(const array::Array& data, const std::optional<array::Arr
         std::memcpy(buffer.get() + i * rowSize, source + static_cast<size_t>(rows[i]) * rowSize, rowSize);
     }
 
-    return array::Array::fromBuffer(std::move(buffer), array::Shape(dimensions), data.dtype(), data.device());
+    return array::Array::fromBuffer(
+        std::move(buffer), rows.size() * rowSize, array::Shape(dimensions), data.dtype(), data.device());
 }
 
 array::Array makeZeros(const array::Array& shapeLike)
@@ -272,7 +324,7 @@ size_t ArticulationEntity::numFixedTendons() const
 std::tuple<size_t, size_t, size_t> ArticulationEntity::jacobianMatrixShape() const
 {
     const auto specification =
-        m_entityView->getImplementationSpecification("jacobians", tensors::ImplementationKind::eGet);
+        m_entityView->getArrayImplementationSpecification("jacobians", tensors::ImplementationKind::eGet);
     // Shape hint: (A, R, C) where R = (L-1)*6 for fixed base, L*6 for floating base.
     const size_t rowCount = static_cast<size_t>(specification.shapeHint[1]);
     const size_t columnCount = static_cast<size_t>(specification.shapeHint[2]);
@@ -281,8 +333,8 @@ std::tuple<size_t, size_t, size_t> ArticulationEntity::jacobianMatrixShape() con
 
 std::tuple<size_t, size_t> ArticulationEntity::massMatrixShape() const
 {
-    const auto specification =
-        m_entityView->getImplementationSpecification("generalized-mass-matrices", tensors::ImplementationKind::eGet);
+    const auto specification = m_entityView->getArrayImplementationSpecification(
+        "generalized-mass-matrices", tensors::ImplementationKind::eGet);
     // Shape hint: (A, M, M).
     const size_t matrixSize = static_cast<size_t>(specification.shapeHint[1]);
     return { matrixSize, matrixSize };
@@ -307,7 +359,7 @@ std::tuple<array::Array, array::Array> ArticulationEntity::getDofLimits(const st
                                                                         const std::optional<array::Array>& dofIndices)
 {
     (void)dofIndices;
-    array::Array data = getData("dof-limits", indices); // (N, D, 2)
+    array::Array data = getData("dof-limits", indices).contiguous(); // (N, D, 2)
     return { extractComponent(data, 0), extractComponent(data, 1) };
 }
 
@@ -337,7 +389,7 @@ std::tuple<array::Array, array::Array, array::Array> ArticulationEntity::getDofF
     const std::optional<array::Array>& indices, const std::optional<array::Array>& dofIndices)
 {
     (void)dofIndices;
-    array::Array data = getData("dof-friction-properties", indices); // (N, D, 3)
+    array::Array data = getData("dof-friction-properties", indices).contiguous(); // (N, D, 3)
     return { extractComponent(data, 0), extractComponent(data, 1), extractComponent(data, 2) };
 }
 
@@ -372,7 +424,7 @@ std::tuple<array::Array, array::Array, array::Array> ArticulationEntity::getDofD
     const std::optional<array::Array>& indices, const std::optional<array::Array>& dofIndices)
 {
     (void)dofIndices;
-    array::Array data = getData("dof-drive-model-properties", indices); // (N, D, 3)
+    array::Array data = getData("dof-drive-model-properties", indices).contiguous(); // (N, D, 3)
     return { extractComponent(data, 0), extractComponent(data, 1), extractComponent(data, 2) };
 }
 
@@ -796,7 +848,7 @@ std::tuple<array::Array, array::Array> ArticulationEntity::getFixedTendonLimits(
     const std::optional<array::Array>& indices, const std::optional<array::Array>& tendonIndices)
 {
     (void)tendonIndices;
-    array::Array data = getData("fixed-tendon-limits", indices); // (N, T, 2)
+    array::Array data = getData("fixed-tendon-limits", indices).contiguous(); // (N, T, 2)
     return { extractComponent(data, 0), extractComponent(data, 1) };
 }
 

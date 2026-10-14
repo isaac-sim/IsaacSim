@@ -15,12 +15,22 @@
 
 """Demonstrate simulation-event-driven data capture with writers and annotators."""
 
+import argparse
+import os
+import sys
+from typing import Any
+
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp(launch_config={"headless": False})
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Validate captured output files against expected counts and exit.",
+)
+args, _ = parser.parse_known_args()
 
-import os
-from typing import Any
+simulation_app = SimulationApp(launch_config={"headless": args.test, "disable_viewport_updates": args.test})
 
 import carb.settings
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -146,21 +156,10 @@ def run_example() -> None:
 run_example()
 
 # <start-simulation-get-data-test>
-import argparse
-import sys
-
 from isaacsim.core.utils.extensions import enable_extension
 
 enable_extension("isaacsim.test.utils")
 from isaacsim.test.utils.file_validation import validate_folder_contents
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--test",
-    action="store_true",
-    help="Validate captured output files against expected counts and exit.",
-)
-args, _ = parser.parse_known_args()
 
 if args.test:
     # 5 cubes, each captured once: BasicWriter writes rgb + colorized sem_seg + json (2 png + 1 json),

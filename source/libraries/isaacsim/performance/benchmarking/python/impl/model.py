@@ -82,3 +82,4 @@ class _BenchmarkResult:
     lifecycle_ms: dict[str, float] = field(default_factory=dict)
     validation: dict[str, Any] = field(default_factory=lambda: {"performed": False, "passed": False})
     environment: dict[str, Any] = field(default_factory=dict)
+    collector_capture: dict[str, Any] | None = None

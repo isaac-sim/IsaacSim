@@ -46,6 +46,8 @@ def get_ubuntu_version() -> str | None:
     # Get Ubuntu version using platform.freedesktop_os_release().get("VERSION_ID")
     os_release = platform.freedesktop_os_release()
     version = os_release.get("VERSION_ID")
+    if not version:
+        return None
     major_version = version.split(".")[0]
 
     # Use the supported distros dictionary to get the ROS distribution

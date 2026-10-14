@@ -7,7 +7,7 @@
 ## Settings Provided by the Extension
 
 ## persistent.isaac.asset_root.default
-   - **Default Value**: "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1"
+   - **Default Value**: "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2"
    - **Description**: Default asset root path for Isaac Sim.
 
    **Resolution order** (highest to lowest priority):
@@ -18,7 +18,7 @@
    | 2 | Asset Region Profile | `ISAACSIM_ASSET_REGION_PROFILE=<profile-name>` |
    | 3 | Command-line argument | `--/persistent/isaac/asset_root/default=https://my-server` |
    | 4 | Experience (`.kit`) file | `persistent.isaac.asset_root.default = "https://my-server"` |
-   | 5 | Extension default (`extension.toml`) | `persistent.isaac.asset_root.default = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1"` |
+   | 5 | Extension default (`extension.toml`) | `persistent.isaac.asset_root.default = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2"` |
 
    At startup the extension applies a selected Asset Region Profile, then reads the
    `ISAACSIM_ASSET_ROOT` environment variable. An explicit asset root therefore overrides
@@ -68,7 +68,7 @@
    installation guide for profile selection, local asset packs, precedence, and verification.
 
 ## persistent.isaac.asset_root.timeout
-   - **Default Value**: 5.0
+   - **Default Value**: 10.0
    - **Description**: Timeout in seconds for asset root path to be resolved.
 
 ## persistent.isaac.asset_root.retry_attempts

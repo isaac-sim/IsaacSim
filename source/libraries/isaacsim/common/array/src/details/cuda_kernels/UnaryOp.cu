@@ -50,7 +50,15 @@ __device__ T applyOperation(T source, UnaryOp operation)
     else if constexpr (std::is_floating_point_v<T>)
     {
         // fabs() rather than a comparison, so that the absolute value of -0.0 is +0.0.
-        return operation == UnaryOp::eNegative ? static_cast<T>(-source) : static_cast<T>(::fabs(source));
+        switch (operation)
+        {
+        case UnaryOp::eNegative:
+            return static_cast<T>(-source);
+        case UnaryOp::eSqrt:
+            return static_cast<T>(::sqrt(source));
+        default:
+            return static_cast<T>(::fabs(source));
+        }
     }
     else
     {

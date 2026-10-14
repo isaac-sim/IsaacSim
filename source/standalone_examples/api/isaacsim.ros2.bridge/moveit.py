@@ -76,8 +76,8 @@ xform_api.SetTranslate(Gf.Vec3d(0, -0.64, 0))
 xform_api.SetRotate((0, 0, 90), UsdGeom.XformCommonAPI.RotationOrderXYZ)
 
 # Set variant selections for the Franka robot
-robot.GetVariantSet("Gripper").SetVariantSelection("Default")
-robot.GetVariantSet("Mesh").SetVariantSelection("Quality")
+robot.GetVariantSet("Gripper").SetVariantSelection("alternatefinger")
+robot.GetVariantSet("Mesh").SetVariantSelection("quality")
 
 simulation_app.update()
 

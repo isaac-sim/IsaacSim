@@ -26,6 +26,7 @@ from isaacsim.core.experimental.objects import Camera
 
 from ._camera_common import CAMERA_ANNOTATOR_SPEC as ANNOTATOR_SPEC
 from ._sensor_base import SensorRuntime
+from .rtx_camera import RtxCamera
 
 ANNOTATOR = Literal[
     "distance_to_camera",
@@ -43,8 +44,19 @@ ANNOTATOR = Literal[
 class TiledCameraSensor(SensorRuntime):
     """High level class for creating/wrapping and operating tiled (batched) camera sensors.
 
+    .. note::
+
+        The batch shares a single render product, and the renderer schedules ticks per render
+        product rather than per tile. A tick rate therefore throttles the whole batch: all tiles
+        render together at the shared rate, and no tile can be throttled relative to the others.
+        Cameras that must render at different rates belong to separate sensors. Batching cameras
+        with differing ``omni:sensor:tickRate`` values logs a warning; the first camera in the
+        batch sets the rate for the whole render product and the remaining values are ignored,
+        so the resulting rate depends on camera ordering.
+
     Args:
-        paths: ``Camera`` object, single path or list of paths to existing or non-existing (one of both) USD Camera prims.
+        paths: :class:`RtxCamera` object, :class:`~isaacsim.core.experimental.objects.Camera` object, single path,
+            or list of paths to existing or non-existing (one of both) USD Camera prims.
             Can include regular expressions for matching multiple prims.
         resolution: Resolution of each individual sensor (following OpenCV/NumPy convention: ``(height, width)``).
         annotators: Annotator/sensor types to configure.
@@ -55,6 +67,11 @@ class TiledCameraSensor(SensorRuntime):
         writers: Writer types to attach.
         render_vars: Reserved for API compatibility. Tiled render products do not support additional render variables,
             so this argument is ignored and a warning is logged when it is set.
+        tick_rate: Sensor tick rate in Hz applied to every camera when ``paths`` is not already an
+            :class:`RtxCamera`. When ``None``, authored ``omni:sensor:tickRate`` values are preserved.
+            The rate applies to the batch as a whole.
+        schemas: Additional API schemas to apply when constructing an :class:`RtxCamera` from paths.
+        attributes: Attributes to set on each Camera prim when constructing an :class:`RtxCamera` from paths.
 
     Raises:
         ValueError: If no prims are found matching the specified paths.
@@ -79,22 +96,28 @@ class TiledCameraSensor(SensorRuntime):
         >>> app_utils.play(commit=True)
     """
 
-    _AUTHORING_CLASS = Camera
-    _AUTHORING_ATTR = "_camera"
+    _AUTHORING_CLASS = RtxCamera
+    _AUTHORING_ATTR = "_rtx_camera"
     _ALLOW_MULTIPLE_AUTHORING_OBJECTS = True
 
     def __init__(
         self,
-        paths: str | list[str] | Camera,
+        paths: str | list[str] | Camera | RtxCamera,
         *,
         resolution: tuple[int, int],
         annotators: ANNOTATOR | list[ANNOTATOR],
         annotator_init_params: dict[str, dict[str, Any]] | None = None,
         writers: str | list[str] | None = None,
         render_vars: list[str] | None = None,
+        tick_rate: float | None = None,
+        schemas: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> None:
         self._resolution = resolution
         self._tiled_resolution = None
+        self._authoring_tick_rate = tick_rate
+        self._authoring_schemas = schemas
+        self._authoring_attributes = attributes
         # set the camera-specific annotator spec before `super().__init__` validates annotators
         if not hasattr(self, "_annotators_spec"):
             self._annotators_spec = {annotator: ANNOTATOR_SPEC[annotator] for annotator in get_args(ANNOTATOR)}
@@ -105,6 +128,62 @@ class TiledCameraSensor(SensorRuntime):
             writers=writers,
             render_vars=render_vars,
         )
+        self._warn_on_mixed_tick_rates()
+
+    def _get_or_create_authoring_object(self, paths: str | list[str] | Camera | RtxCamera) -> RtxCamera:
+        """Get the supplied RTX camera or construct one from the camera paths.
+
+        Args:
+            paths: RTX camera, optical camera wrapper, or camera paths.
+
+        Returns:
+            RTX camera authoring object.
+        """
+        has_authoring_kwargs = (
+            self._authoring_tick_rate is not None
+            or self._authoring_schemas is not None
+            or self._authoring_attributes is not None
+        )
+        if isinstance(paths, RtxCamera):
+            if has_authoring_kwargs:
+                carb.log_warn(
+                    "TiledCameraSensor received an RtxCamera instance together with tick_rate, schemas, or "
+                    "attributes. Those arguments are ignored; configure them on the RtxCamera instead."
+                )
+            return paths
+        if isinstance(paths, Camera):
+            paths = list(paths.paths)
+        return RtxCamera(
+            paths,
+            tick_rate=self._authoring_tick_rate,
+            schemas=self._authoring_schemas,
+            attributes=self._authoring_attributes,
+        )
+
+    def _warn_on_mixed_tick_rates(self) -> None:
+        """Warn when the batched cameras do not share a single tick rate.
+
+        The batch shares one render product, and the renderer schedules ticks per render
+        product rather than per tile. Differing ``omni:sensor:tickRate`` values therefore
+        cannot be honored individually: the first camera in the batch sets the rate for the
+        whole render product, the remaining values are ignored, and every tile is updated on
+        each of those ticks.
+        """
+        tick_rates = []
+        for prim in self.authoring_object.prims:
+            attribute = prim.GetAttribute("omni:sensor:tickRate")
+            tick_rates.append(attribute.Get() if attribute.IsValid() else None)
+        normalized_tick_rates = {None if value is None else float(value) for value in tick_rates}
+        if len(normalized_tick_rates) > 1:
+            paths = list(self.authoring_object.paths)
+            carb.log_warn(
+                "TiledCameraSensor batches cameras with different 'omni:sensor:tickRate' values "
+                f"({dict(zip(paths, tick_rates))}). A tiled render product is ticked as a whole, so the "
+                f"first camera in the batch sets the rate: {paths[0]} at {tick_rates[0]} Hz. The other "
+                "values are ignored and every tile updates on each of those ticks. Pass 'tick_rate' to "
+                "apply one rate to the whole batch, or split the cameras across several sensors to render "
+                "them at different rates."
+            )
 
     def __len__(self) -> int:
         """Get the number of cameras encapsulated by the sensor.
@@ -119,7 +198,7 @@ class TiledCameraSensor(SensorRuntime):
             >>> len(tiled_camera_sensor)
             3
         """
-        return len(self._camera)
+        return len(self.authoring_object)
 
     """
     Properties.
@@ -130,7 +209,7 @@ class TiledCameraSensor(SensorRuntime):
         """Camera object encapsulated by the sensor.
 
         Returns:
-            Camera object encapsulated by the sensor.
+            Optical :class:`~isaacsim.core.experimental.objects.Camera` wrapper over the batched prims.
 
         Example:
 
@@ -139,7 +218,7 @@ class TiledCameraSensor(SensorRuntime):
             >>> tiled_camera_sensor.camera
             <isaacsim.core.experimental.objects.impl.camera.Camera object at 0x...>
         """
-        return self._camera
+        return self.authoring_object.camera
 
     @property
     def resolution(self) -> tuple[int, int]:
@@ -236,7 +315,7 @@ class TiledCameraSensor(SensorRuntime):
             height, width = self._resolution
             # get or create output array
             if out is None:
-                shape = (len(self._camera), height, width, output_channels)
+                shape = (len(self.authoring_object), height, width, output_channels)
                 out = wp.empty(shape, dtype=spec["dtype"], device=data.device)
             else:
                 if out.device != data.device:  # move tiled data to output device if it is not the same
@@ -244,7 +323,7 @@ class TiledCameraSensor(SensorRuntime):
             # convert tiled data to batch of frames
             wp.launch(
                 kernel=_wk_reshape_tiled_image,
-                dim=(len(self._camera), height, width),
+                dim=(len(self.authoring_object), height, width),
                 inputs=[
                     data.flatten(),
                     height,
@@ -282,14 +361,15 @@ class TiledCameraSensor(SensorRuntime):
         """
         if render_vars:
             carb.log_warn(f"Tiled render products do not support additional render variables. Ignoring {render_vars}.")
-        self._camera.enforce_square_pixels(self._resolution, modes="horizontal")
+        self.camera.enforce_square_pixels(self._resolution, modes="horizontal")
         # compute tiled resolution
-        num_rows = round(len(self._camera) ** 0.5)
-        num_columns = (len(self._camera) + num_rows - 1) // num_rows
+        num_cameras = len(self.authoring_object)
+        num_rows = round(num_cameras**0.5)
+        num_columns = (num_cameras + num_rows - 1) // num_rows
         self._tiled_resolution = (num_rows * self._resolution[0], num_columns * self._resolution[1])  # (height, width)
         # create the hydra texture
         self._hydra_texture = rep.create.render_product_tiled(
-            cameras=self._camera.paths,
+            cameras=self.authoring_object.paths,
             tile_resolution=(self._resolution[1], self._resolution[0]),  # (width, height)
             name=f"tiled_camera_sensor_{hash(self)}",
         )

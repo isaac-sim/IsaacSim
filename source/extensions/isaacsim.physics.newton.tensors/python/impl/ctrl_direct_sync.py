@@ -31,6 +31,7 @@ import warp as wp
 vec10 = wp.types.vector(length=10, dtype=float)
 
 _dof_map_cache: wp.array | None = None
+_dof_to_target_q_cache: wp.array | None = None
 _dof_map_model_id: int | None = None
 
 
@@ -43,8 +44,9 @@ _dof_map_model_id: int | None = None
 @wp.kernel(enable_backward=False)
 def _sync_ctrl_direct_targets(
     dof_to_act: wp.array(dtype=wp.int32),  # type: ignore[valid-type]
+    dof_to_target_q: wp.array(dtype=wp.int32),  # type: ignore[valid-type]
     joint_target_pos: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
-    dofs_per_world: wp.int32,
+    targets_per_world: wp.int32,
     ctrls_per_world: wp.int32,
     # output
     mujoco_ctrl: wp.array(dtype=wp.float32),  # type: ignore[valid-type]
@@ -53,8 +55,9 @@ def _sync_ctrl_direct_targets(
 
     Args:
         dof_to_act: Mapping from DOF indices to CTRL_DIRECT actuator indices.
-        joint_target_pos: Flattened per-world joint position targets.
-        dofs_per_world: Number of DOFs in each world.
+        dof_to_target_q: Template DOF -> Newton position-target coordinate mapping.
+        joint_target_pos: Flattened coordinate-layout joint position targets.
+        targets_per_world: Number of position-target coordinates in each world.
         ctrls_per_world: Number of MuJoCo controls in each world.
         mujoco_ctrl: Flattened MuJoCo control buffer to update.
     """
@@ -62,7 +65,10 @@ def _sync_ctrl_direct_targets(
     act_idx = dof_to_act[dof]
     if act_idx < 0:
         return
-    src = world * dofs_per_world + dof
+    target_idx = dof_to_target_q[dof]
+    if target_idx < 0:
+        return
+    src = world * targets_per_world + target_idx
     dst = world * ctrls_per_world + act_idx
     mujoco_ctrl[dst] = joint_target_pos[src]
 
@@ -167,6 +173,43 @@ def _build_ctrl_direct_dof_mapping(model: Any) -> wp.array | None:
     return wp.array(dof_to_act, dtype=wp.int32, device=model.device)
 
 
+def _build_dof_target_q_mapping(model: Any) -> wp.array | None:
+    """Build a template DOF-to-position-target-coordinate mapping.
+
+    Args:
+        model: Newton model containing joint start arrays.
+
+    Returns:
+        Per-template-DOF position-target indices, or None when the model has no degrees of freedom.
+    """
+    nworlds = max(int(getattr(model, "world_count", 1)), 1)
+    dofs_per_world = model.joint_dof_count // nworlds
+    targets_per_world = model.joint_target_q.shape[0] // nworlds
+    if dofs_per_world == 0 or targets_per_world == 0:
+        return None
+
+    dof_starts = model.joint_qd_start.numpy()
+    target_starts = model.joint_target_q_start.numpy()
+    dof_to_target_q = np.full(dofs_per_world, -1, dtype=np.int32)
+
+    joint_count = min(len(dof_starts), len(target_starts)) - 1
+    for joint_index in range(joint_count):
+        dof_start = int(dof_starts[joint_index])
+        target_start = int(target_starts[joint_index])
+        if dof_start >= dofs_per_world or target_start >= targets_per_world:
+            break
+
+        dof_end = min(int(dof_starts[joint_index + 1]), dofs_per_world)
+        target_end = min(int(target_starts[joint_index + 1]), targets_per_world)
+        mapped_count = min(dof_end - dof_start, target_end - target_start)
+        if mapped_count > 0:
+            dof_to_target_q[dof_start : dof_start + mapped_count] = np.arange(
+                target_start, target_start + mapped_count, dtype=np.int32
+            )
+
+    return wp.array(dof_to_target_q, dtype=wp.int32, device=model.device)
+
+
 # ---------------------------------------------------------------------------
 # Module-level cache and public API
 # ---------------------------------------------------------------------------
@@ -174,8 +217,9 @@ def _build_ctrl_direct_dof_mapping(model: Any) -> wp.array | None:
 
 def reset() -> None:
     """Reset cached state (call when simulation is destroyed)."""
-    global _dof_map_cache, _dof_map_model_id
+    global _dof_map_cache, _dof_map_model_id, _dof_to_target_q_cache
     _dof_map_cache = None
+    _dof_to_target_q_cache = None
     _dof_map_model_id = None
 
 
@@ -188,14 +232,16 @@ def _get_dof_map(model: Any) -> wp.array | None:
     Returns:
         Warp array mapping DOF indices to actuator indices, or None if unavailable.
     """
-    global _dof_map_cache, _dof_map_model_id
+    global _dof_map_cache, _dof_map_model_id, _dof_to_target_q_cache
     model_id = id(model)
     if _dof_map_model_id != model_id:
         _dof_map_model_id = model_id
         try:
             _dof_map_cache = _build_ctrl_direct_dof_mapping(model)
+            _dof_to_target_q_cache = _build_dof_target_q_mapping(model)
         except Exception:
             _dof_map_cache = None
+            _dof_to_target_q_cache = None
     return _dof_map_cache
 
 
@@ -255,8 +301,12 @@ def sync_position_targets(newton_stage: Any, model: Any) -> None:
     mujoco_ctrl = getattr(getattr(control, "mujoco", None), "ctrl", None)
     if mujoco_ctrl is None:
         return
+    dof_to_target_q = _dof_to_target_q_cache
+    if dof_to_target_q is None:
+        return
     nworlds = model.world_count if hasattr(model, "world_count") else 1
     dofs_per_world = model.joint_dof_count // max(nworlds, 1)
+    targets_per_world = control.joint_target_q.shape[0] // max(nworlds, 1)
     ctrls_per_world = mujoco_ctrl.shape[0] // max(nworlds, 1)
 
     _set_ctrl_direct_biastype_affine(newton_stage, model, dof_map)
@@ -264,7 +314,7 @@ def sync_position_targets(newton_stage: Any, model: Any) -> None:
     wp.launch(
         _sync_ctrl_direct_targets,
         dim=(nworlds, dofs_per_world),
-        inputs=[dof_map, control.joint_target_q, dofs_per_world, ctrls_per_world],
+        inputs=[dof_map, dof_to_target_q, control.joint_target_q, targets_per_world, ctrls_per_world],
         outputs=[mujoco_ctrl],
         device=model.device,
     )

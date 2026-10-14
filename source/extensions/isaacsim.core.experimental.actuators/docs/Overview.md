@@ -35,11 +35,11 @@ fight the actuator output.
 
 The {class}`ActuatorConfig <isaacsim.core.experimental.actuators.ActuatorConfig>`
 dataclass bundles the three components of a single actuator's pipeline: a
-required Newton `Controller`, an ordered list of optional `Clamping`
+required Newton `DriveBase`, an ordered list of optional `ClampingBase`
 stages, and an optional `Delay`.  Used together with
 {meth}`from_actuators <isaacsim.core.experimental.actuators.ArticulationActuators.from_actuators>`
 to attach actuators to an articulation without touching USD.  Subclasses of
-`newton.actuators.Controller`, `Clamping`, or `Delay` are accepted, so
+`newton.actuators.DriveBase`, `ClampingBase`, or `Delay` are accepted, so
 custom control laws can be plugged in by user code without modifying the
 Newton library.
 

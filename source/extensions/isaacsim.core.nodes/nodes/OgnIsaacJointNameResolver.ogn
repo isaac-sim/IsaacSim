@@ -2,7 +2,7 @@
     "IsaacJointNameResolver": {
         "version": 1,
         "icon": "icons/isaac-sim.svg",
-        "description": "Checks for any joint prims with isaac:nameOverride attributes that match the provided names and updates those names to their corresponding original prim names.",
+        "description": "Checks for any joint prims with isaac:NameOverride attributes (with legacy isaac:nameOverride fallback) that match the provided names and updates those names to their corresponding original prim names.",
         "metadata": {
             "uiName": "Isaac Joint Name Resolver"
         },
@@ -34,7 +34,7 @@
             },
             "jointNames":{
                 "type": "token[]",
-                "description": "A list of prim names in the given articulation, where prims with isaac:nameOverride attributes have been replaced with their real names."
+                "description": "A list of prim names in the given articulation, where prims with isaac:NameOverride attributes (with legacy isaac:nameOverride fallback) have been replaced with their real names."
             },
             "robotPath":{
                 "type": "string",

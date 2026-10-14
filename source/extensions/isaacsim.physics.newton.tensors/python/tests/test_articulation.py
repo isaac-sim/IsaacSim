@@ -22,12 +22,15 @@ actuation forces, and simulation-view gravity for Newton-backed articulations.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import numpy as np
+import omni.kit.app
 import omni.physics.tensors as tensors
 import warp as wp
-from pxr import Gf
+from isaacsim.physics.newton import NewtonConfig, configure_newton, get_newton_config
+from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 
 from .test_helpers import NewtonTensorTestBase, run_on_device_configs, warp_utils
 
@@ -353,6 +356,120 @@ class TestArticulationDofProperties(NewtonTensorTestBase):
         humanoids.set_dof_armatures(self.to_warp(armature), idx)
         self.assertTrue(np.allclose(humanoids.get_dof_armatures().numpy(), armature))
 
+    async def test_dof_friction_properties(self) -> None:
+        """Verify DOF friction values round-trip for all humanoids and an indexed subset."""
+        num_envs = self.setup_humanoid_grid()
+        sim = await self.create_sim()
+
+        humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
+        all_indices = warp_utils.arange(humanoids.count, device=self.DEVICE)
+
+        friction = np.ones((humanoids.count, humanoids.max_dofs, 3)) * 100
+        humanoids.set_dof_friction_properties(self.to_warp(friction), all_indices)
+        expected = np.zeros_like(friction)
+        expected[:, :, 0] = friction[:, :, 0]
+        expected[:, :, 1] = friction[:, :, 0]
+        self.assertTrue(np.allclose(humanoids.get_dof_friction_properties().numpy(), expected))
+
+        # Set every index
+        friction[:, :, 0] = 50  # static
+        friction[:, :, 1] = 50  # dynamic
+        friction[:, :, 2] = 0  # viscous (not supported by newton)
+
+        idx = wp.from_numpy(np.array([0]), dtype=wp.int32, device=self.DEVICE)
+        humanoids.set_dof_friction_properties(self.to_warp(friction), idx)
+
+        # Construct solution
+        friction[:, :, 0] = 100  # static
+        friction[:, :, 1] = 100  # dynamic
+        friction[:, :, 2] = 0  # viscous (not supported by newton)
+
+        friction[0, :, 0] = 50  # static
+        friction[0, :, 1] = 50  # dynamic
+        friction[0, :, 2] = 0  # viscous (not supported by newton)
+
+        self.assertTrue(np.allclose(humanoids.get_dof_friction_properties().numpy(), friction))
+
+    async def test_masked_dof_friction_properties(self) -> None:
+        """Verify masked friction writes select rows and an empty mask performs no writes."""
+        num_envs = self.setup_humanoid_grid()
+        sim = await self.create_sim()
+
+        humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
+        all_indices = warp_utils.arange(humanoids.count, device=self.DEVICE)
+        base = np.full((num_envs, humanoids.max_dofs, 3), 100.0, dtype=np.float32)
+        humanoids.set_dof_friction_properties(self.to_warp(base), all_indices)
+
+        mask = np.zeros(humanoids.count, dtype=np.uint8)
+        mask[::2] = 1
+        submitted = np.full_like(base, -999.0)
+        submitted[mask != 0, :, 0] = 50.0
+        self.assertTrue(self.call_masked_setter(humanoids, "set_dof_friction_properties_masked", submitted, mask))
+
+        expected = np.zeros_like(base)
+        expected[:, :, :2] = 100.0
+        expected[mask != 0, :, :2] = 50.0
+        result = humanoids.get_dof_friction_properties().numpy().reshape(base.shape)
+        np.testing.assert_allclose(result, expected)
+
+        empty_mask = np.zeros(humanoids.count, dtype=np.uint8)
+        poison = np.full_like(base, -999.0)
+        self.assertTrue(self.call_masked_setter(humanoids, "set_dof_friction_properties_masked", poison, empty_mask))
+        result = humanoids.get_dof_friction_properties().numpy().reshape(base.shape)
+        np.testing.assert_allclose(result, expected)
+
+    async def test_dof_friction_properties_gpu_to_cpu(self) -> None:
+        """Verify all friction channels are copied from a CUDA simulation into a CPU tensor."""
+        if self.SIM_DEVICE != "cuda:0" or self.DEVICE != "cpu":
+            self.skipTest("This regression test targets the CUDA simulation to CPU tensor path")
+
+        UsdGeom.Xform.Define(self.stage, "/World")
+        UsdGeom.Xform.Define(self.stage, "/World/Robot")
+
+        base = UsdGeom.Cube.Define(self.stage, "/World/Robot/base")
+        UsdPhysics.RigidBodyAPI.Apply(base.GetPrim())
+        UsdPhysics.MassAPI.Apply(base.GetPrim()).GetMassAttr().Set(1.0)
+        UsdPhysics.ArticulationRootAPI.Apply(base.GetPrim())
+
+        link = UsdGeom.Cube.Define(self.stage, "/World/Robot/link")
+        UsdPhysics.RigidBodyAPI.Apply(link.GetPrim())
+        UsdPhysics.MassAPI.Apply(link.GetPrim()).GetMassAttr().Set(1.0)
+        UsdGeom.Xformable(link.GetPrim()).AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, 0.5))
+
+        joint = UsdPhysics.RevoluteJoint.Define(self.stage, "/World/Robot/joint")
+        joint.GetBody0Rel().SetTargets([Sdf.Path("/World/Robot/base")])
+        joint.GetBody1Rel().SetTargets([Sdf.Path("/World/Robot/link")])
+        joint.CreateAxisAttr("Z")
+
+        await omni.kit.app.get_app().next_update_async()
+        from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
+        from omni.physics.tensors.api import SimulationView
+        from omni.physics.tensors.frontend_warp import FrontendWarp
+
+        newton_stage = acquire_newton_stage()
+        self.assertIsNotNone(newton_stage)
+        newton_stage.initialize_newton(self.SIM_DEVICE)
+        backend_view = tensors.acquire_tensor_api().create_simulation_view(self._stage_id, "newton")
+        self.assertIsNotNone(backend_view)
+        self._sim = SimulationView(backend_view, FrontendWarp(-1), -1)
+        sim = self._sim
+        articulation = sim.create_articulation_view("/World/Robot/base")
+
+        friction = np.zeros((articulation.count, articulation.max_dofs, 3), dtype=np.float32)
+        friction[:, :, 0] = (
+            np.arange(articulation.count * articulation.max_dofs, dtype=np.float32).reshape(
+                articulation.count, articulation.max_dofs
+            )
+            + 1.0
+        )
+        indices = wp.array(np.arange(articulation.count, dtype=np.int32), dtype=wp.int32, device="cpu")
+        articulation.set_dof_friction_properties(wp.array(friction, dtype=wp.float32, device="cpu"), indices)
+
+        expected = np.zeros_like(friction)
+        expected[:, :, 0] = friction[:, :, 0]
+        expected[:, :, 1] = friction[:, :, 0]
+        self.assertTrue(np.allclose(articulation.get_dof_friction_properties().numpy(), expected))
+
 
 # ---------------------------------------------------------------------------
 # TestArticulationGetSet
@@ -406,6 +523,32 @@ class TestArticulationGetSet(NewtonTensorTestBase):
         self.assertTrue(np.allclose(result[:n_subset], submitted[:n_subset], atol=self.ATOL))
         self.assertTrue(np.allclose(result[n_subset:], positions[n_subset:], atol=self.ATOL))
 
+    async def test_masked_dof_positions(self) -> None:
+        """Verify partial masks select rows and an empty mask performs no writes."""
+        sim, ants, all_indices = await self._setup_ant()
+        self.step(1)
+
+        base = np.arange(1, ants.count + 1, dtype=np.float32)[:, None]
+        base = np.broadcast_to(base, (ants.count, ants.max_dofs)).copy()
+        ants.set_dof_positions(self.to_warp(base), all_indices)
+
+        mask = np.zeros(ants.count, dtype=np.uint8)
+        mask[::2] = 1
+        submitted = np.full_like(base, -999.0)
+        submitted[mask != 0] = 7.0
+        self.assertTrue(self.call_masked_setter(ants, "set_dof_positions_masked", submitted, mask))
+
+        expected = base.copy()
+        expected[mask != 0] = submitted[mask != 0]
+        result = ants.get_dof_positions().numpy().reshape(ants.count, ants.max_dofs)
+        np.testing.assert_allclose(result, expected, atol=self.ATOL)
+
+        empty_mask = np.zeros(ants.count, dtype=np.uint8)
+        poison = np.full_like(base, -999.0)
+        self.assertTrue(self.call_masked_setter(ants, "set_dof_positions_masked", poison, empty_mask))
+        result = ants.get_dof_positions().numpy().reshape(ants.count, ants.max_dofs)
+        np.testing.assert_allclose(result, expected, atol=self.ATOL)
+
     # -- DOF velocities --
 
     async def test_get_set_dof_velocities(self) -> None:
@@ -429,10 +572,37 @@ class TestArticulationGetSet(NewtonTensorTestBase):
         self.step(1)
 
         num_dof = ants.max_dofs
-        targets = ants.get_dof_position_targets().numpy().reshape((ants.count, num_dof)).copy()
 
-        submitted = targets + 0.5
+        submitted = np.arange(ants.count * num_dof, dtype=np.float32).reshape(ants.count, num_dof) + 0.25
         ants.set_dof_position_targets(self.to_warp(submitted), all_indices)
+
+        # Newton 1.6 stores position targets in joint-coordinate layout. A floating
+        # root consumes seven coordinates but six velocity DOFs, so validating only
+        # the public set/get round trip could hide the same wrong map on both paths.
+        from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
+
+        newton_stage = acquire_newton_stage()
+        model = newton_stage.model
+        articulation_starts = model.articulation_start.numpy()
+        target_starts = model.joint_target_q_start.numpy()
+        dof_starts = model.joint_qd_start.numpy()
+        articulation_labels = [str(label) for label in model.articulation_label]
+        target_indices = []
+        axis_indices = []
+        for prim_path in ants.prim_paths:
+            articulation_index = articulation_labels.index(str(prim_path))
+            joint_start = int(articulation_starts[articulation_index])
+            joint_end = int(articulation_starts[articulation_index + 1])
+            for joint_index in range(joint_start + 1, joint_end):
+                dof_count = int(dof_starts[joint_index + 1] - dof_starts[joint_index])
+                target_indices.extend(int(target_starts[joint_index]) + offset for offset in range(dof_count))
+                axis_indices.extend(int(dof_starts[joint_index]) + offset for offset in range(dof_count))
+
+        self.assertEqual(len(target_indices), ants.count * num_dof)
+        self.assertNotEqual(target_indices, axis_indices)
+        target_buffer = newton_stage.control.joint_target_q.numpy()
+        np.testing.assert_allclose(target_buffer[target_indices], submitted.reshape(-1), atol=self.ATOL)
+
         result = ants.get_dof_position_targets().numpy().reshape((ants.count, num_dof))
         self.assertTrue(np.allclose(result, submitted, atol=self.ATOL))
 
@@ -549,6 +719,27 @@ class TestArticulationBodyProperties(NewtonTensorTestBase):
         masses = np.ones((humanoids.count, humanoids.max_links), dtype=np.float32) * 100.0
         humanoids.set_masses(self.to_warp(masses), all_indices)
         self.assertTrue(np.allclose(humanoids.get_masses().numpy(), masses))
+
+    async def test_masked_body_masses(self) -> None:
+        """Verify masked multi-link scatter skips every link of unselected articulations."""
+        num_envs = self.setup_humanoid_grid()
+        sim = await self.create_sim()
+
+        humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
+        all_indices = warp_utils.arange(humanoids.count, device=self.DEVICE)
+        base = np.arange(1, num_envs + 1, dtype=np.float32)[:, None]
+        base = np.broadcast_to(base, (num_envs, humanoids.max_links)).copy()
+        humanoids.set_masses(self.to_warp(base), all_indices)
+
+        mask = np.zeros(humanoids.count, dtype=np.uint8)
+        mask[::2] = 1
+        submitted = np.full_like(base, 13.0)
+        self.assertTrue(self.call_masked_setter(humanoids, "set_masses_masked", submitted, mask))
+
+        expected = base.copy()
+        expected[mask != 0] = submitted[mask != 0]
+        result = humanoids.get_masses().numpy().reshape(num_envs, humanoids.max_links)
+        np.testing.assert_allclose(result, expected)
 
     async def test_body_inv_masses_shape(self) -> None:
         """Verify inverse-mass tensors are shaped by humanoid count and maximum link count."""
@@ -754,6 +945,7 @@ class TestJacobianAndMassMatrices(NewtonTensorTestBase):
 
     # Free Articulation
     async def test_humanoid_jacobian_and_mass_matrices(self) -> None:
+        """Verify Jacobian and mass-matrix shapes for a floating-base humanoid."""
         num_envs = self.setup_humanoid_grid()
         sim = await self.create_sim()
         humanoids = sim.create_articulation_view("/envs/*/humanoid/torso")
@@ -766,6 +958,7 @@ class TestJacobianAndMassMatrices(NewtonTensorTestBase):
 
     # Root-fixed Articulation
     async def test_franka_jacobian_and_mass_matrices(self) -> None:
+        """Verify Jacobian and mass-matrix shapes for a fixed-base Franka."""
         num_envs = self.setup_franka_grid()
         sim = await self.create_sim()
         frankas = sim.create_articulation_view("/envs/*/franka/root_joint")
@@ -775,6 +968,122 @@ class TestJacobianAndMassMatrices(NewtonTensorTestBase):
         self.assertEqual(frankas.generalized_mass_matrix_shape, (6, 6))
         mass_matrices = frankas.get_generalized_mass_matrices()
         self.assertEqual(mass_matrices.shape, (4, 6, 6))
+
+
+@run_on_device_configs()
+class TestJointForceOutput(NewtonTensorTestBase):
+    """Test optional incoming joint wrench and projected DOF force reporting."""
+
+    async def setUp(self) -> None:
+        """Enable the solver output before creating Newton state objects."""
+        self._saved_newton_config = copy.deepcopy(get_newton_config()) or NewtonConfig()
+        config = copy.deepcopy(self._saved_newton_config)
+        config.solver_outputs.link_incoming_joint_force = True
+        configure_newton(config)
+        await super().setUp()
+
+    async def tearDown(self) -> None:
+        """Restore the Newton solver-output configuration."""
+        await super().tearDown()
+        configure_newton(self._saved_newton_config)
+
+    async def test_joint_force_frame_conversion_and_projection(self) -> None:
+        """Transform Newton wrenches and project them onto the joint motion direction."""
+        articulation_path = "/World/robot"
+        articulation = UsdGeom.Xform.Define(self.stage, articulation_path)
+        UsdPhysics.ArticulationRootAPI.Apply(articulation.GetPrim())
+
+        root_path = f"{articulation_path}/root"
+        root = UsdGeom.Cube.Define(self.stage, root_path)
+        UsdPhysics.RigidBodyAPI.Apply(root.GetPrim())
+        UsdPhysics.MassAPI.Apply(root.GetPrim()).CreateMassAttr(1.0)
+        root_joint = UsdPhysics.FixedJoint.Define(self.stage, f"{root_path}/root_joint")
+        root_joint.CreateBody1Rel().SetTargets([root_path])
+
+        child_path = f"{articulation_path}/child"
+        child = UsdGeom.Cube.Define(self.stage, child_path)
+        child.AddTranslateOp().Set(Gf.Vec3f(1.0, 0.5, -0.25))
+        child.AddOrientOp().Set(Gf.Quatf(Gf.Rotation(Gf.Vec3d(0.2, 1.0, -0.3), 31.0).GetQuat()))
+        UsdPhysics.RigidBodyAPI.Apply(child.GetPrim())
+        child_mass = UsdPhysics.MassAPI.Apply(child.GetPrim())
+        child_mass.CreateMassAttr(2.0)
+        child_mass.CreateCenterOfMassAttr().Set(Gf.Vec3f(0.15, -0.1, 0.2))
+
+        child_joint = UsdPhysics.RevoluteJoint.Define(self.stage, f"{child_path}/joint")
+        child_joint.CreateBody0Rel().SetTargets([root_path])
+        child_joint.CreateBody1Rel().SetTargets([child_path])
+        child_joint.CreateAxisAttr().Set("Y")
+        child_joint.CreateLocalPos0Attr().Set(Gf.Vec3f(0.5, 0.0, 0.0))
+        child_joint.CreateLocalPos1Attr().Set(Gf.Vec3f(-0.2, 0.1, 0.05))
+        joint_orientation = Gf.Quatf(Gf.Rotation(Gf.Vec3d(1.0, 0.4, 0.2), -27.0).GetQuat())
+        child_joint.CreateLocalRot0Attr().Set(joint_orientation)
+        child_joint.CreateLocalRot1Attr().Set(joint_orientation)
+
+        sim = await self.create_sim()
+        robot = sim.create_articulation_view(articulation_path)
+
+        from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
+
+        newton_stage = acquire_newton_stage()
+        self.assertIsNotNone(newton_stage.state_0.body_parent_f)
+
+        body_labels = [str(label) for label in newton_stage.model.body_label]
+        joint_children = newton_stage.model.joint_child.numpy()
+        body_transforms = newton_stage.state_0.body_q.numpy()
+        body_centers_of_mass = newton_stage.model.body_com.numpy()
+        joint_child_transforms = newton_stage.model.joint_X_c.numpy()
+        parent_forces = np.zeros((len(body_labels), 6), dtype=np.float32)
+        force_world = np.array([2.0, -3.0, 5.0], dtype=np.float32)
+        torque_at_center_of_mass_world = np.array([7.0, 11.0, -13.0], dtype=np.float32)
+
+        def multiply_quaternion(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+            """Multiply xyzw quaternions."""
+            return np.array(
+                [
+                    a[3] * b[0] + b[3] * a[0] + a[1] * b[2] - a[2] * b[1],
+                    a[3] * b[1] + b[3] * a[1] + a[2] * b[0] - a[0] * b[2],
+                    a[3] * b[2] + b[3] * a[2] + a[0] * b[1] - a[1] * b[0],
+                    a[3] * b[3] - np.dot(a[:3], b[:3]),
+                ],
+                dtype=np.float32,
+            )
+
+        def rotate_vector(rotation: np.ndarray, vector: np.ndarray) -> np.ndarray:
+            """Rotate a vector by an xyzw quaternion."""
+            imaginary = rotation[:3]
+            twice_cross = 2.0 * np.cross(imaginary, vector)
+            return vector + rotation[3] * twice_cross + np.cross(imaginary, twice_cross)
+
+        child_slot = robot.shared_metatype.link_indices["child"]
+        expected = np.zeros((1, robot.max_links, 6), dtype=np.float32)
+        body_index = body_labels.index(child_path)
+        joint_index = int(np.flatnonzero(joint_children == body_index)[0])
+        parent_forces[body_index, :3] = force_world
+        parent_forces[body_index, 3:] = torque_at_center_of_mass_world
+
+        body_transform = body_transforms[body_index]
+        joint_child_transform = joint_child_transforms[joint_index]
+        center_of_mass_world = body_transform[:3] + rotate_vector(body_transform[3:], body_centers_of_mass[body_index])
+        joint_position_world = body_transform[:3] + rotate_vector(body_transform[3:], joint_child_transform[:3])
+        torque_at_joint_world = torque_at_center_of_mass_world + np.cross(
+            center_of_mass_world - joint_position_world, force_world
+        )
+        joint_orientation_world = multiply_quaternion(body_transform[3:], joint_child_transform[3:])
+        joint_orientation_world_inverse = joint_orientation_world * np.array([-1.0, -1.0, -1.0, 1.0])
+        expected[0, child_slot, :3] = rotate_vector(joint_orientation_world_inverse, force_world)
+        expected[0, child_slot, 3:] = rotate_vector(joint_orientation_world_inverse, torque_at_joint_world)
+
+        newton_stage.state_0.body_parent_f.assign(parent_forces)
+        actual = robot.get_link_incoming_joint_force().numpy().reshape(1, robot.max_links, 6)
+        np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)
+        projected = robot.get_dof_projected_joint_forces().numpy().reshape(1, robot.max_dofs)
+        np.testing.assert_allclose(projected[0, 0], expected[0, child_slot, 4], rtol=1e-5, atol=1e-5)
+
+        newton_stage.state_0.body_parent_f.zero_()
+        self.start_playing()
+        self.step(1)
+        solver_output = robot.get_link_incoming_joint_force().numpy().reshape(1, robot.max_links, 6)
+        self.assertGreater(np.linalg.norm(solver_output[0, child_slot]), 1e-3)
 
 
 # ---------------------------------------------------------------------------

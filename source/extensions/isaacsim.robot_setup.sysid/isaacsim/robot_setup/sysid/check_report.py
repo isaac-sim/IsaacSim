@@ -24,9 +24,11 @@ and never raises — hard errors remain :mod:`preflight`'s job.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+import carb
 import numpy as np
 
 from .analytical_presolve import (
@@ -35,7 +37,7 @@ from .analytical_presolve import (
 )
 from .parameter_types import SysIdParameterEntry, SysIdParameterType
 from .regressor import finite_difference_acceleration
-from .telemetry_quality import build_telemetry_quality_report
+from .telemetry_quality import TelemetryQualityReport, build_telemetry_quality_report
 from .trajectory_csv import TrajectoryDataset
 from .trajectory_segments import TrajectoryChunk
 
@@ -91,6 +93,10 @@ class SysIdCheckReport:
     presolve: dict[str, Any] | None
     parameter_verdicts: list[ParameterIdentifiabilityVerdict]
     issues: list[SysIdCheckIssue]
+
+    #: Live object behind `telemetry_quality`, so later stages can reuse the
+    #: assessment instead of repeating it. Deliberately absent from `to_dict()`.
+    telemetry_quality_report: TelemetryQualityReport | None = None
 
     def to_dict(self) -> dict[str, Any]:  # noqa: D102
         return {
@@ -160,15 +166,21 @@ def build_sysid_check_report(
         Result produced by the operation.
     """  # noqa: DOC107
     issues: list[SysIdCheckIssue] = []
+    started = time.perf_counter()
     chunk_specs = [chunk.spec for chunk in (train_chunks or []) + (validation_chunks or [])]
+    carb.log_info(f"SysId check: assessing telemetry quality ({int(trajectory.times.shape[0])} samples)")
     quality = build_telemetry_quality_report(trajectory, chunk_specs or (spec.telemetry.chunks or None))
+    carb.log_info(f"SysId check: telemetry quality done in {time.perf_counter() - started:.2f} s")
     for issue in quality.issues:
         issues.append(SysIdCheckIssue(code=f"telemetry_{issue.code}", message=issue.message, severity=issue.severity))
 
     verdicts = _initial_verdicts(spec, trajectory)
     presolve_payload = None
     if stage is not None and verdicts:
+        presolve_started = time.perf_counter()
+        carb.log_info(f"SysId check: assessing identifiability of {len(verdicts)} parameters")
         presolve_payload = _run_identifiability_presolve(spec, stage, trajectory, train_chunks, verdicts, issues)
+        carb.log_info(f"SysId check: identifiability done in {time.perf_counter() - presolve_started:.2f} s")
     elif verdicts:
         for verdict in verdicts:
             verdict.notes.append("No USD stage available; identifiability could not be assessed.")
@@ -184,6 +196,7 @@ def build_sysid_check_report(
     telemetry_error = any(issue.severity == "error" for issue in quality.issues)
     any_not_identifiable = any(verdict.verdict == VERDICT_NOT_IDENTIFIABLE for verdict in verdicts)
     any_unknown = any(verdict.verdict == VERDICT_UNKNOWN for verdict in verdicts)
+    carb.log_info(f"SysId check: complete in {time.perf_counter() - started:.2f} s")
     return SysIdCheckReport(
         schema_version=SYSID_CHECK_REPORT_SCHEMA_VERSION,
         ok=not (telemetry_error or any_not_identifiable or any_unknown),
@@ -191,6 +204,7 @@ def build_sysid_check_report(
         presolve=presolve_payload,
         parameter_verdicts=verdicts,
         issues=issues,
+        telemetry_quality_report=quality,
     )
 
 

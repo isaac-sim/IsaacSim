@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Migrate only values owned by the edit target, without capturing referenced or stronger-layer names.
+
+- Migrate joint-only legacy name overrides in the edit layer while preserving canonical names and referenced assets.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

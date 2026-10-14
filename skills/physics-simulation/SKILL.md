@@ -14,9 +14,10 @@ Configure PhysicsScene and per-prim rigid bodies, collisions, materials, joint d
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For standalone physics: a completed `source/libraries` build or matching
+  installed wheels/SDKs; most unit and headless physics tests need no GPU.
+- For Kit settings, extension auto-switching, timeline, or viewport work: built
+  Isaac Sim and the shell environment from `isaac-sim-orchestrator`.
 
 ## Limitations
 
@@ -27,9 +28,35 @@ Configure PhysicsScene and per-prim rigid bodies, collisions, materials, joint d
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Standalone library versus Kit adapter
+
+Use `source/libraries/isaacsim/physics/{manager,registration,entities,ovsim}`
+with the `source/libraries/isaacsim/physics_engines/{ovnewton,ovphysx}` engines
+for standalone physics implementation, backend registration, entities, and
+runtime control. `isaacsim.physics_engines.ovstage` is the process-level setup
+and native-handle bridge for the private OVStage runtime, not a physics engine.
+
+The `isaacsim.core.simulation_manager` settings, extension enablement and
+auto-switch behavior, Kit timeline, viewport, and `SimulationApp` stay on the
+Kit adapter route. Do not apply their launch flags to standalone module tests,
+and do not treat the library `PhysicsManager` as a drop-in spelling change for
+the Kit `SimulationManager` without verifying the consumer workflow.
+
+For a standalone engine whose public package documents import-time registration,
+import that package once and select it through `PhysicsManager`; normal examples
+must not add separate `activate()` or `shutdown()` calls. Drive setup,
+initialization, stepping, and invalidation through the manager, passing the stage
+identifier returned by the `Stage` object rather than a magic value. Prefer
+`RigidBodyEntity` and `ArticulationEntity` over raw simulation views and manual
+tensor conversion when the entity facade supports the operation.
+
+Tests should execute the example's normal public entry point without pre-activating
+its backend, so they detect missing registration and lifecycle ownership. Use the
+checked-out engine API documentation and the matching `source/examples` series as
+the canonical syntax; do not copy an older example's compatibility lifecycle.
 
 Targets Isaac Sim 6.0+ / Kit 110. Both backends share `UsdPhysics.*`; backend-specific behavior is called out per section.
 
@@ -266,6 +293,8 @@ joint_api.CreateJointFrictionAttr().Set(0.0)
 | **SolverXPBD** | Maximal | Partial | Soft constraints, cables, ropes |
 | **SolverSemiImplicit** | Maximal | Yes (Warp) | Fast prototyping, simple rigid bodies |
 | **SolverVBD** | (deformable) | Yes | Soft bodies, deformables |
+
+For an existing PhysX-only USD asset that must also run under Newton, see `physx-to-newton-conversion`.
 
 ### Newton vs PhysX Differences
 

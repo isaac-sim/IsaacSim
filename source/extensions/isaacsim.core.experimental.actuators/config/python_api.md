@@ -16,8 +16,8 @@
   - def step_actuators(self, step_dt: float, context: Any = None)
 
 - class ActuatorConfig
-  - controller: Controller
-  - clamping: list[Clamping]
+  - controller: DriveBase
+  - clamping: list[ClampingBase]
   - delay: Delay | None
 
 - class DCMotorClampingConfig

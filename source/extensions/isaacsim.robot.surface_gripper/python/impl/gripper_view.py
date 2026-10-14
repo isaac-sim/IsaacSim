@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import isaacsim.core.experimental.utils.ops as ops_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import warp as wp
 from isaacsim.core.experimental.prims import XformPrim
@@ -55,6 +56,7 @@ class GripperView(XformPrim):
     Raises:
         Exception: if translations and positions defined at the same time.
         Exception: No prim was matched using the prim_paths_expr provided.
+        ValueError: Any matched prim is not a SurfaceGripper. Mixed matches are rejected before authoring transforms.
     """
 
     def __init__(
@@ -70,6 +72,10 @@ class GripperView(XformPrim):
         scales: np.ndarray | wp.array | None = None,
         reset_xform_op_properties: bool = True,
     ) -> None:
+        # Check every match before XformPrim can author transforms on any of them.
+        resolved_paths, _ = self.resolve_paths(paths)
+        stage = stage_utils.get_current_stage(backend="usd")
+        self._validate_gripper_prims([stage.GetPrimAtPath(path) for path in resolved_paths])
         XformPrim.__init__(
             self,
             paths=paths,
@@ -109,7 +115,7 @@ class GripperView(XformPrim):
         Returns:
             Status of the surface grippers ("Open", "Closing", or "Closed"). Shape (M,).
         """
-        indices = ops_utils.resolve_indices(indices, count=self.count, device="cpu").numpy()
+        indices = self._validate_indices(indices)
         prim_paths = [self._prim_paths[i] for i in indices]
         return self.surface_gripper_interface.get_gripper_status_batch(prim_paths)
 
@@ -122,7 +128,7 @@ class GripperView(XformPrim):
         Returns:
             List of gripped object paths for each gripper. Shape (M,).
         """
-        indices = ops_utils.resolve_indices(indices, count=self.count, device="cpu").numpy()
+        indices = self._validate_indices(indices)
         prim_paths = [self._prim_paths[i] for i in indices]
         return self.surface_gripper_interface.get_gripped_objects_batch(prim_paths)
 
@@ -145,7 +151,7 @@ class GripperView(XformPrim):
         shear_force_limit = []
         retry_interval = []
 
-        indices = ops_utils.resolve_indices(indices, count=self.count, device="cpu").numpy()
+        indices = self._validate_indices(indices)
         for i in indices:
             max_grip_distance.append(self._attr_max_grip_distance[i].Get())
             coaxial_force_limit.append(self._attr_coaxial_force_limit[i].Get())
@@ -173,7 +179,7 @@ class GripperView(XformPrim):
         if self.count != len(values):
             raise ValueError("Length of values must match number of grippers")
 
-        indices = ops_utils.resolve_indices(indices, count=self.count, device="cpu").numpy()
+        indices = self._validate_indices(indices)
         prim_paths = [self._prim_paths[i] for i in indices]
         change_values = [values[i] for i in indices]
         if len(prim_paths) > 0:
@@ -183,10 +189,10 @@ class GripperView(XformPrim):
 
     def set_surface_gripper_properties(
         self,
-        max_grip_distance: list[float] | None = None,
-        coaxial_force_limit: list[float] | None = None,
-        shear_force_limit: list[float] | None = None,
-        retry_interval: list[float] | None = None,
+        max_grip_distance: list[float] | np.ndarray | wp.array | None = None,
+        coaxial_force_limit: list[float] | np.ndarray | wp.array | None = None,
+        shear_force_limit: list[float] | np.ndarray | wp.array | None = None,
+        retry_interval: list[float] | np.ndarray | wp.array | None = None,
         indices: list | np.ndarray | wp.array | None = None,
     ) -> None:
         """Set up the properties for the surface grippers.
@@ -207,53 +213,66 @@ class GripperView(XformPrim):
             ValueError: If the length of any properties does not match the number of encapsulated prims in the view.
             ValueError: If a value in indices is larger then the number of encapsulated prims in the view.
         """
+        indices = self._validate_indices(indices)
+        # Normalize and validate every property before the first USD write.
+        updates = []
+        for name, values, attributes in (
+            ("max_grip_distance", max_grip_distance, self._attr_max_grip_distance),
+            ("coaxial_force_limit", coaxial_force_limit, self._attr_coaxial_force_limit),
+            ("shear_force_limit", shear_force_limit, self._attr_shear_force_limit),
+            ("retry_interval", retry_interval, self._attr_retry_interval),
+        ):
+            if values is None:
+                continue
+            values = ops_utils.place(values, device="cpu").numpy()
+            if values.shape != (self.count,):
+                raise ValueError(f"{name} must have shape ({self.count},), got {values.shape}")
+            converted = [float(value) for value in values]
+            for i in indices:
+                if not attributes[i].IsValid():
+                    raise ValueError(f"Missing {name} attribute on SurfaceGripper {self._prim_paths[i]}")
+            updates.append((attributes, converted))
+        for attributes, values in updates:
+            for i in indices:
+                attributes[i].Set(values[i])
+
+    @staticmethod
+    def _validate_gripper_prims(prims: list) -> None:
+        """Validate that every prim has the SurfaceGripper type.
+
+        Args:
+            prims: Prims to validate before authoring properties.
+
+        Raises:
+            ValueError: A prim is invalid or has a different type.
+        """
+        invalid_paths = [
+            str(prim.GetPath())
+            for prim in prims
+            if not prim.IsValid() or prim.GetTypeName() != robot_schema.Classes.SURFACE_GRIPPER.value
+        ]
+        if invalid_paths:
+            raise ValueError(f"Expected SurfaceGripper prims; invalid prims: {', '.join(invalid_paths)}")
+
+    def _validate_indices(self, indices: list | np.ndarray | wp.array | None) -> np.ndarray:
+        """Validate current prims and resolve an in-range selection.
+
+        Args:
+            indices: Gripper indices, or None to select all wrapped grippers.
+
+        Returns:
+            One-dimensional NumPy array of selected indices.
+
+        Raises:
+            ValueError: A prim was removed or changed type, or indices are invalid.
+        """
+        # Recheck the schema to diagnose deletion or type changes after construction.
+        stage = stage_utils.get_current_stage(backend="usd")
+        prims = [stage.GetPrimAtPath(path) for path in self._prim_paths]
+        for path, prim in zip(self._prim_paths, prims):
+            if not prim.IsValid() or prim.GetTypeName() != robot_schema.Classes.SURFACE_GRIPPER.value:
+                raise ValueError(f"Expected SurfaceGripper prim at {path}; prim was removed or its type changed")
         indices = ops_utils.resolve_indices(indices, count=self.count, device="cpu").numpy()
-        # Setup max grip distance if provided
-        if max_grip_distance is not None:
-            # Ensure length of max_grip_distance matches number of gripper
-            if self.count != len(max_grip_distance):
-                raise ValueError("Length of max_grip_distance must match number of grippers")
-
-            for i in indices:
-                # Ensure indice has a matching values
-                if i >= len(max_grip_distance):
-                    raise ValueError("Indices should be compatible with length of max_grip_distance")
-                self._attr_max_grip_distance[i].Set(max_grip_distance[i])
-
-        # Setup coaxial force limit if provided
-        if coaxial_force_limit is not None:
-            # Ensure length of coaxial_force_limit matches number of gripper
-            if self.count != len(coaxial_force_limit):
-                raise ValueError("Length of coaxial_force_limit must match number of grippers")
-
-            for i in indices:
-                # Ensure indice has a matching values
-                if i >= len(coaxial_force_limit):
-                    raise ValueError("Indices should be compatible with length of coaxial_force_limit")
-                self._attr_coaxial_force_limit[i].Set(coaxial_force_limit[i])
-
-        # Setup shear force limit if provided
-        if shear_force_limit is not None:
-            # Ensure length of shear_force_limit matches number of gripper
-            if self.count != len(shear_force_limit):
-                raise ValueError("Length of shear_force_limit must match number of grippers")
-
-            for i in indices:
-                # Ensure indice has a matching values
-                if i >= len(shear_force_limit):
-                    raise ValueError("Indices should be compatible with length of shear_force_limit")
-                self._attr_shear_force_limit[i].Set(shear_force_limit[i])
-
-        # Setup retry interval if provided
-        if retry_interval is not None:
-            # Ensure length of retry_interval matches number of gripper
-            if self.count != len(retry_interval):
-                raise ValueError("Length of retry_interval must match number of grippers")
-
-            for i in indices:
-                # Ensure indice has a matching values
-                if i >= len(retry_interval):
-                    raise ValueError("Indices should be compatible with length of retry_interval")
-                self._attr_retry_interval[i].Set(retry_interval[i])
-
-        return
+        if indices.ndim != 1 or np.any(indices < 0) or np.any(indices >= self.count):
+            raise ValueError(f"Indices must be a one-dimensional array in [0, {self.count})")
+        return indices

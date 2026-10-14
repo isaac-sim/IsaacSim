@@ -224,7 +224,12 @@ class RigidPrim(XformPrim):
         Returns:
             Whether the physics tensor entity is valid.
         """
-        return SimulationManager._physics_sim_view__warp is not None and self._physics_rigid_body_view is not None
+        physics_simulation_view = SimulationManager._physics_sim_view__warp
+        return (
+            physics_simulation_view is not None
+            and physics_simulation_view.is_valid
+            and self._physics_rigid_body_view is not None
+        )
 
     def set_world_poses(
         self,
@@ -712,6 +717,7 @@ class RigidPrim(XformPrim):
 
         Returns:
             The masses or inverse masses (shape ``(N, 1)``).
+            With the USD backend and ``inverse=False``, prims without an authored ``UsdPhysics.MassAPI`` return zero.
 
         Raises:
             AssertionError: Wrapped prims are not valid.
@@ -745,8 +751,9 @@ class RigidPrim(XformPrim):
             indices = ops_utils.resolve_indices(indices, count=len(self), device="cpu")
             masses = np.zeros((indices.shape[0], 1), dtype=np.float32)
             for i, index in enumerate(indices.numpy()):
-                mass_api = RigidPrim.ensure_api([self.prims[index]], UsdPhysics.MassAPI)[0]
-                masses[i] = mass_api.GetMassAttr().Get()
+                prim = self.prims[index]
+                if prim.HasAPI(UsdPhysics.MassAPI):
+                    masses[i] = UsdPhysics.MassAPI(prim).GetMassAttr().Get()
             if inverse:
                 masses = 1.0 / (masses + 1e-8)
             return ops_utils.place(masses, device=self._device)
@@ -1977,16 +1984,14 @@ class RigidPrim(XformPrim):
         from isaacsim.core.experimental.utils import stage as stage_utils
 
         from ._cpp_buffers import get_device_ordinal
-        from .extension import get_prim_data_reader
-
-        reader = get_prim_data_reader()
-        if reader is None:
-            return
+        from .extension import get_initialized_prim_data_reader
 
         stage = stage_utils.get_current_stage(backend="usd")
         if stage is None:
             return
-        reader.initialize(stage_utils.get_stage_id(stage), get_device_ordinal())
+        reader = get_initialized_prim_data_reader(stage_utils.get_stage_id(stage), get_device_ordinal())
+        if reader is None:
+            return
 
         rb_view = self._physics_rigid_body_view
         if rb_view is None:

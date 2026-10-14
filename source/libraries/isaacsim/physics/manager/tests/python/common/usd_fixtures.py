@@ -88,12 +88,16 @@ def populate_ovstage_from_usd_path(usd_path: str, *, name: str = "umbrella-physi
     import ovstage
 
     ov = ovstage.Stage(name)
-    ovstage.population.open_usd(
+    description = ovstage.population.Desc(
+        domains=ovstage.PopulationDomain.RENDERING | ovstage.PopulationDomain.PHYSICS,
+        stage_metadata_paths=("metersPerUnit", "upAxis"),
+    )
+    ovstage.population.open_usd_with_desc(
         ov,
         usd_path,
         ordinal=1,
         time_code=0.0,
-        domains=ovstage.PopulationDomain.RENDERING | ovstage.PopulationDomain.PHYSICS,
+        descs=description,
     )
     # Seal population payloads before ovnewton.attach_ovstage reads ordinal 1.
     ov.advance_write_floor(1).wait()

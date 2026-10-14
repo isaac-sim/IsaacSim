@@ -1,6 +1,6 @@
 ---
 name: motion-generation
-description: "Motion-generation controllers for arms and mobile bases with obstacles. Use for SceneQuery-driven end-effector or drive motion."
+description: "Build obstacle-aware arm and mobile-base controllers. Primary for UR10 pick-and-place around obstacles with physics/video; use manipulation-ik for obstacle-free grasp tasks."
 license: Apache-2.0
 metadata:
   author: Aaron Young <info@nvidia.com>
@@ -12,11 +12,27 @@ metadata:
 
 Build obstacle-aware arm and mobile-base motion with the motion_generation controller substrate; cuMotion with RMPflow is the reference arm implementation.
 
+## Skill selection and invocation
+
+For obstacle-aware arm demos, invoke `motion-generation` as the primary skill
+before scene implementation. A requested video does not make the orchestrator
+the primary skill. Use `manipulation-ik` for supporting grasp/contact checks and
+`isaac-sim-remote` for live execution.
+
+When the agent runtime exposes a native skill invocation tool (for example,
+Claude's Skill tool), use it to invoke this skill and the needed supporting
+skills. Reading their files with shell commands is supplemental reference
+access, not a substitute for that invocation. On runtimes without such a tool,
+load the canonical `SKILL.md` through the supported discovery mechanism and
+report that native invocation tracing is unavailable; do not fabricate it.
+
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For library implementation and standalone consumers: a completed
+  `source/libraries` build or installed matching wheels/SDKs.
+- For interactive Kit adapters: built Isaac Sim and the shell environment from
+  `isaac-sim-orchestrator`; a GPU is required only by the selected controller or
+  rendering workflow.
 
 ## Limitations
 
@@ -27,9 +43,23 @@ Build obstacle-aware arm and mobile-base motion with the motion_generation contr
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Ownership and execution routes
+
+The registered library surfaces for `isaacsim.robot_motion.controllers`,
+`isaacsim.robot_motion.cumotion`, and
+`isaacsim.robot_motion.experimental.motion_generation` are under
+`source/libraries/isaacsim/robot_motion/`. Use their module tests to determine
+which behavior has actually migrated and
+`source/examples/series/motion_generation/` for installed standalone consumer
+behavior. Run that route through the configured library environment; do not
+infer solver-specific parity from namespace registration.
+
+Use the corresponding extensions for behavior that module tests have not yet
+established as standalone, plus Kit discovery, lifecycle, and interactive
+samples.
 
 Owns the generic `isaacsim.robot_motion.experimental.motion_generation` (`mg`)
 substrate and the phase-machine workflow for obstacle-aware end-effector
@@ -53,39 +83,41 @@ Shared substrate lives in sibling skills:
 
 | Script | Purpose | Arguments |
 |---|---|---|
-| `scripts/control_loop.py` | Control loop | see script --help |
-| `scripts/cumotion_setup.py` | Cumotion setup | see script --help |
-| `scripts/frames_and_grasping.py` | Frames and grasping | see script --help |
-| `scripts/inspect_scene.py` | Inspect scene | see script --help |
-| `scripts/phase_machine.py` | Phase machine | see script --help |
-| `scripts/world_binding.py` | World binding | see script --help |
+| `scripts/control_loop.py` | Control loop | import helper |
+| `scripts/cumotion_setup.py` | Cumotion setup | import helper |
+| `scripts/frames_and_grasping.py` | Frames and grasping | import helper |
+| `scripts/inspect_scene.py` | Inspect scene | Python-server injected globals |
+| `scripts/phase_machine.py` | Phase machine | import helper |
+| `scripts/world_binding.py` | World binding | import helper |
 
 ## Running scripts
 
-From agent runtimes that expose skill execution helpers, invoke helpers with `run_script()`:
-
-```python
-run_script("scripts/control_loop.py", args=["--help"])
-```
-
-From a built Isaac Sim tree, run the same file with `./python.sh` (Linux) or `python.bat` (Windows) from `_build/*/release`, or execute shell helpers directly when they do not require the simulator.
+The control-loop, world-binding, frame, controller-setup, and phase-label files
+are importable helpers, not CLIs with `--help`. Import or adapt them in a scene
+script. For Kit demo iteration, load `isaac-sim-remote` and send scene logic to
+the running Python server. Use `./python.sh` or `python.bat` for the delivered
+standalone script after validating the scene through that server. Agent runtimes
+with `run_script()` may use it to launch the adapted standalone entry point;
+do not invoke import-only helpers as scripts.
 
 ## Scope Rules
 
-- Use current experimental Isaac Sim APIs. Do not add Cortex, deprecated
-  manipulator, or legacy `omni.isaac.*` compatibility unless the user asks for
+- Use current experimental Isaac Sim APIs. Do not add deprecated manipulator
+  APIs or legacy `omni.isaac.*` compatibility unless the user asks for
   migration. `RobotState` and the world-binding substrate live in
   `isaacsim.robot_motion.experimental.motion_generation`; the non-experimental
   `isaacsim.robot_motion.motion_generation` is deprecated.
-- Prefer Python-server iteration when available. A standalone script can be the
-  deliverable shape, but validate the scene logic, frame alignment, and phase
-  gates through the Python server unless the user explicitly asks to run the
-  standalone launcher.
+- For Kit demos, iterate through the Python server before standalone capture,
+  unless the user explicitly requests standalone validation. If the server is
+  unavailable, report the blocked validation rather than silently substituting
+  restart-per-attempt runs. Validate
+  migrated library behavior through its module tests and `source/examples`, not
+  through the Python server.
 - Do not trust shell exit code alone. Inspect stdout/logs for tracebacks,
   `RuntimeError`, explicit pass/fail JSON, and phase completion.
 - Keep one-off probes in `/tmp`. Only keep reusable, domain-specific helpers
   under this skill.
-- A standalone script is run by a person, so it must open a visible window
+- A standalone Kit script is run by a person, so it must open a visible window
   by default. Gate headless mode and any frame capture / video encoding behind
   explicit opt-in flags (for example `--render OUTPUT.MP4` switches to headless
   capture). Never set `--headless` or `SimulationApp(headless=...)` to
@@ -94,16 +126,34 @@ From a built Isaac Sim tree, run the same file with `./python.sh` (Linux) or `py
 
 ## Workflow
 
+For Kit demo development, establish the Python-server session using
+[`references/workflow.md`](references/workflow.md#python-server-iteration).
+Record a successful health response, then execute scene inspection, controller
+iterations, and validation through that session. Starting a server or describing
+this plan alone does not satisfy live iteration. The explicit user-requested
+standalone exception in Scope Rules still applies. Keep the invocation and client
+response evidence alongside the run metrics; successful physics/video alone
+cannot establish that the required workflow was followed.
+
 1. Inspect robot prim path, DOF/link names, controller tool frames, object
    pose/AABB, physics schemas, and collision APIs.
 2. Define the task frame before tuning: tool frame, physical grasp/action
-   point, object semantic axis, and target axis.
+   point, object semantic axis, and target axis. Measure and log the tool-local
+   grasp offset in the approach orientation before tuning gains, obstacle
+   inflation, or timeouts; freeze it through close/lift.
 3. Build world binding and controller (`references/world-binding.md`,
    `references/cumotion.md`).
 4. Run an explicit phase machine (`references/control-loop.md`) with target,
    reset policy, convergence predicate, timeout, and trace line per phase.
+   Advance required motion phases only on measured convergence. A timeout or
+   failed grasp/contact gate terminates the attempt as FAIL; never release or
+   continue to the next phase on timeout.
 5. Validate measured outputs from the actual run. For dynamic manipulation,
-   use `manipulation-ik` and `physics-simulation` for grasp/contact gates.
+   use `manipulation-ik` and `physics-simulation` for grasp/contact gates. Overall
+   PASS requires every required phase and gate, plus stable final object pose,
+   to pass in the same run (with recording enabled when video is requested).
+   An interrupted run is incomplete;
+   a final pose alone cannot override a failed phase.
 
 ## References And Helpers
 
@@ -194,7 +244,8 @@ controller gains or timeouts.
 
 ## Canonical Sources
 
-Scripts (`source/standalone_examples/tutorials/manipulation/`, all use the `mg` substrate):
+Kit tutorial scripts (`source/standalone_examples/tutorials/manipulation/`, all
+use the `mg` substrate):
 
 - `tutorial_9_arm_trajectory.py`, `tutorial_9_follow_target.py`
 - `tutorial_9_pick_place_cumotion.py` (cuMotion), `tutorial_9_pick_place_pink.py` (PINK)

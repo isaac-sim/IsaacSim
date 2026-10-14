@@ -16,9 +16,7 @@ Extract durable procedures, skill updates, or new skills from a completed reques
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- Access to the owning skill and the source, tests, examples, or runtime evidence behind the lesson.
 - User confirmation before any skill-library write (see Write step).
 
 ## Limitations
@@ -29,11 +27,9 @@ Extract durable procedures, skill updates, or new skills from a completed reques
 
 ## Troubleshooting
 
-| Error / symptom | Cause | Solution |
-|---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
-| Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
-| Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+| Symptom | Resolution |
+|---|---|
+| A proposed lesson conflicts with existing guidance | Recheck the owning source and update the canonical skill instead of duplicating it |
 
 Step 5 of the universal request loop (see `AGENTS.md` and `meta-skills`). Every user request ends with a distillation pass before delivery. Skip it and the library decays; the next session rediscovers the same lessons.
 
@@ -129,7 +125,7 @@ Always ask: *"What's the general principle behind this specific fix?"*
 | Specific fix | Generalized skill |
 |-------------|-------------------|
 | Stripped RigidBodyAPI from table legs | Asset stability check procedure |
-| Used file writes instead of print() | Headless debugging: stdout is unreliable |
+| Replaced incidental `print()` diagnostics | Choose logging by owner: `isaacsim.common.logging.Logger` in standalone libraries, `carb.log_*` in Kit; keep `print()` only for intentional CLI/stdout contracts |
 | Added PhysxArticulationAPI.Apply() | Articulation setup checklist |
 | Robot moved but didn't grasp | Visual validation must confirm task outcome, not just motion |
 | User had to give detailed plan | Auto-decomposition: agent breaks down goals into phases |
@@ -170,9 +166,21 @@ For any code pattern in a skill:
 - *If it's a custom utility not in any upstream source:* put it in a versioned script file in the workspace (e.g., `isaac-sim/utils/grasp_utils.py`), reference it by path, and note the version it was written for.
 - *If it's a tiny one-liner or config snippet* (e.g., a settings dict): embedding is acceptable, but add a comment with the Isaac Sim version it was validated against.
 
+### Source ownership order
+
+When library and extension implementations coexist, distill from the owning layer:
+
+1. `source/libraries/` implementation and public API are authoritative for standalone behavior.
+2. Library module tests are behavioral evidence.
+3. `source/examples/` demonstrates installed-package consumption.
+4. An extension that stages a library wheel owns only its manifest, staging, lifecycle, and adapter behavior; do not copy core logic into it.
+5. `source/standalone_examples/` remains authoritative for Kit application behavior.
+
+An `isaacsim.*` import does not by itself imply that `SimulationApp`, Kit, or Carbonite is required.
+
 ### Why
 - Isaac Sim APIs change between versions. A skill with embedded code can silently guide agents down wrong paths.
-- Local example files (`$ISAAC_SIM_DIR/source/standalone_examples/...`) always reflect the installed/built version — they are the most accurate reference available.
+- Local owners and examples (`source/libraries/`, `source/examples/`, and Kit-specific `source/standalone_examples/`) reflect the checked-out version; choose the path matching the runtime boundary.
 - Docs at `docs.isaacsim.omniverse.nvidia.com` are version-tagged — link to `latest` unless pinning to a specific release is intentional.
 
 ### What to Write Instead of Code

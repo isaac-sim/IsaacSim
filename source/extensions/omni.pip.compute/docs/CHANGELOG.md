@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.7] - 2026-09-29
+### Changed
+- Update opencv-python-headless-noffmpeg to 4.14.0.94rc3 for bundled image-codec security fixes.
+
+## [1.9.6] - 2026-09-16
+### Changed
+- Update opencv-python-headless-noffmpeg to 4.14.0.94rc2.
+
 ## [1.9.5] - 2026-09-04
 ### Changed
 - Update opencv-python-headless-noffmpeg to 4.14.0.94rc1.

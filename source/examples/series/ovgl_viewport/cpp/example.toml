@@ -26,11 +26,7 @@ timeout_seconds = 60
 
 [requirements]
 system = ["cmake", "cpp", "python", "python_development"]
-
-[[requirements.modules]]
-name = "isaacsim_foundation"
-surfaces = ["native_sdk"]
-
-[[requirements.modules]]
-name = "isaacsim_ovgl_viewport"
-surfaces = ["native_sdk"]
+modules = [
+    { name = "isaacsim_foundation", surfaces = ["native_sdk"] },
+    { name = "isaacsim_ovgl_viewport", surfaces = ["native_sdk"] },
+]

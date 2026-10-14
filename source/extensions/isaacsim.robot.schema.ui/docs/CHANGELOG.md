@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.1] - 2026-09-30
+### Fixed
+- Stop deferred hierarchy refresh tests from failing when other code submits work on the shared event loop.
+
+## [0.4.0] - 2026-09-28
+### Added
+- Add an independent Show connections preference to the Inspector toolbar, enabled by default.
+
+### Fixed
+- Resolve hierarchy joint positions from the supplied source stage.
+- Coalesce hierarchy changes during an active worker and apply only the latest generation.
+- Discard deferred results when the stage, robot selection, view mode, or window visibility changes.
+- Preserve existing masking-layer mute state.
+- Stop cancelled hierarchy refreshes from consuming replacement requests after the Inspector reopens.
+
+## [0.3.8] - 2026-09-23
+### Fixed
+- Preserve independent joint masks and bypass reparenting when the other Robot Inspector control is cleared.
+
 ## [0.3.7] - 2026-08-06
 ### Fixed
 - Robot Inspector hierarchy generation no longer emits global USD object-change notices for live-stage paths.

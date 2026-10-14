@@ -18,8 +18,10 @@
 #include "isaacsim/common/array/Export.h"
 
 #include <cstddef>
-#include <cuda_runtime_api.h>
+#include <cuda.h>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
 namespace isaacsim
 {
@@ -28,58 +30,173 @@ namespace common
 namespace array
 {
 
-/** @brief Runtime-loaded access to the CUDA runtime functions used by Array. */
+/**
+ * @brief Runtime-loaded access to the CUDA functions used by Array.
+ * @details
+ * This binds the CUDA *driver* library rather than the CUDA runtime. The driver is installed by the
+ * NVIDIA display driver into the loader's default search path, so it resolves without any vendored
+ * redistributable, RPATH entry, or `LD_LIBRARY_PATH`/`PATH` contribution; the runtime's shared
+ * library has none of those guarantees and is not shipped with this project. The method names still
+ * read `cudaXxx` after the API they replace, so call sites did not have to churn; each one documents
+ * the driver entry point it actually calls.
+ *
+ * Absence stays a supported state: when the driver cannot be loaded or `cuInit()` fails -- a machine
+ * with no GPU, or no driver installed -- `isLoaded()` reports false and every call either throws or
+ * returns false according to its `throwIfInvalid` argument, leaving CPU paths fully usable.
+ *
+ * Contexts are the one place the driver API is not a drop-in. The runtime API keeps an implicit
+ * per-thread current device and creates that device's primary context on demand; the driver API
+ * requires a context to already be current. Every entry point that needs one therefore routes
+ * through `_ensureContext()`, which binds the primary context -- the same context the CUDA runtime
+ * itself uses, so streams and events remain interoperable with the statically linked runtime inside
+ * the kernel library, and with any other component in the process that uses CUDA.
+ */
 class ISAACSIM_COMMON_ARRAY_API CudaRuntime
 {
 public:
-    /** @brief Returns the process-wide CUDA runtime loader. */
+    /**
+     * @brief Where an allocation lives, as reported by the driver.
+     * @details Replaces `cudaPointerAttributes`, of which only these two fields were ever read.
+     */
+    struct PointerAttributes
+    {
+        /** @brief Whether the pointer addresses device or managed memory. */
+        bool isDevice{ false };
+        /** @brief Owning device ordinal, or -1 when the driver does not report one. */
+        int device{ -1 };
+    };
+
+    /** @brief Returns the process-wide CUDA driver loader. */
     static CudaRuntime& getInstance(bool throwIfInvalid = true);
 
-    /** @brief Returns whether the CUDA runtime library was loaded successfully. */
+    /** @brief Returns whether the CUDA driver library was loaded and initialized successfully. */
     bool isLoaded() const;
-    /** @brief Calls `cudaGetDeviceCount` when the CUDA runtime is available. */
+    /** @brief Calls `cuDeviceGetCount`; needs no context. */
     size_t cudaGetDeviceCount() const;
-    /** @brief Calls `cudaMalloc` when the CUDA runtime is available. */
+    /** @brief Calls `cuMemAlloc`. */
     bool cudaMalloc(void** devicePointer, size_t size, bool throwIfInvalid = true) const;
-    /** @brief Calls `cudaFree` when the CUDA runtime is available. */
+    /** @brief Calls `cuMemFree`. */
     bool cudaFree(void* devicePointer, bool throwIfInvalid = true) const;
-    /** @brief Calls `cudaMemcpy` when the CUDA runtime is available. */
-    bool cudaMemcpy(void* destination, const void* source, size_t size, cudaMemcpyKind kind, bool throwIfInvalid = true) const;
-    /** @brief Calls `cudaMemset` when the CUDA runtime is available. */
+    /**
+     * @brief Calls `cuMemcpy`, which infers each side's location from unified addressing.
+     * @details The direction argument the runtime API required is gone: `cuMemcpy` resolves both
+     *          pointers itself, exactly as `cudaMemcpyDefault` did. Unified addressing is always on
+     *          for the 64-bit platforms this library builds for.
+     */
+    bool cudaMemcpy(void* destination, const void* source, size_t size, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuMemcpyAsync`; direction is inferred as in @ref cudaMemcpy. */
+    bool cudaMemcpyAsync(
+        void* destination, const void* source, size_t size, CUstream stream, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuMemsetD8`. */
     bool cudaMemset(void* devicePointer, int value, size_t size, bool throwIfInvalid = true) const;
-    /** @brief Calls `cudaGetDevice` when the CUDA runtime is available. */
+    /** @brief Reports the current context's device, binding the default one if no context is current. */
     bool cudaGetDevice(int* device, bool throwIfInvalid = true) const;
-    /** @brief Calls `cudaSetDevice` when the CUDA runtime is available. */
+    /** @brief Binds the primary context of @p device to the calling thread. */
     bool cudaSetDevice(int device, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuEventCreate`. */
+    bool cudaEventCreateWithFlags(CUevent* event, unsigned int flags, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuEventDestroy`. */
+    bool cudaEventDestroy(CUevent event, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuEventRecord`. */
+    bool cudaEventRecord(CUevent event, CUstream stream, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuEventQuery`; returns `CUDA_SUCCESS`, `CUDA_ERROR_NOT_READY`, or an error. */
+    CUresult cudaEventQuery(CUevent event) const;
+    /** @brief Calls `cuEventSynchronize`. */
+    bool cudaEventSynchronize(CUevent event, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuStreamWaitEvent`. */
+    bool cudaStreamWaitEvent(CUstream stream, CUevent event, unsigned int flags, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuStreamSynchronize`. */
+    bool cudaStreamSynchronize(CUstream stream, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuStreamGetDevice`. */
+    bool cudaStreamGetDevice(CUstream stream, int* device, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuStreamCreate`. */
+    bool cudaStreamCreateWithFlags(CUstream* stream, unsigned int flags, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuStreamDestroy`. */
+    bool cudaStreamDestroy(CUstream stream, bool throwIfInvalid = true) const;
+    /** @brief Calls `cuLaunchHostFunc`. */
+    bool cudaLaunchHostFunc(CUstream stream, CUhostFn function, void* userData, bool throwIfInvalid = true) const;
+    /** @brief Fills @p attributes from `cuPointerGetAttribute`. */
+    bool cudaPointerGetAttributes(PointerAttributes* attributes, const void* pointer, bool throwIfInvalid = true) const;
 
     CudaRuntime(const CudaRuntime&) = delete;
     CudaRuntime& operator=(const CudaRuntime&) = delete;
 
 private:
-    using CudaGetDeviceCountFunction = cudaError_t (*)(int*);
-    using CudaMallocFunction = cudaError_t (*)(void**, size_t);
-    using CudaFreeFunction = cudaError_t (*)(void*);
-    using CudaMemcpyFunction = cudaError_t (*)(void*, const void*, size_t, cudaMemcpyKind);
-    using CudaMemsetFunction = cudaError_t (*)(void*, int, size_t);
-    using CudaGetDeviceFunction = cudaError_t (*)(int*);
-    using CudaSetDeviceFunction = cudaError_t (*)(int);
-    using CudaGetErrorStringFunction = const char* (*)(cudaError_t);
+    using CuInitFunction = CUresult (*)(unsigned int);
+    using CuDeviceGetCountFunction = CUresult (*)(int*);
+    using CuDeviceGetFunction = CUresult (*)(CUdevice*, int);
+    using CuDevicePrimaryCtxRetainFunction = CUresult (*)(CUcontext*, CUdevice);
+    using CuCtxGetCurrentFunction = CUresult (*)(CUcontext*);
+    using CuCtxSetCurrentFunction = CUresult (*)(CUcontext);
+    using CuCtxGetDeviceFunction = CUresult (*)(CUdevice*);
+    using CuMemAllocFunction = CUresult (*)(CUdeviceptr*, size_t);
+    using CuMemFreeFunction = CUresult (*)(CUdeviceptr);
+    using CuMemcpyFunction = CUresult (*)(CUdeviceptr, CUdeviceptr, size_t);
+    using CuMemcpyAsyncFunction = CUresult (*)(CUdeviceptr, CUdeviceptr, size_t, CUstream);
+    using CuMemsetD8Function = CUresult (*)(CUdeviceptr, unsigned char, size_t);
+    using CuEventCreateFunction = CUresult (*)(CUevent*, unsigned int);
+    using CuEventDestroyFunction = CUresult (*)(CUevent);
+    using CuEventRecordFunction = CUresult (*)(CUevent, CUstream);
+    using CuEventQueryFunction = CUresult (*)(CUevent);
+    using CuEventSynchronizeFunction = CUresult (*)(CUevent);
+    using CuStreamWaitEventFunction = CUresult (*)(CUstream, CUevent, unsigned int);
+    using CuStreamSynchronizeFunction = CUresult (*)(CUstream);
+    using CuStreamGetDeviceFunction = CUresult (*)(CUstream, CUdevice*);
+    using CuStreamCreateFunction = CUresult (*)(CUstream*, unsigned int);
+    using CuStreamDestroyFunction = CUresult (*)(CUstream);
+    using CuLaunchHostFuncFunction = CUresult (*)(CUstream, CUhostFn, void*);
+    using CuPointerGetAttributeFunction = CUresult (*)(void*, CUpointer_attribute, CUdeviceptr);
+    using CuGetErrorStringFunction = CUresult (*)(CUresult, const char**);
 
     CudaRuntime();
     ~CudaRuntime();
 
-    bool _checkResult(cudaError_t result, const std::string& callerName, bool throwIfInvalid) const;
-    bool _reportUnavailable(const std::string& callerName, bool throwIfInvalid) const;
+    bool _checkResult(CUresult result, const char* callerName, bool throwIfInvalid) const;
+    bool _reportUnavailable(const char* callerName, bool throwIfInvalid) const;
+    /**
+     * @brief Binds a primary context to the calling thread when none is current yet.
+     * @details The runtime API creates and binds a device's primary context implicitly on first use,
+     *          defaulting to device 0; driver entry points instead fail with
+     *          `CUDA_ERROR_INVALID_CONTEXT`. Calling this first reproduces the implicit behavior, so
+     *          callers that never went through @ref cudaSetDevice (or a DeviceGuard) still work.
+     */
+    bool _ensureContext(const char* callerName, bool throwIfInvalid) const;
+    /** @brief Retains and caches @p device's primary context, returning null on failure. */
+    CUcontext _primaryContext(int device, CUresult* status) const;
+
+    // Primary contexts are retained once per device and never released: the retain count is what
+    // keeps the context alive, and dropping it during static destruction would race teardown in any
+    // other component still holding CUDA objects. They are cached because cuDevicePrimaryCtxRetain
+    // sits on the allocation path, which runs per array.
+    mutable std::mutex m_contextMutex;
+    mutable std::unordered_map<int, CUcontext> m_primaryContexts;
 
     void* m_handle{ nullptr };
-    CudaGetDeviceCountFunction m_cudaGetDeviceCount{ nullptr };
-    CudaMallocFunction m_cudaMalloc{ nullptr };
-    CudaFreeFunction m_cudaFree{ nullptr };
-    CudaMemcpyFunction m_cudaMemcpy{ nullptr };
-    CudaMemsetFunction m_cudaMemset{ nullptr };
-    CudaGetDeviceFunction m_cudaGetDevice{ nullptr };
-    CudaSetDeviceFunction m_cudaSetDevice{ nullptr };
-    CudaGetErrorStringFunction m_cudaGetErrorString{ nullptr };
+    CuInitFunction m_cuInit{ nullptr };
+    CuDeviceGetCountFunction m_cuDeviceGetCount{ nullptr };
+    CuDeviceGetFunction m_cuDeviceGet{ nullptr };
+    CuDevicePrimaryCtxRetainFunction m_cuDevicePrimaryCtxRetain{ nullptr };
+    CuCtxGetCurrentFunction m_cuCtxGetCurrent{ nullptr };
+    CuCtxSetCurrentFunction m_cuCtxSetCurrent{ nullptr };
+    CuCtxGetDeviceFunction m_cuCtxGetDevice{ nullptr };
+    CuMemAllocFunction m_cuMemAlloc{ nullptr };
+    CuMemFreeFunction m_cuMemFree{ nullptr };
+    CuMemcpyFunction m_cuMemcpy{ nullptr };
+    CuMemcpyAsyncFunction m_cuMemcpyAsync{ nullptr };
+    CuMemsetD8Function m_cuMemsetD8{ nullptr };
+    CuEventCreateFunction m_cuEventCreate{ nullptr };
+    CuEventDestroyFunction m_cuEventDestroy{ nullptr };
+    CuEventRecordFunction m_cuEventRecord{ nullptr };
+    CuEventQueryFunction m_cuEventQuery{ nullptr };
+    CuEventSynchronizeFunction m_cuEventSynchronize{ nullptr };
+    CuStreamWaitEventFunction m_cuStreamWaitEvent{ nullptr };
+    CuStreamSynchronizeFunction m_cuStreamSynchronize{ nullptr };
+    CuStreamGetDeviceFunction m_cuStreamGetDevice{ nullptr };
+    CuStreamCreateFunction m_cuStreamCreate{ nullptr };
+    CuStreamDestroyFunction m_cuStreamDestroy{ nullptr };
+    CuLaunchHostFuncFunction m_cuLaunchHostFunc{ nullptr };
+    CuPointerGetAttributeFunction m_cuPointerGetAttribute{ nullptr };
+    CuGetErrorStringFunction m_cuGetErrorString{ nullptr };
 };
 
 } // namespace array

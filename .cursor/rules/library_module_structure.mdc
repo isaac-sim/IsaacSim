@@ -1,0 +1,57 @@
+---
+description: Ownership and public-consumer rules for standalone modules and examples
+globs:
+  - "source/libraries/**"
+  - "source/examples/**"
+alwaysApply: false
+---
+
+# Isaac Sim standalone library ownership rules
+
+`source/libraries/README.md` is the canonical library build/helper contract, and `source/examples/README.md` is the
+canonical example manifest/runner contract. Read the relevant source before editing; this rule summarizes ownership
+decisions rather than replacing those references.
+
+## Choose the owner first
+
+- Put Kit-independent APIs and implementations in `source/libraries`.
+- Keep Kit lifecycle, UI, settings, OmniGraph, registry integration, and host adapters in `source/extensions`.
+- Deliver a library to Kit by staging its wheel in a thin extension. Do not duplicate the library implementation there.
+
+## Dependency boundary
+
+- A module must work without Kit, the extension registry, OmniGraph, or an Isaac Sim application.
+- Do not expose Carbonite types or headers in public APIs and do not acquire a dynamic Carbonite or Kit dependency.
+  The private-static Carbonite exception is limited to infrastructure such as the shared logging/profiling backend.
+- Put adapters that borrow host-owned services outside this tree, normally in the extension that stages the wheel.
+
+## Logging and Python behavior
+
+- Production native diagnostics use the `isaacsim.common.logging` C or C++ facade. Python diagnostics follow
+  `python_codestyle.mdc`.
+
+## Public examples
+
+- Treat `source/examples` as installed-package consumer contracts: use public facades, not `.impl`, low-level
+  compatibility APIs, or separately managed lifecycle calls when the public owner handles them.
+- Keep examples focused on the behavior they teach. Omit redundant default configuration, obtain runtime identifiers
+  from their owning objects instead of using magic values, and have tests exercise the normal example entry point.
+
+## Packaging, version, and changelog
+
+- A distribution-root `pyproject.toml` uses the existing scikit-build-core flow, reads the shared version dynamically,
+  and packages the CMake-staged component. Its PEP 517 backend packages that input; it does not configure or compile
+  CMake. Do not use extension-wheel setuptools/symlink patterns, gated Kit imports, or legacy `standalone_tests` here.
+- `source/libraries/VERSION` is shared release metadata. Do not independently version modules or distributions or bump
+  it for an ordinary edit; use `extension-version-bump` for coordinated release handling.
+- During alpha, module changelogs summarize the net user-visible delta since the last release under
+  `## [Unreleased]`. Do not require a changelog edit for each code change or MR; omit routine build fixes,
+  internal cleanup, and test-only changes. Revise existing unreleased entries as the feature evolves.
+
+## Verification
+
+- Build and test through `source/libraries/build.sh` or `build.bat`, not Repo/Premake commands.
+- For optional local checks of shared version metadata and scoped library/example Python
+  lint, run `python3 tools/isaac/pre_merge/pre_merge_validate.py --libraries --base-branch <target-ref>`.
+  CI separately checks shared-version and dependency metadata consistency; it does not validate changelogs.
+- Run the applicable delivery gates through `isaac-sim-validator`; a clean public-package import must not require Kit.

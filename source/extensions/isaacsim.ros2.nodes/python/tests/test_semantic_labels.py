@@ -148,6 +148,13 @@ class TestRos2SemanticLabels(ROS2TestCase):
         def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
+        def received_labels_and_clock(min_labels: int) -> bool:
+            return (
+                self._semantic_labels_callback_count >= min_labels
+                and self._semantic_labels_timestamp is not None
+                and round(self._semantic_labels_timestamp, 1) in self._clock_data
+            )
+
         viewport_api = omni.kit.viewport.utility.get_active_viewport()
         await omni.kit.app.get_app().next_update_async()
 
@@ -160,9 +167,10 @@ class TestRos2SemanticLabels(ROS2TestCase):
         await self.wait_for_publishers_on_topic(node, "/clock", per_frame_callback=spin)
         await omni.syntheticdata.sensors.next_sensor_data_async(viewport_api)
         await self.simulate_until_condition(
-            lambda: self._semantic_label_data is not None,
-            max_frames=60,
+            lambda: received_labels_and_clock(1),
+            max_frames=180,
             per_frame_callback=spin,
+            failure_message="Timed out waiting for semantic labels and a matching clock message",
         )
         self._timeline.stop()
         self.assertGreater(self._clock_callback_count, 0)
@@ -187,9 +195,10 @@ class TestRos2SemanticLabels(ROS2TestCase):
         self._timeline.play()
         await self.wait_for_publishers_on_topic(node, "/clock", per_frame_callback=spin)
         await self.simulate_until_condition(
-            lambda: self._semantic_labels_callback_count > 5,
-            max_frames=60,
+            lambda: received_labels_and_clock(6),
+            max_frames=180,
             per_frame_callback=spin,
+            failure_message="Timed out waiting for semantic labels and a matching clock message after moving the camera",
         )
         self._timeline.stop()
         self.assertGreater(self._clock_callback_count, 0)

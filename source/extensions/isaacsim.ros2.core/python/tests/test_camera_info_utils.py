@@ -40,6 +40,47 @@ _PINHOLE_COEFF_NAMES = ["k1", "k2", "p1", "p2", "k3", "k4", "k5", "k6", "s1", "s
 _FISHEYE_COEFF_NAMES = ["k1", "k2", "k3", "k4"]
 
 
+def _as_matrix(rotation: Gf.Rotation) -> np.ndarray:
+    """Convert a rotation to a rotation matrix in the convention ``compute_relative_pose`` returns.
+
+    Args:
+        rotation: Rotation to convert.
+
+    Returns:
+        The rotation matrix, transposed out of the ``Gf`` row-vector convention.
+    """
+    return np.transpose(np.array(Gf.Matrix3d(rotation), dtype=float))
+
+
+def _as_quaternion(rotation: Gf.Rotation) -> list[float]:
+    """Convert a rotation to a quaternion ordered as expected by camera constructors.
+
+    Args:
+        rotation: Rotation to convert.
+
+    Returns:
+        The quaternion as ``[w, x, y, z]``.
+    """
+    quat = rotation.GetQuat()
+    imaginary = quat.GetImaginary()
+    return [quat.GetReal(), imaginary[0], imaginary[1], imaginary[2]]
+
+
+def _rotation_angle_degrees(matrix: np.ndarray) -> float:
+    """Measure the rotation angle encoded by a rotation matrix.
+
+    The angle is invariant under transposition, so it compares meaningfully without
+    depending on the row- or column-vector convention of the matrix.
+
+    Args:
+        matrix: Rotation matrix to measure.
+
+    Returns:
+        The rotation angle in degrees.
+    """
+    return float(np.degrees(np.arccos(np.clip((np.trace(matrix) - 1.0) / 2.0, -1.0, 1.0))))
+
+
 def _apply_opencv_distortion(
     prim: Any, model: str, coefficients: list[float], coeff_names: list[str], image_size: tuple[int, int], **kwargs: Any
 ) -> None:
@@ -265,7 +306,7 @@ class TestCameraInfoUtils(ROS2TestCase):
             self.assertAlmostEqual(a, e, delta=1e-5, msg=f"Coefficient {i} mismatch")
 
     async def test_read_camera_info_opencv_pinhole_scales_to_render_product(self) -> None:
-        """OpenCV pinhole intrinsics should scale when render product differs from authored imageSize (NVBug 6039737)."""
+        """OpenCV pinhole intrinsics should scale when render product differs from authored imageSize."""
         usd_width, usd_height = self._width, self._height
         usd_cx, usd_cy = usd_width / 2, usd_height / 2
         horizontal_aperture, vertical_aperture = self._rtx_camera.camera.get_apertures()
@@ -307,7 +348,7 @@ class TestCameraInfoUtils(ROS2TestCase):
         self.assertAlmostEqual(camera_info.k[5], usd_cy * sy, delta=1e-3)  # cy
 
     async def test_read_camera_info_opencv_fisheye_scales_to_render_product(self) -> None:
-        """OpenCV fisheye intrinsics should scale when render product differs from authored imageSize (NVBug 6039737)."""
+        """OpenCV fisheye intrinsics should scale when render product differs from authored imageSize."""
         usd_width, usd_height = self._width, self._height
         usd_cx, usd_cy = usd_width / 2, usd_height / 2
         horizontal_aperture, vertical_aperture = self._rtx_camera.camera.get_apertures()
@@ -365,3 +406,53 @@ class TestCameraInfoUtils(ROS2TestCase):
 
         # No rotation between cameras
         np.testing.assert_array_almost_equal(orientation, np.eye(3), decimal=5)
+
+    async def test_compute_relative_pose_verged_rig(self) -> None:
+        """Verify a verged rig reports its true relative rotation rather than an inflated one.
+
+        An aligned rig cannot detect a degrees-for-radians unit error, because zero degrees and
+        zero radians are numerically identical. A verged rig can.
+        """
+        verge_degrees = 2.0
+        rotation_left = Gf.Rotation(Gf.Vec3d(0, 1, 0), 0.0)
+        rotation_right = Gf.Rotation(Gf.Vec3d(0, 1, 0), verge_degrees)
+
+        RtxCamera("/left_camera", positions=[[0, 0, 0]], orientations=[_as_quaternion(rotation_left)])
+        RtxCamera("/right_camera", positions=[[0.1, 0, 0]], orientations=[_as_quaternion(rotation_right)])
+        await omni.kit.app.get_app().next_update_async()
+
+        translation, orientation = compute_relative_pose(
+            left_camera_prim=self._stage.GetPrimAtPath("/left_camera"),
+            right_camera_prim=self._stage.GetPrimAtPath("/right_camera"),
+        )
+
+        self.assertAlmostEqual(float(np.linalg.norm(translation)), 0.1, delta=1e-4)
+
+        expected = _as_matrix(rotation_right).T @ _as_matrix(rotation_left)
+        np.testing.assert_array_almost_equal(orientation, expected, decimal=5)
+
+        # Interpreting the angle as radians instead of degrees inflates it by a factor of 180/pi.
+        self.assertAlmostEqual(_rotation_angle_degrees(orientation), verge_degrees, delta=1e-3)
+
+    async def test_compute_relative_pose_compound_rotation(self) -> None:
+        """Verify a rig rotated about several axes reports its exact relative rotation (NVBug 6566756).
+
+        Euler angles and axis-angle vectors agree only for single-axis rotations, so a rig
+        verged and tilted at once catches an Euler round-trip that a single-axis rig would not.
+        """
+        rotation_left = Gf.Rotation(Gf.Vec3d(0, 0, 1), 7.0)
+        rotation_right = Gf.Rotation(Gf.Vec3d(0, 1, 0), 30.0) * Gf.Rotation(Gf.Vec3d(1, 0, 0), 20.0)
+
+        RtxCamera("/left_camera", positions=[[0, 0, 0]], orientations=[_as_quaternion(rotation_left)])
+        RtxCamera("/right_camera", positions=[[0.1, 0, 0]], orientations=[_as_quaternion(rotation_right)])
+        await omni.kit.app.get_app().next_update_async()
+
+        _, orientation = compute_relative_pose(
+            left_camera_prim=self._stage.GetPrimAtPath("/left_camera"),
+            right_camera_prim=self._stage.GetPrimAtPath("/right_camera"),
+        )
+
+        expected = _as_matrix(rotation_right).T @ _as_matrix(rotation_left)
+        np.testing.assert_array_almost_equal(orientation, expected, decimal=5)
+
+        self.assertAlmostEqual(_rotation_angle_degrees(orientation), _rotation_angle_degrees(expected), delta=1e-3)

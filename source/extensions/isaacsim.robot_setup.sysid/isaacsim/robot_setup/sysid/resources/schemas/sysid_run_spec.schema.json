@@ -73,6 +73,7 @@
             "actuator_dt_mode": { "enum": ["physics_dt"], "default": "physics_dt" },
             "solver": { "enum": ["mujoco", "featherstone_diff"], "default": "mujoco" },
             "featherstone_substeps": { "type": "integer", "minimum": 1, "default": 4 },
+            "mujoco_substeps": { "type": "integer", "minimum": 1, "default": 1 },
             "feedforward": { "enum": ["none", "gravity", "inverse_dynamics"], "default": "none" },
             "cuda_graph_capture": { "type": "boolean", "default": true }
           }
@@ -163,6 +164,18 @@
         "validation_animation_path": { "type": "string" },
         "validation_animation_fps": { "type": "integer", "minimum": 1, "default": 24 },
         "validation_animation_max_frames": { "type": "integer", "minimum": 1, "default": 240 },
+        "validation_relative_change_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0.01,
+          "description": "Minimum relative aggregate RMSE change required to classify tuned validation as improved or regressed."
+        },
+        "validation_absolute_change_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "default": 1e-12,
+          "description": "Minimum absolute aggregate RMSE change required alongside the relative threshold."
+        },
         "compute_parameter_confidence": { "type": "boolean", "default": true },
         "parameter_confidence_rollout_budget": { "type": "integer", "minimum": 1, "default": 2000000 }
       }

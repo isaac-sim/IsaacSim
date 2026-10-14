@@ -61,6 +61,7 @@ from contextlib import AbstractContextManager, nullcontext
 from enum import Enum
 from typing import Any
 
+import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -533,7 +534,7 @@ class LocomotionController:
         rigid_prim = self._rigid_prim
         if rigid_prim is None or not rigid_prim.valid:
             return
-        with teleop_backend_ctx():
+        with backend_utils.use_backend("tensor" if rigid_prim.is_physics_tensor_entity_valid() else "usd"):
             try:
                 rigid_prim.set_velocities(
                     linear_velocities=self._zero_vel_buf,
@@ -890,10 +891,12 @@ class LocomotionController:
             self._ang_vel_buf[0, 1] = 0.0
             self._ang_vel_buf[0, 2] = angular_z
             try:
-                rigid_prim.set_velocities(
-                    linear_velocities=self._vel_buf,
-                    angular_velocities=self._ang_vel_buf,
-                )
+                # Rigid-body velocity writes support Tensor/USD, not the selected transform backend.
+                with backend_utils.use_backend("tensor" if rigid_prim.is_physics_tensor_entity_valid() else "usd"):
+                    rigid_prim.set_velocities(
+                        linear_velocities=self._vel_buf,
+                        angular_velocities=self._ang_vel_buf,
+                    )
             except Exception as exc:
                 print(f"[Teleop][Locomotion] Velocity update failed: {exc}")
                 if not rigid_prim.valid:

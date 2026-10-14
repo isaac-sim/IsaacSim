@@ -28,7 +28,7 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
-add_executable(isaacsim-ovsim-grpc-server src/Main.cpp)
+add_executable(isaacsim-ovsim-grpc-server src/Main.cpp src/CommandLine.hpp)
 target_compile_features(isaacsim-ovsim-grpc-server PRIVATE cxx_std_17)
 target_link_libraries(isaacsim-ovsim-grpc-server PRIVATE
     isaacsim::ovsim-servers-grpc
@@ -72,7 +72,9 @@ if(UNIX AND NOT APPLE)
 endif()
 set_target_properties(isaacsim-ovsim-grpc-server PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${ISAACSIM_MODULE_OUTPUT_ROOT}/isaacsim_ovsim/bin"
+    BUILD_RPATH "${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES}"
     INSTALL_RPATH "${ISAACSIM_LOADER_ORIGIN}/../${CMAKE_INSTALL_LIBDIR}"
+    INSTALL_REMOVE_ENVIRONMENT_RPATH YES
 )
 
 get_target_property(_server_group isaacsim-ovsim-servers-grpc ISAACSIM_GROUP_NAME)
@@ -85,6 +87,7 @@ install(TARGETS isaacsim-ovsim-grpc-server
 isaacsim_add_cpp_tests(
     MODULE isaacsim.ovsim.servers.grpc
     SOURCES
+        tests/cpp/CommandLine.cpp
         tests/cpp/HostedSimulation.cpp
         tests/cpp/Server.cpp
     DEPENDENCIES
@@ -124,10 +127,17 @@ if(TARGET ${_ovsim_grpc_server_test_target})
         # The generic test helper copies linked DLLs beside the executable. OpenUSD and
         # OVPhysX consequently resolve their plugin metadata relative to this test-local
         # layout, so preserve the two runtimes' required directory structure here.
+        set(_ovsim_grpc_server_ovphysx_runtime_files
+            "${ISAACSIM_PUBLIC_DEPS_ROOT}/ovphysx/bin/ovphysx_internal.dll"
+        )
+        if(EXISTS "${ISAACSIM_PUBLIC_DEPS_ROOT}/ovphysx/bin/config.toml")
+            list(APPEND _ovsim_grpc_server_ovphysx_runtime_files
+                "${ISAACSIM_PUBLIC_DEPS_ROOT}/ovphysx/bin/config.toml"
+            )
+        endif()
         add_custom_command(TARGET ${_ovsim_grpc_server_test_target} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${ISAACSIM_PUBLIC_DEPS_ROOT}/ovphysx/bin/config.toml"
-                "${ISAACSIM_PUBLIC_DEPS_ROOT}/ovphysx/bin/ovphysx_internal.dll"
+                ${_ovsim_grpc_server_ovphysx_runtime_files}
                 "$<TARGET_FILE_DIR:${_ovsim_grpc_server_test_target}>"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${ISAACSIM_NATIVE_RUNTIME_DEPS_DIR}/ovstage/bin/ovstage.dll"

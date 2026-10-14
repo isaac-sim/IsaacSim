@@ -106,9 +106,8 @@ class TeleopHeadState:
 class TeleopFrame:
     """One coherent controller/head sample from a teleop input source.
 
-    ``source_time_ns`` is reserved for providers that expose a comparable
-    device sample clock. Isaac Teleop 1.3.131 tracker outputs do not expose
-    that timestamp, so the built-in live and MCAP providers leave it ``None``.
+    ``source_time_ns`` is populated when the tracker exposes a comparable
+    device sample clock; otherwise providers leave it ``None``.
     """
 
     sequence_id: int
@@ -415,7 +414,7 @@ class LiveTeleopFrameProvider(TeleopFrameProvider):
         """Update the live session and return one coherent tracker frame."""
         if self._session is None or self._controller_tracker is None or self._head_tracker is None:
             raise RuntimeError("Live teleop input provider is not open")
-        # DeviceIOSession.update() returns None in Isaac Teleop 1.3.131.
+        # ``DeviceIOSession.update()`` returns ``None``.
         # Tracker payloads, not the return value, carry the current state.
         self._session.update()
 

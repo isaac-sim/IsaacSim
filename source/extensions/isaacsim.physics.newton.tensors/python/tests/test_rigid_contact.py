@@ -22,10 +22,12 @@ multi-sensor/multi-filter regression case for contact count indexing.
 
 from __future__ import annotations
 
+import copy
 import math
 
 import numpy as np
 import warp as wp
+from isaacsim.physics.newton import NewtonConfig, configure_newton, get_newton_config
 from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 
 from .test_helpers import (
@@ -35,6 +37,38 @@ from .test_helpers import (
     create_rigid_box,
     run_on_device_configs,
 )
+
+
+@run_on_device_configs()
+class TestRigidContactForcesDisabled(NewtonTensorTestBase):
+    """Verify users can disable optional contact-force computation."""
+
+    async def setUp(self) -> None:
+        """Disable contact forces before creating the Newton contacts object."""
+        self._saved_newton_config = copy.deepcopy(get_newton_config())
+        config = copy.deepcopy(self._saved_newton_config) if self._saved_newton_config else NewtonConfig()
+        config.solver_outputs.contact_forces = False
+        configure_newton(config)
+        await super().setUp()
+
+    async def tearDown(self) -> None:
+        """Restore the Newton solver-output configuration."""
+        await super().tearDown()
+        if self._saved_newton_config is not None:
+            configure_newton(self._saved_newton_config)
+
+    async def test_contact_force_queries_require_enabled_output(self) -> None:
+        """Reject contact-force queries when their solver output is disabled."""
+        self.setup_box_on_ground(num_envs=1, mass=1.0, half_extent=0.3, height=0.3)
+        sim = await self.create_sim()
+        contacts = sim.create_rigid_contact_view(["/envs/env*/box"])
+
+        from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
+
+        newton_stage = acquire_newton_stage()
+        self.assertIsNone(newton_stage.contacts.force)
+        with self.assertRaisesRegex(Exception, "Failed to get net contact forces from backend"):
+            contacts.get_net_contact_forces(self.get_sim_dt())
 
 
 @run_on_device_configs()
@@ -286,6 +320,70 @@ class TestRawContactData(NewtonTensorTestBase):
                 atol=0.5,
                 err_msg=f"The two sides of contact {i} must report opposite normal-force vectors",
             )
+
+
+@run_on_device_configs()
+class TestRotatedRigidContactPoints(NewtonTensorTestBase):
+    """Rotated box on ground: verify contact points are transformed to world space."""
+
+    HALF_EXTENT = 0.3
+    YAW_DEGREES = 50.0
+
+    async def test_rotated_contact_points(self) -> None:
+        """Verify filtered and raw APIs preserve rotated box-corner radii."""
+        create_ground_plane(self.stage)
+        box = create_rigid_box(
+            self.stage,
+            "/box",
+            position=Gf.Vec3f(0.0, 0.0, self.HALF_EXTENT),
+            half_extent=self.HALF_EXTENT,
+        )
+        yaw_radians = math.radians(self.YAW_DEGREES)
+        box.GetAttribute("xformOp:orient").Set(
+            Gf.Quatf(math.cos(0.5 * yaw_radians), 0.0, 0.0, math.sin(0.5 * yaw_radians))
+        )
+
+        sim = await self.create_sim()
+        self.start_playing()
+        contacts = sim.create_rigid_contact_view(
+            "/box",
+            filter_patterns=["/groundPlane"],
+            max_contact_data_count=8,
+        )
+        self.check_rigid_contact_view(contacts, 1, 1)
+
+        dt = self.get_sim_dt()
+        self.step(n=10, dt=dt)
+
+        cosine = math.cos(yaw_radians)
+        sine = math.sin(yaw_radians)
+        expected_corners = np.array(
+            [
+                (cosine * x - sine * y, sine * x + cosine * y)
+                for x in (-self.HALF_EXTENT, self.HALF_EXTENT)
+                for y in (-self.HALF_EXTENT, self.HALF_EXTENT)
+            ],
+            dtype=np.float32,
+        )
+
+        def assert_world_space_corners(points: wp.array, counts: wp.array, starts: wp.array, api_name: str) -> None:
+            count = int(counts.numpy().reshape(-1)[0])
+            start = int(starts.numpy().reshape(-1)[0])
+            self.assertGreater(count, 0, f"{api_name} should report ground contacts")
+            contact_xy = points.numpy().reshape(-1, 3)[start : start + count, :2]
+            corner_distances = np.linalg.norm(contact_xy[:, np.newaxis, :] - expected_corners[np.newaxis, :, :], axis=2)
+            np.testing.assert_allclose(
+                np.min(corner_distances, axis=1),
+                0.0,
+                atol=1.0e-3,
+                err_msg=f"{api_name} contact points must be rotated into world space",
+            )
+
+        _forces, points, _normals, _separations, counts, starts = contacts.get_contact_data(dt)
+        assert_world_space_corners(points, counts, starts, "get_contact_data")
+
+        _forces, points, _normals, _separations, counts, starts, _ids = contacts.get_raw_contact_data(dt)
+        assert_world_space_corners(points, counts, starts, "get_raw_contact_data")
 
 
 @run_on_device_configs()

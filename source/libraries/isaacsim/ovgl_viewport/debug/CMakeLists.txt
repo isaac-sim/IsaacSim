@@ -34,6 +34,25 @@ endif()
 get_filename_component(isaacsim_ovgl_viewport_ovstage_runtime_dir
     "${isaacsim_ovgl_viewport_ovstage_library}" DIRECTORY
 )
+if(WIN32)
+    set(isaacsim_ovgl_viewport_ovstage_implementation
+        "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/ovstage.dll")
+else()
+    set(isaacsim_ovgl_viewport_ovstage_implementation
+        "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/libovstage.so")
+endif()
+if(NOT EXISTS "${isaacsim_ovgl_viewport_ovstage_implementation}")
+    message(FATAL_ERROR
+        "The selected ovstage package is missing its implementation library: "
+        "${isaacsim_ovgl_viewport_ovstage_implementation}"
+    )
+endif()
+if(NOT TARGET isaacsim-ovstage-implementation)
+    add_library(isaacsim-ovstage-implementation SHARED IMPORTED GLOBAL)
+    set_target_properties(isaacsim-ovstage-implementation PROPERTIES
+        IMPORTED_LOCATION "${isaacsim_ovgl_viewport_ovstage_implementation}"
+    )
+endif()
 
 set(isaacsim_ovgl_viewport_omni_client_root "${ISAACSIM_TARGET_DEPS_DIR}/omni_client_library")
 set(isaacsim_ovgl_viewport_omni_client_header
@@ -47,7 +66,7 @@ if(NOT EXISTS "${isaacsim_ovgl_viewport_omni_client_header}")
 endif()
 file(READ "${isaacsim_ovgl_viewport_omni_client_header}" isaacsim_ovgl_viewport_omni_client_version)
 if(NOT isaacsim_ovgl_viewport_omni_client_version MATCHES
-    "OMNICLIENT_BUILD_STRING \"2\\.72\\.3-release\\.7151\\+gl\\.5390bed9\""
+    "OMNICLIENT_BUILD_STRING \"2\\.74\\.0-release\\.7316\\+gl\\.ec99a64b\""
 )
     message(FATAL_ERROR "The pinned OmniClient package no longer matches the locked OVStage client ABI")
 endif()
@@ -128,10 +147,8 @@ endif()
 
 if(WIN32)
     set(isaacsim_ovgl_viewport_sdl_cmake_dir "${ISAACSIM_PUBLIC_DEPS_ROOT}/Library/cmake")
-    set(isaacsim_ovgl_viewport_sdl_license "${ISAACSIM_PUBLIC_DEPS_ROOT}/Library/licenses/SDL3/LICENSE.txt")
 else()
     set(isaacsim_ovgl_viewport_sdl_cmake_dir "${ISAACSIM_PUBLIC_DEPS_ROOT}/lib/cmake/SDL3")
-    set(isaacsim_ovgl_viewport_sdl_license "${ISAACSIM_PUBLIC_DEPS_ROOT}/share/licenses/SDL3/LICENSE.txt")
 endif()
 if(NOT TARGET SDL3::SDL3-shared)
     find_package(SDL3 3.4.14 EXACT CONFIG REQUIRED
@@ -273,6 +290,19 @@ if(WIN32)
     target_compile_definitions(isaacsim-ovgl_viewport-debug PRIVATE NUSD_DESKTOP_GL=1 _USE_MATH_DEFINES)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The prebuilt connection library needs _dl_find_object@GLIBC_2.35, absent from our Pixi 2.34 sysroot.
+    # Resolve only this symbol against the host glibc at runtime (Ubuntu 22.04+ provides it).
+    # Keep other shared-library references checked, even if the toolchain defaults to allowing them.
+    # TODO: Remove these flags when adopting a Pixi glibc 2.35 sysroot, or a newer one after dropping Ubuntu 22.04.
+    target_link_options(omni_client::client INTERFACE
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:LINKER:--no-allow-shlib-undefined>"
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:LINKER:--ignore-unresolved-symbol=_dl_find_object@GLIBC_2.35>")
+    target_link_options(isaacsim-ovgl_viewport-debug INTERFACE
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:LINKER:--no-allow-shlib-undefined>"
+        "$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:LINKER:--ignore-unresolved-symbol=_dl_find_object@GLIBC_2.35>")
+endif()
+
 get_target_property(isaacsim_ovgl_viewport_group isaacsim-ovgl_viewport-debug ISAACSIM_GROUP_NAME)
 _isaacsim_get_group_component("${isaacsim_ovgl_viewport_group}" runtime isaacsim_ovgl_viewport_runtime_component)
 install(FILES "${ISAACSIM_PUBLIC_DEPS_ROOT}/licenses/stb/LICENSE"
@@ -280,7 +310,7 @@ install(FILES "${ISAACSIM_PUBLIC_DEPS_ROOT}/licenses/stb/LICENSE"
     RENAME "stb-LICENSE"
     COMPONENT "${isaacsim_ovgl_viewport_runtime_component}"
 )
-install(FILES "${isaacsim_ovgl_viewport_sdl_license}"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../../licenses/SDL3-LICENSE.txt"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/${isaacsim_ovgl_viewport_group}"
     RENAME "SDL3-LICENSE.txt"
     COMPONENT "${isaacsim_ovgl_viewport_runtime_component}"
@@ -299,24 +329,41 @@ target_include_directories(isaacsim-ovgl_viewport-debug PRIVATE
 )
 isaacsim_install_runtime_dependencies(
     MODULE isaacsim.ovgl_viewport.debug
-    TARGETS
-        SDL3::SDL3-shared
-        omni_client::client
-        omni_client::connection
+    TARGETS SDL3::SDL3-shared
+)
+set(isaacsim_ovgl_viewport_dependency_owned_runtime
+    omni_client::client
+    omni_client::connection
+)
+if(WIN32)
+    list(APPEND isaacsim_ovgl_viewport_dependency_owned_runtime
         ovstage::ovstage
-)
-isaacsim_add_runtime_directory(
+        isaacsim-ovstage-implementation
+    )
+endif()
+isaacsim_install_runtime_dependencies(
     MODULE isaacsim.ovgl_viewport.debug
-    SOURCE "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/plugins"
-    DESTINATION plugins
-    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/plugins"
+    TARGETS ${isaacsim_ovgl_viewport_dependency_owned_runtime}
+    NATIVE_ONLY
 )
-isaacsim_add_runtime_directory(
-    MODULE isaacsim.ovgl_viewport.debug
-    SOURCE "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/ovstage_usd_schemas"
-    DESTINATION ovstage_usd_schemas
-    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/ovstage_usd_schemas"
-)
+if(WIN32)
+    isaacsim_add_runtime_directory(
+        MODULE isaacsim.ovgl_viewport.debug
+        SOURCE "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/plugins"
+        DESTINATION plugins
+        WINDOWS_BESIDE_MODULE
+        NATIVE_ONLY
+    )
+    if(EXISTS "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/ovstage_usd_schemas")
+        isaacsim_add_runtime_directory(
+            MODULE isaacsim.ovgl_viewport.debug
+            SOURCE "${isaacsim_ovgl_viewport_ovstage_runtime_dir}/ovstage_usd_schemas"
+            DESTINATION ovstage_usd_schemas
+            WINDOWS_BESIDE_MODULE
+            NATIVE_ONLY
+        )
+    endif()
+endif()
 
 isaacsim_add_nanobind(
     MODULE isaacsim.ovgl_viewport.debug

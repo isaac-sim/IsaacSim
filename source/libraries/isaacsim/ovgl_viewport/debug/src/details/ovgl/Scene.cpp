@@ -27,7 +27,6 @@
 
 #include <ovstage/ovstage.h>
 #include <ovstage/ovstage_instancing.h>
-#include <ovstage/ovstage_population.h> /* stage-info prim path (empty-scene up-axis fallback) */
 #include <ovx/path_dictionary/path_dictionary.h>
 #include <ovx/types.h>
 
@@ -3779,17 +3778,18 @@ extern "C" int ovgl_scene_build(ovstage_instance_t* stage, ovstage_ordinal_t ord
     if (prims.empty())
     {
         /* GEOMETRY-free scene: no drawable row carries the per-prim
-         * `usd-stage-up-axis` byte, but population always authors the
-         * reserved stage-info prim, whose `upAxis` is an interned token
-         * ({kDLUInt,64,1}, ovpopulation populate_stage_info). Decode it
+         * `usd-stage-up-axis` byte. OVStage 0.2 authors requested stage
+         * metadata on the root prim; `usd-metadata:upAxis` is an interned
+         * token ({kDLUInt,64,1}). Decode it
          * token-ONLY — the column is untagged, and the path-first decode
          * space is exactly the axis/orientation collision hazard documented
          * at resolveTokenId. This keeps the grid overlay (and stats
          * up-axis) honest for an empty Y-up stage; unreadable/absent rows
          * keep the Z default. Non-empty scenes are untouched. */
-        const ovx_string_t info = ovstage_population_stage_info_path();
+        const ovx_string_t info{ "/", 1 };
         std::vector<uint8_t> row;
-        if (readAttributeHost(stage, ordinal, std::string(info.ptr, info.length), "upAxis", row) && row.size() >= 8)
+        if (readAttributeHost(stage, ordinal, std::string(info.ptr, info.length), "usd-metadata:upAxis", row) &&
+            row.size() >= 8)
         {
             uint64_t token = 0;
             std::memcpy(&token, row.data(), sizeof(token));

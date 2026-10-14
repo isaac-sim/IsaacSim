@@ -15,11 +15,14 @@
 
 """Verifies app utility helpers for update ticks, extension lookup, extension enablement, and timeline access. Covers both synchronous and asynchronous app update paths."""
 
+import builtins
 import os
 import unittest
 from typing import Any
+from unittest import mock
 
 import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.impl.app as app_impl
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
 import omni.timeline
@@ -74,6 +77,34 @@ class TestApp(omni.kit.test.AsyncTestCase):
             steps=7, callback=lambda step, steps: counter.__setitem__(0, counter[0] + 1) if step <= 5 else False
         )
         self.assertEqual(counter[0], 5)
+
+    async def test_update_app_rejects_async_context(self) -> None:
+        """Test that synchronous updates cannot re-enter the update loop from an asynchronous task."""
+        with self.assertRaisesRegex(RuntimeError, "update_app_async"):
+            app_utils.update_app()
+
+    async def test_update_app_rejects_ui_context(self) -> None:
+        """Test that a UI-style synchronous callback cannot re-enter the Kit update loop."""
+        kit_app = mock.Mock()
+        with (
+            mock.patch.object(app_impl.asyncio, "current_task", side_effect=RuntimeError),
+            mock.patch.object(app_impl.omni.kit.app, "get_app", return_value=kit_app),
+            mock.patch.object(builtins, "ISAAC_LAUNCHED_FROM_TERMINAL", True, create=True),
+            self.assertRaisesRegex(RuntimeError, "update_app_async"),
+        ):
+            app_utils.update_app()
+        kit_app.update.assert_not_called()
+
+    async def test_update_app_allows_standalone_context(self) -> None:
+        """Test that standalone workflows can continue to drive synchronous updates."""
+        kit_app = mock.Mock()
+        with (
+            mock.patch.object(app_impl.asyncio, "current_task", side_effect=RuntimeError),
+            mock.patch.object(app_impl.omni.kit.app, "get_app", return_value=kit_app),
+            mock.patch.object(builtins, "ISAAC_LAUNCHED_FROM_TERMINAL", False, create=True),
+        ):
+            app_utils.update_app(steps=2)
+        self.assertEqual(kit_app.update.call_count, 2)
 
     async def test_enable_extension(self) -> None:
         """Test enable extension."""

@@ -18,11 +18,11 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 import re
 from dataclasses import dataclass
 from typing import Any
 
+import carb
 import numpy as np
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
@@ -34,8 +34,6 @@ from ..usd_kinematics import (
     usd_joint_local_transform,
     usd_joint_motion_transform,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 PREVIEW_ROOT_PATH = "/World/SysIdTelemetryPreview"
 _PREVIEW_MARKER_RADIUS = 0.035
@@ -711,9 +709,9 @@ def _log_preview_mode_change(
     counts = f"meshes={mesh_count}, markers={marker_count}"
     message = f"SysId preview: {transition} ({counts}). Cause: {reason}"
     if mode in ("markers", "mixed", "unavailable"):
-        _LOGGER.warning(message)
+        carb.log_warn(message)
     else:
-        _LOGGER.info(message)
+        carb.log_info(message)
 
 
 def _fallback_reason_summary(

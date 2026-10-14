@@ -17,3 +17,4 @@ __all__ = []
 
 # Preload USD libraries
 import isaacsim.foundation.usd.openusd  # noqa: F401 - initialize OpenUSD bindings
+import isaacsim.foundation.usd.ovstage  # noqa: F401 - initialize OVStage bindings

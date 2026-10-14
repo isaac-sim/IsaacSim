@@ -24,6 +24,8 @@ default excludes every bundled profile except `Robot-Body-Isaac` and `Prop-Robot
 Override selector labels with `exts."isaacsim.asset.validation.ui".profileNames.<Profile-Id>`. Unlisted IDs keep the
 generated pretty name.
 
+Set `exts."isaacsim.asset.validation.ui".docsUrl` to change the base URL opened by **Open requirement docs**.
+
 ## User Guide
 
 See the Isaac Sim user guide page **Robot Setup > Asset Validation** for screenshots, the Robot Assets procedure, and a

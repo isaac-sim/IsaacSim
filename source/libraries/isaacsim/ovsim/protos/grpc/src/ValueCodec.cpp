@@ -1,5 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "ValueCodec.hpp"
 
@@ -55,43 +67,44 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
     }
 }
 
+// No contiguity staging here, unlike the other Array consumers: the encoders above read through
+// reshape() and get<>(), both of which honor the source's strides.
 ::grpc::Status encodeArray(const array::Array& source, ValueColumn* column)
 {
     if (source.device() != array::Device::Cpu())
     {
         return unsupported("Only CPU arrays are supported by the initial gRPC value codec.");
     }
-    const array::Array& staged = source;
-    if (staged.ndim() != 2 || staged.shape()[0] < 0 || staged.shape()[1] < 1 || staged.shape()[1] > 4)
+    if (source.ndim() != 2 || source.shape()[0] < 0 || source.shape()[1] < 1 || source.shape()[1] > 4)
     {
         return unsupported("Supported arrays must have shape (rows, lanes) with one to four lanes.");
     }
 
-    const int64_t lanes = staged.shape()[1];
-    switch (staged.dtype().kind())
+    const int64_t lanes = source.shape()[1];
+    switch (source.dtype().kind())
     {
     case array::Dtype::Kind::eBool:
         if (lanes != 1)
         {
             return unsupported("Boolean vector values are not supported.");
         }
-        encodeScalars<bool>(staged, column->mutable_packed_bool());
+        encodeScalars<bool>(source, column->mutable_packed_bool());
         break;
     case array::Dtype::Kind::eUInt8:
         if (lanes != 1)
         {
             return unsupported("Unsigned byte vector values are not supported.");
         }
-        encodeScalars<uint8_t>(staged, column->mutable_packed_uchar());
+        encodeScalars<uint8_t>(source, column->mutable_packed_uchar());
         break;
     case array::Dtype::Kind::eInt32:
         if (lanes == 1)
         {
-            encodeScalars<int32_t>(staged, column->mutable_packed_int());
+            encodeScalars<int32_t>(source, column->mutable_packed_int());
         }
         else if (lanes == 2)
         {
-            encodeTuples<int32_t>(staged, column->mutable_packed_int2(),
+            encodeTuples<int32_t>(source, column->mutable_packed_int2(),
                                   [](auto* value, const auto& row)
                                   {
                                       value->set_x(row[0]);
@@ -100,7 +113,7 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         }
         else if (lanes == 3)
         {
-            encodeTuples<int32_t>(staged, column->mutable_packed_int3(),
+            encodeTuples<int32_t>(source, column->mutable_packed_int3(),
                                   [](auto* value, const auto& row)
                                   {
                                       value->set_x(row[0]);
@@ -110,7 +123,7 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         }
         else
         {
-            encodeTuples<int32_t>(staged, column->mutable_packed_int4(),
+            encodeTuples<int32_t>(source, column->mutable_packed_int4(),
                                   [](auto* value, const auto& row)
                                   {
                                       value->set_x(row[0]);
@@ -125,30 +138,30 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         {
             return unsupported("Unsigned 32-bit vector values are not supported.");
         }
-        encodeScalars<uint32_t>(staged, column->mutable_packed_uint());
+        encodeScalars<uint32_t>(source, column->mutable_packed_uint());
         break;
     case array::Dtype::Kind::eInt64:
         if (lanes != 1)
         {
             return unsupported("Signed 64-bit vector values are not supported.");
         }
-        encodeScalars<int64_t>(staged, column->mutable_packed_int64());
+        encodeScalars<int64_t>(source, column->mutable_packed_int64());
         break;
     case array::Dtype::Kind::eUInt64:
         if (lanes != 1)
         {
             return unsupported("Unsigned 64-bit vector values are not supported.");
         }
-        encodeScalars<uint64_t>(staged, column->mutable_packed_uint64());
+        encodeScalars<uint64_t>(source, column->mutable_packed_uint64());
         break;
     case array::Dtype::Kind::eFloat32:
         if (lanes == 1)
         {
-            encodeScalars<float>(staged, column->mutable_packed_float());
+            encodeScalars<float>(source, column->mutable_packed_float());
         }
         else if (lanes == 2)
         {
-            encodeTuples<float>(staged, column->mutable_packed_float2(),
+            encodeTuples<float>(source, column->mutable_packed_float2(),
                                 [](auto* value, const auto& row)
                                 {
                                     value->set_x(row[0]);
@@ -157,7 +170,7 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         }
         else if (lanes == 3)
         {
-            encodeTuples<float>(staged, column->mutable_packed_float3(),
+            encodeTuples<float>(source, column->mutable_packed_float3(),
                                 [](auto* value, const auto& row)
                                 {
                                     value->set_x(row[0]);
@@ -167,7 +180,7 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         }
         else
         {
-            encodeTuples<float>(staged, column->mutable_packed_float4(),
+            encodeTuples<float>(source, column->mutable_packed_float4(),
                                 [](auto* value, const auto& row)
                                 {
                                     value->set_x(row[0]);
@@ -180,11 +193,11 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
     case array::Dtype::Kind::eFloat64:
         if (lanes == 1)
         {
-            encodeScalars<double>(staged, column->mutable_packed_double());
+            encodeScalars<double>(source, column->mutable_packed_double());
         }
         else if (lanes == 2)
         {
-            encodeTuples<double>(staged, column->mutable_packed_double2(),
+            encodeTuples<double>(source, column->mutable_packed_double2(),
                                  [](auto* value, const auto& row)
                                  {
                                      value->set_x(row[0]);
@@ -193,7 +206,7 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         }
         else if (lanes == 3)
         {
-            encodeTuples<double>(staged, column->mutable_packed_double3(),
+            encodeTuples<double>(source, column->mutable_packed_double3(),
                                  [](auto* value, const auto& row)
                                  {
                                      value->set_x(row[0]);
@@ -203,7 +216,7 @@ void encodeTuples(const array::Array& source, Packed* packed, AddTuple addTuple)
         }
         else
         {
-            encodeTuples<double>(staged, column->mutable_packed_double4(),
+            encodeTuples<double>(source, column->mutable_packed_double4(),
                                  [](auto* value, const auto& row)
                                  {
                                      value->set_x(row[0]);

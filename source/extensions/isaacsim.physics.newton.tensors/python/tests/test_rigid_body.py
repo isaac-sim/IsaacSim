@@ -83,6 +83,57 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
         balls.set_masses(self.to_warp(masses), all_indices)
         self.assertTrue(np.allclose(balls.get_masses().numpy(), masses))
 
+    async def test_masked_body_masses(self) -> None:
+        """Verify mask truth values, all/none selection, and validation."""
+        num_envs = self.setup_ball_grid()
+        sim = await self.create_sim()
+
+        balls = sim.create_rigid_body_view("/envs/*/ball")
+        all_indices = warp_utils.arange(balls.count, device=self.DEVICE)
+        base = np.arange(1, num_envs + 1, dtype=np.float32).reshape(num_envs, 1)
+        balls.set_masses(self.to_warp(base), all_indices)
+
+        mask = np.zeros(balls.count, dtype=np.uint8)
+        mask[::2] = 1
+        submitted = np.full_like(base, -999.0)
+        submitted[mask != 0] = 7.0
+        self.assertTrue(self.call_masked_setter(balls, "set_masses_masked", submitted, mask))
+
+        expected = base.copy()
+        expected[mask != 0] = submitted[mask != 0]
+        result = balls.get_masses().numpy().reshape(balls.count, 1)
+        np.testing.assert_allclose(result, expected)
+
+        empty_mask = np.zeros(balls.count, dtype=np.uint8)
+        poison = np.full_like(base, -999.0)
+        self.assertTrue(self.call_masked_setter(balls, "set_masses_masked", poison, empty_mask))
+        result = balls.get_masses().numpy().reshape(balls.count, 1)
+        np.testing.assert_allclose(result, expected)
+
+        all_mask = np.ones(balls.count, dtype=np.uint8)
+        all_values = np.full_like(base, 11.0)
+        self.assertTrue(self.call_masked_setter(balls, "set_masses_masked", all_values, all_mask))
+        result = balls.get_masses().numpy().reshape(balls.count, 1)
+        np.testing.assert_allclose(result, all_values)
+
+        truthy_mask = np.zeros(balls.count, dtype=np.uint8)
+        truthy_mask[::2] = 255
+        truthy_values = np.arange(21, 21 + balls.count, dtype=np.float32).reshape(balls.count, 1)
+        self.assertTrue(self.call_masked_setter(balls, "set_masses_masked", truthy_values, truthy_mask))
+        expected = all_values.copy()
+        expected[truthy_mask != 0] = truthy_values[truthy_mask != 0]
+        result = balls.get_masses().numpy().reshape(balls.count, 1)
+        np.testing.assert_allclose(result, expected)
+
+        wrong_dtype_mask = np.ones(balls.count, dtype=np.float32)
+        self.assertFalse(
+            self.call_masked_setter(balls, "set_masses_masked", all_values, wrong_dtype_mask, mask_dtype=wp.float32)
+        )
+        wrong_size_mask = np.ones(balls.count - 1, dtype=np.uint8)
+        self.assertFalse(self.call_masked_setter(balls, "set_masses_masked", all_values, wrong_size_mask))
+        result = balls.get_masses().numpy().reshape(balls.count, 1)
+        np.testing.assert_allclose(result, expected)
+
     async def test_body_inv_masses_shape(self) -> None:
         """Verify inverse-mass output has one entry per rigid body."""
         num_envs = self.setup_ball_grid(num_envs=16)
@@ -104,6 +155,34 @@ class TestRigidBodyProperties(NewtonTensorTestBase):
         com[:, 0] += 0.1
         balls.set_coms(self.to_warp(com), all_indices)
         self.assertTrue(np.allclose(balls.get_coms().numpy(), com))
+
+    async def test_masked_body_coms_and_inertias(self) -> None:
+        """Verify masked link scatter and COM-orientation writes skip unselected bodies."""
+        num_envs = self.setup_ball_grid()
+        sim = await self.create_sim()
+
+        balls = sim.create_rigid_body_view("/envs/*/ball")
+        mask = np.zeros(balls.count, dtype=np.uint8)
+        mask[::2] = 1
+
+        base_coms = balls.get_coms().numpy().reshape(num_envs, 7).copy()
+        submitted_coms = base_coms.copy()
+        submitted_coms[:, 0] += 0.25
+        submitted_coms[:, 3:7] = np.array([0.0, 0.0, np.sqrt(0.5), np.sqrt(0.5)], dtype=np.float32)
+        self.assertTrue(self.call_masked_setter(balls, "set_coms_masked", submitted_coms, mask))
+        expected_coms = base_coms.copy()
+        expected_coms[mask != 0] = submitted_coms[mask != 0]
+        result_coms = balls.get_coms().numpy().reshape(num_envs, 7)
+        np.testing.assert_allclose(result_coms, expected_coms, atol=1e-5)
+
+        base_inertias = balls.get_inertias().numpy().reshape(num_envs, 9).copy()
+        submitted_inertias = base_inertias.copy()
+        submitted_inertias[:, [0, 4, 8]] += 0.05
+        self.assertTrue(self.call_masked_setter(balls, "set_inertias_masked", submitted_inertias, mask))
+        expected_inertias = base_inertias.copy()
+        expected_inertias[mask != 0] = submitted_inertias[mask != 0]
+        result_inertias = balls.get_inertias().numpy().reshape(num_envs, 9)
+        np.testing.assert_allclose(result_inertias, expected_inertias, atol=1e-5)
 
     async def test_body_inertias(self) -> None:
         """Verify flattened 3x3 inertia tensors can be modified and read back."""
@@ -187,6 +266,25 @@ class TestRigidBodyTransforms(NewtonTensorTestBase):
         result = balls.get_transforms().numpy().reshape(balls.count, 7)
         self.assertTrue(np.allclose(result[:n_subset, 2], modified[:n_subset, 2], atol=1e-4))
         self.assertTrue(np.allclose(result[n_subset:], original[n_subset:], atol=1e-4))
+
+    async def test_masked_transforms(self) -> None:
+        """Verify masked fixed-root scatter updates only selected rigid bodies."""
+        self.setup_ball_grid()
+        sim = await self.create_sim()
+
+        balls = sim.create_rigid_body_view("/envs/*/ball")
+        self.step(1)
+        original = balls.get_transforms().numpy().reshape(balls.count, 7).copy()
+        submitted = original.copy()
+        submitted[:, 2] += 1.0
+        mask = np.zeros(balls.count, dtype=np.uint8)
+        mask[1::2] = 1
+
+        self.assertTrue(self.call_masked_setter(balls, "set_transforms_masked", submitted, mask))
+        expected = original.copy()
+        expected[mask != 0] = submitted[mask != 0]
+        result = balls.get_transforms().numpy().reshape(balls.count, 7)
+        np.testing.assert_allclose(result, expected, atol=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +381,6 @@ class TestRigidBodyAccelerations(NewtonTensorTestBase):
         newton_stage.model.request_state_attributes("body_qdd")
         newton_stage.state_0 = newton_stage.model.state()
         newton_stage.state_1 = newton_stage.model.state()
-        if newton_stage.cfg.use_cuda_graph:
-            newton_stage.state_temp = newton_stage.model.state()
 
         import newton as nw
 
@@ -409,6 +505,27 @@ class TestRigidBodyApplyForces(NewtonTensorTestBase):
         v_expected = (force_z / self.BALL_MASS) * self.DT
         np.testing.assert_allclose(vels[:n_subset, 2], v_expected, rtol=1e-2, atol=5e-3)
         np.testing.assert_allclose(vels[n_subset:, 2], 0.0, atol=5e-3)
+
+    async def test_apply_forces_masked_only_affects_selected_bodies(self) -> None:
+        """Verify the masked wrench kernel skips unselected rigid bodies."""
+        self.setup_ball_grid(num_envs=4, radius=self.BALL_RADIUS)
+        sim = await self.create_sim()
+        self.start_playing()
+
+        balls = sim.create_rigid_body_view("/envs/*/ball")
+        forces = np.zeros((balls.count, 3), dtype=np.float32)
+        forces[:, 2] = 20.0
+        mask = np.zeros(balls.count, dtype=np.uint8)
+        mask[::2] = 1
+
+        from isaacsim.physics.newton.impl.extension import acquire_stage as acquire_newton_stage
+
+        acquire_newton_stage().state_0.body_f.zero_()
+        self.assertTrue(self.call_masked_setter(balls, "apply_forces_masked", forces, mask))
+
+        wrenches = self._get_body_wrenches(balls.prim_paths)
+        np.testing.assert_allclose(wrenches[mask != 0, :3], forces[mask != 0], atol=1e-5)
+        np.testing.assert_allclose(wrenches[mask == 0], 0.0, atol=1e-5)
 
     async def test_apply_torques_angular_velocity(self) -> None:
         """Global torque about z produces wz = (tau/I_z) * dt after one step."""

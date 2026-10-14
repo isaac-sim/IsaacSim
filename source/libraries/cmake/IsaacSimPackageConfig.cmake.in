@@ -19,5 +19,9 @@ include(CMakeFindDependencyMacro)
 
 set(@ISAACSIM_CONFIG_PACKAGE_NAME@_VERSION "@ISAACSIM_CONFIG_PACKAGE_VERSION@")
 @ISAACSIM_CONFIG_FIND_DEPENDENCIES@
+# Define the private runtime libraries the exported targets name as link-dependent before those
+# targets reference them. Absent when this distribution bundles none.
+include("${CMAKE_CURRENT_LIST_DIR}/@ISAACSIM_CONFIG_PACKAGE_NAME@Runtime.cmake" OPTIONAL)
+
 include("${CMAKE_CURRENT_LIST_DIR}/@ISAACSIM_CONFIG_PACKAGE_NAME@Targets.cmake")
 check_required_components(@ISAACSIM_CONFIG_PACKAGE_NAME@)

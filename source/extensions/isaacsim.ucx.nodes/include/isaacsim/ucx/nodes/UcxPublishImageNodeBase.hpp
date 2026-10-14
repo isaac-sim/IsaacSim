@@ -19,11 +19,14 @@
 #include <isaacsim/core/includes/ScopedCudaDevice.hpp>
 #include <isaacsim/ucx/core/UcxListenerRegistry.hpp>
 #include <isaacsim/ucx/nodes/UcxNode.hpp>
+#include <isaacsim/ucx/nodes/UcxPendingRequest.hpp>
 #include <omni/graph/core/CppWrappers.h>
 #include <omni/graph/core/iComputeGraph.h>
 #include <ucxx/api.h>
 
+#include <chrono>
 #include <cstring>
+#include <exception>
 #include <string>
 #include <thread>
 #include <vector>
@@ -87,13 +90,39 @@ public:
      */
     virtual void reset() override
     {
-        // Clear any pending async send request before the listener is destroyed.
-        // The request may hold the last reference to the ucxx::Endpoint; destroying
-        // it after the UCXListener is gone would trigger a close callback on a
-        // dangling pointer, crashing in onEndpointClosed().
-        m_sendRequest.reset();
+        // Releasing a handle does not cancel: the endpoint keeps its own reference and the
+        // transfer keeps reading. Must precede UcxNode::reset() - the request may hold the last
+        // ucxx::Endpoint reference, and releasing it after the listener is gone fires
+        // onEndpointClosed() on a dangling pointer.
+        m_pendingSend.reset();
+        // The tensor send borrows caller-owned device memory, so there is no buffer of ours to
+        // retire; cancel and drain instead. Blocking is acceptable here but not in compute().
+        // If the drain expires the handle is released anyway and UCX may still be reading that
+        // memory - closing that window needs the sender to own the buffer.
+        if (m_tensorSendRequest)
+        {
+            try
+            {
+                if (!m_tensorSendRequest->isCompleted())
+                {
+                    m_tensorSendRequest->cancel();
+
+                    const auto drainStart = std::chrono::steady_clock::now();
+                    while (!m_tensorSendRequest->isCompleted() &&
+                           std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                                 drainStart)
+                                   .count() < isaacsim::ucx::nodes::UcxPendingRequest::s_kCancelDrainMs)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                }
+            }
+            catch (const std::exception&)
+            {
+                // Nothing useful to do; the handle is released below either way.
+            }
+        }
         m_tensorSendRequest.reset();
-        m_messageBuffer.clear();
 
         if (m_streamNotCreated == false)
         {
@@ -219,7 +248,7 @@ protected:
     bool publishMessage(DatabaseT& db, std::vector<uint8_t> messageData, uint64_t tag)
     {
         // Check if previous async send is still in progress
-        if (m_sendRequest && !m_sendRequest->isCompleted())
+        if (m_pendingSend.isOutstanding() && !m_pendingSend.isCompleted())
         {
             // Previous send still in progress - skip this frame to avoid corrupting buffer
             // This prevents buffer reuse while async transfer is ongoing
@@ -232,15 +261,18 @@ protected:
             return false;
         }
 
-        // Store in persistent buffer to keep alive during async send
-        m_messageBuffer = std::move(messageData);
-
-        // Send async and get request handle to track completion
+        // The message buffer is handed to UcxPendingRequest, which keeps it alive - and
+        // unmodified - for as long as the async send needs it.
         std::string errorMessage;
-        auto result = this->m_listener->tagSendWithRequest(
-            m_messageBuffer.data(), m_messageBuffer.size(), tag, errorMessage, m_sendRequest);
+        const bool posted = m_pendingSend.post(std::move(messageData),
+                                               [&](void* buffer, size_t size, std::shared_ptr<ucxx::Request>& request)
+                                               {
+                                                   return this->m_listener->tagSendWithRequest(
+                                                              buffer, size, tag, errorMessage, request) ==
+                                                          isaacsim::ucx::core::UcxSendResult::eSuccess;
+                                               });
 
-        if (result != isaacsim::ucx::core::UcxSendResult::eSuccess)
+        if (!posted)
         {
             db.logError("tagSendWithRequest failed: %s", errorMessage.c_str());
             return false;
@@ -311,8 +343,8 @@ protected:
     cudaStream_t m_stream; //!< CUDA stream for asynchronous operations
     int m_streamDevice = -1; //!< Device index where stream was created
     bool m_streamNotCreated = true; //!< Flag indicating if stream needs creation
-    std::vector<uint8_t> m_messageBuffer; //!< Persistent buffer to keep message alive during async send
-    std::shared_ptr<ucxx::Request> m_sendRequest; //!< Request handle to track async send completion
+    isaacsim::ucx::nodes::UcxPendingRequest m_pendingSend; //!< Deferred send request and the message buffer it reads
+                                                           //!< from
     std::shared_ptr<ucxx::Request> m_tensorSendRequest; //!< Request handle for GPU tensor send (GPU-direct path)
 };
 

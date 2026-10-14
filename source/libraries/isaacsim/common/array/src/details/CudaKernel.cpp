@@ -154,7 +154,7 @@ bool CudaKernel::cast(const void* source,
                       size_t count,
                       Dtype::Kind sourceKind,
                       Dtype::Kind destinationKind,
-                      cudaStream_t stream,
+                      CUstream stream,
                       bool throwIfInvalid) const
 {
     if (!m_cast)
@@ -166,9 +166,9 @@ bool CudaKernel::cast(const void* source,
         }
         return false;
     }
-    cudaError_t result = m_cast(
+    int result = m_cast(
         source, destination, count, static_cast<int32_t>(sourceKind), static_cast<int32_t>(destinationKind), stream);
-    if (result != cudaSuccess)
+    if (result != 0)
     {
         if (throwIfInvalid)
         {
@@ -180,42 +180,43 @@ bool CudaKernel::cast(const void* source,
     return true;
 }
 
-bool CudaKernel::broadcastTo(const void* source,
+bool CudaKernel::copyStrided(const void* source,
                              void* destination,
                              const std::vector<int64_t>& sourceStrides,
-                             const std::vector<int64_t>& destinationShape,
+                             const std::vector<int64_t>& destinationStrides,
+                             const std::vector<int64_t>& shape,
                              size_t elementSize,
                              size_t totalElements,
-                             cudaStream_t stream,
+                             CUstream stream,
                              bool throwIfInvalid) const
 {
-    if (!m_broadcastTo)
+    if (!m_copyStrided)
     {
         if (throwIfInvalid)
         {
             throw isaacsim::common::exceptions::CudaRuntimeError(
-                "CudaKernel::broadcastTo", "the CUDA kernel library was not loaded: " + m_loadError);
+                "CudaKernel::copyStrided", "the CUDA kernel library was not loaded: " + m_loadError);
         }
         return false;
     }
-    if (sourceStrides.size() != destinationShape.size())
+    if (sourceStrides.size() != shape.size() || destinationStrides.size() != shape.size())
     {
         if (throwIfInvalid)
         {
-            throw isaacsim::common::exceptions::CudaRuntimeError("CudaKernel::broadcastTo",
+            throw isaacsim::common::exceptions::CudaRuntimeError("CudaKernel::copyStrided",
                                                                  "strides and shape have different lengths",
-                                                                 static_cast<int>(cudaErrorInvalidValue));
+                                                                 static_cast<int>(CUDA_ERROR_INVALID_VALUE));
         }
         return false;
     }
-    cudaError_t result = m_broadcastTo(source, destination, sourceStrides.data(), destinationShape.data(),
-                                       destinationShape.size(), elementSize, totalElements, stream);
-    if (result != cudaSuccess)
+    const int result = m_copyStrided(source, destination, sourceStrides.data(), destinationStrides.data(), shape.data(),
+                                     shape.size(), elementSize, totalElements, stream);
+    if (result != 0)
     {
         if (throwIfInvalid)
         {
             throw isaacsim::common::exceptions::CudaRuntimeError(
-                "CudaKernel::broadcastTo", "kernel launch failed", static_cast<int>(result));
+                "CudaKernel::copyStrided", "kernel launch failed", static_cast<int>(result));
         }
         return false;
     }
@@ -229,7 +230,7 @@ bool CudaKernel::take(const void* source,
                       size_t inner,
                       size_t elementSize,
                       size_t totalElements,
-                      cudaStream_t stream,
+                      CUstream stream,
                       bool throwIfInvalid) const
 {
     if (!m_take)
@@ -250,13 +251,13 @@ bool CudaKernel::take(const void* source,
         {
             throw isaacsim::common::exceptions::CudaRuntimeError(
                 "CudaKernel::take", "the destination element count is not a multiple of indices.size() * inner",
-                static_cast<int>(cudaErrorInvalidValue));
+                static_cast<int>(CUDA_ERROR_INVALID_VALUE));
         }
         return false;
     }
-    cudaError_t result =
+    int result =
         m_take(source, destination, indices.data(), axisSize, inner, indices.size(), elementSize, totalElements, stream);
-    if (result != cudaSuccess)
+    if (result != 0)
     {
         if (throwIfInvalid)
         {
@@ -274,7 +275,7 @@ bool CudaKernel::binaryOp(const void* source1,
                           size_t count,
                           Dtype::Kind kind,
                           BinaryOp operation,
-                          cudaStream_t stream,
+                          CUstream stream,
                           bool throwIfInvalid) const
 {
     if (!m_binaryOp)
@@ -286,9 +287,9 @@ bool CudaKernel::binaryOp(const void* source1,
         }
         return false;
     }
-    cudaError_t result = m_binaryOp(
+    int result = m_binaryOp(
         source1, source2, destination, count, static_cast<int32_t>(kind), static_cast<int32_t>(operation), stream);
-    if (result != cudaSuccess)
+    if (result != 0)
     {
         if (throwIfInvalid)
         {
@@ -305,7 +306,7 @@ bool CudaKernel::unaryOp(const void* source,
                          size_t count,
                          Dtype::Kind kind,
                          UnaryOp operation,
-                         cudaStream_t stream,
+                         CUstream stream,
                          bool throwIfInvalid) const
 {
     if (!m_unaryOp)
@@ -317,9 +318,9 @@ bool CudaKernel::unaryOp(const void* source,
         }
         return false;
     }
-    cudaError_t result =
+    int result =
         m_unaryOp(source, destination, count, static_cast<int32_t>(kind), static_cast<int32_t>(operation), stream);
-    if (result != cudaSuccess)
+    if (result != 0)
     {
         if (throwIfInvalid)
         {
@@ -336,7 +337,7 @@ bool CudaKernel::reduceOp(const void* source,
                           size_t count,
                           Dtype::Kind kind,
                           ReduceOp operation,
-                          cudaStream_t stream,
+                          CUstream stream,
                           bool throwIfInvalid) const
 {
     if (!m_reduceOp)
@@ -348,9 +349,9 @@ bool CudaKernel::reduceOp(const void* source,
         }
         return false;
     }
-    cudaError_t result =
+    int result =
         m_reduceOp(source, destination, count, static_cast<int32_t>(kind), static_cast<int32_t>(operation), stream);
-    if (result != cudaSuccess)
+    if (result != 0)
     {
         if (throwIfInvalid)
         {
@@ -389,7 +390,7 @@ CudaKernel::CudaKernel()
     };
 
     m_cast = reinterpret_cast<CastFunction>(resolveSymbol("castFunction"));
-    m_broadcastTo = reinterpret_cast<BroadcastToFunction>(resolveSymbol("broadcastToFunction"));
+    m_copyStrided = reinterpret_cast<CopyStridedFunction>(resolveSymbol("copyStridedFunction"));
     m_take = reinterpret_cast<TakeFunction>(resolveSymbol("takeFunction"));
     m_binaryOp = reinterpret_cast<BinaryOpFunction>(resolveSymbol("binaryOpFunction"));
     m_unaryOp = reinterpret_cast<UnaryOpFunction>(resolveSymbol("unaryOpFunction"));
@@ -403,7 +404,7 @@ CudaKernel::CudaKernel()
         unloadLibrary(m_handle);
         m_handle = nullptr;
         m_cast = nullptr;
-        m_broadcastTo = nullptr;
+        m_copyStrided = nullptr;
         m_take = nullptr;
         m_binaryOp = nullptr;
         m_unaryOp = nullptr;

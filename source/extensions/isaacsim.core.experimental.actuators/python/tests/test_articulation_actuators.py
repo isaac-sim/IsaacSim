@@ -159,7 +159,8 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
 
         actuated = ArticulationActuators(_ART_ROOT)
         try:
-            self.assertEqual(len(actuated.actuators), 2)
+            self.assertEqual(len(actuated.actuators), 1)
+            self.assertEqual(actuated.actuators[0].num_actuators, 2)
             dof_paths = actuated.articulation.dof_paths[0]
             expected = sorted([dof_paths.index(str(revolute_path)), dof_paths.index(str(prismatic_path))])
             self.assertEqual(actuated.actuated_dof_indices, expected)
@@ -634,11 +635,38 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
             actuated.close()
 
     # ------------------------------------------------------------------
+    # ActuatorConfig
+    # ------------------------------------------------------------------
+
+    async def test_actuator_config_rejects_invalid_controller(self) -> None:
+        """Verify that the controller must be a Newton controller."""
+        with self.assertRaises(TypeError):
+            ActuatorConfig(controller=object())  # type: ignore[arg-type]
+
+    async def test_actuator_config_rejects_invalid_clamping_container(self) -> None:
+        """Verify that clamping stages must be provided as a list."""
+        controller = self._make_pd_config().controller
+        with self.assertRaises(TypeError):
+            ActuatorConfig(controller=controller, clamping=())  # type: ignore[arg-type]
+
+    async def test_actuator_config_rejects_invalid_clamping_entry(self) -> None:
+        """Verify that every clamping entry must be a Newton clamping stage."""
+        controller = self._make_pd_config().controller
+        with self.assertRaises(TypeError):
+            ActuatorConfig(controller=controller, clamping=[object()])  # type: ignore[list-item]
+
+    async def test_actuator_config_rejects_invalid_delay(self) -> None:
+        """Verify that delay must be a Newton delay."""
+        controller = self._make_pd_config().controller
+        with self.assertRaises(TypeError):
+            ActuatorConfig(controller=controller, delay=object())  # type: ignore[arg-type]
+
+    # ------------------------------------------------------------------
     # from_actuators
     # ------------------------------------------------------------------
 
     def _make_pd_config(self, kp: float = 100.0, kd: float = 10.0, device: str | None = None) -> ActuatorConfig:
-        """Build an `ActuatorConfig` with a `ControllerPD`.
+        """Build an `ActuatorConfig` with a `DrivePD`.
 
         Args:
             kp: Proportional gain for the PD controller.
@@ -646,13 +674,13 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
             device: Warp device on which to allocate the controller's gain arrays.
 
         Returns:
-            An `ActuatorConfig` containing a one-DOF `ControllerPD`.
+            An `ActuatorConfig` containing a one-DOF `DrivePD`.
         """
         import warp as wp
-        from newton.actuators import ControllerPD
+        from newton.actuators import DrivePD
 
         return ActuatorConfig(
-            controller=ControllerPD(
+            controller=DrivePD(
                 kp=wp.array([kp], dtype=wp.float32, device=device),
                 kd=wp.array([kd], dtype=wp.float32, device=device),
             )
@@ -680,7 +708,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
     def _make_pid_config(
         self, kp: float = 100.0, ki: float = 10.0, kd: float = 5.0, device: str | None = None
     ) -> ActuatorConfig:
-        """Build an `ActuatorConfig` with a `ControllerPID`.
+        """Build an `ActuatorConfig` with a `DrivePID`.
 
         Args:
             kp: Proportional gain for the PID controller.
@@ -689,13 +717,13 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
             device: Warp device on which to allocate the controller's gain arrays.
 
         Returns:
-            An `ActuatorConfig` containing a one-DOF `ControllerPID`.
+            An `ActuatorConfig` containing a one-DOF `DrivePID`.
         """
         import warp as wp
-        from newton.actuators import ControllerPID
+        from newton.actuators import DrivePID
 
         return ActuatorConfig(
-            controller=ControllerPID(
+            controller=DrivePID(
                 kp=wp.array([kp], dtype=wp.float32, device=device),
                 ki=wp.array([ki], dtype=wp.float32, device=device),
                 kd=wp.array([kd], dtype=wp.float32, device=device),
@@ -703,17 +731,25 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
             )
         )
 
+    async def test_from_actuators_rejects_invalid_config(self) -> None:
+        """Verify that every actuator group requires an `ActuatorConfig`."""
+        with self.assertRaises(TypeError):
+            ArticulationActuators.from_actuators(
+                _ART_ROOT,
+                [(object(), "RevoluteJoint")],  # type: ignore[list-item]
+            ).close()
+
     async def test_from_actuators_adds_python_actuator(self) -> None:
         """Verify that a Python-constructed `Actuator` is present when no USD prims are authored."""
-        from newton.actuators import ControllerPD
+        from newton.actuators import DrivePD
 
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
-            [(self._make_pd_config(kp=200.0, kd=20.0), "RevoluteJoint")],
+            [(self._make_pd_config(kp=200.0, kd=20.0), ["RevoluteJoint"])],
         )
         try:
             self.assertEqual(len(actuated.actuators), 1)
-            self.assertIsInstance(actuated.actuators[0].controller, ControllerPD)
+            self.assertIsInstance(actuated.actuators[0].drive, DrivePD)
         finally:
             actuated.close()
 
@@ -729,7 +765,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         with wp.ScopedDevice("cpu"):
             actuated = ArticulationActuators.from_actuators(
                 _ART_ROOT,
-                [(self._make_pd_config(kp=100.0, kd=100.0), "RevoluteJoint")],
+                [(self._make_pd_config(kp=100.0, kd=100.0), ["RevoluteJoint"])],
                 auto_step_pre_physics=False,
             )
             dof_index = int(actuated.articulation.get_dof_indices("RevoluteJoint").numpy()[0])
@@ -753,7 +789,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         """Verify that `from_actuators` succeeds when selected device is ``cpu``."""
         actuated_cpu = ArticulationActuators.from_actuators(
             _ART_ROOT,
-            [(self._make_pd_config(kp=100.0, kd=100.0, device="cpu"), "RevoluteJoint")],
+            [(self._make_pd_config(kp=100.0, kd=100.0, device="cpu"), ["RevoluteJoint"])],
             auto_step_pre_physics=False,
             device="cpu",
         )
@@ -778,7 +814,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         with self.assertRaises(ValueError):
             ArticulationActuators.from_actuators(
                 _ART_ROOT,
-                [(self._make_pd_config(), "NonExistentJoint")],
+                [(self._make_pd_config(), ["NonExistentJoint"])],
             ).close()
 
     async def test_from_actuators_duplicate_dof_raises(self) -> None:
@@ -787,23 +823,174 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
             ArticulationActuators.from_actuators(
                 _ART_ROOT,
                 [
-                    (self._make_pd_config(), "RevoluteJoint"),
-                    (self._make_pd_config(), "RevoluteJoint"),
+                    (self._make_pd_config(), ["RevoluteJoint"]),
+                    (self._make_pd_config(), ["RevoluteJoint"]),
                 ],
             ).close()
 
-    async def test_from_actuators_multiple_dofs(self) -> None:
-        """Verify that both DOFs appear in `actuated_dof_indices` when two actuators are provided."""
+    async def test_from_actuators_accepts_scalar_name(self) -> None:
+        """Verify that a scalar target name creates a one-DOF actuator."""
+        actuated = ArticulationActuators.from_actuators(
+            _ART_ROOT,
+            [(self._make_pd_config(), "RevoluteJoint")],
+        )
+        try:
+            self.assertEqual(len(actuated.actuators), 1)
+            self.assertEqual(actuated.actuators[0].num_actuators, 1)
+            self.assertEqual(actuated.actuated_dof_indices, [0])
+        finally:
+            actuated.close()
+
+    async def test_from_actuators_rejects_invalid_name_container(self) -> None:
+        """Verify that target groups reject unsupported containers."""
+        with self.assertRaises(TypeError):
+            ArticulationActuators.from_actuators(
+                _ART_ROOT,
+                [(self._make_pd_config(), ("RevoluteJoint",))],  # type: ignore[list-item]
+            ).close()
+
+    async def test_from_actuators_requires_string_names(self) -> None:
+        """Verify that every item in a target group must be a string."""
+        with self.assertRaises(TypeError):
+            ArticulationActuators.from_actuators(
+                _ART_ROOT,
+                [(self._make_pd_config(), ["RevoluteJoint", 1])],  # type: ignore[list-item]
+            ).close()
+
+    async def test_from_actuators_keeps_separate_groups(self) -> None:
+        """Verify that separate config entries remain separate Newton actuators."""
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
             [
-                (self._make_pd_config(), "RevoluteJoint"),
-                (self._make_pd_config(), "PrismaticJoint"),
+                (self._make_pd_config(), ["RevoluteJoint"]),
+                (self._make_pd_config(), ["PrismaticJoint"]),
             ],
         )
         try:
             self.assertEqual(len(actuated.actuators), 2)
+            self.assertEqual([actuator.num_actuators for actuator in actuated.actuators], [1, 1])
+        finally:
+            actuated.close()
+
+    async def test_from_actuators_multiple_dofs(self) -> None:
+        """Verify that one config can group two DOFs into one vectorized actuator."""
+        import warp as wp
+        from newton.actuators import DrivePD
+
+        config = ActuatorConfig(
+            controller=DrivePD(
+                kp=wp.array([100.0, 200.0], dtype=wp.float32),
+                kd=wp.array([10.0, 20.0], dtype=wp.float32),
+            )
+        )
+        actuated = ArticulationActuators.from_actuators(
+            _ART_ROOT,
+            [(config, ["RevoluteJoint", "PrismaticJoint"])],
+        )
+        try:
+            self.assertEqual(len(actuated.actuators), 1)
+            self.assertEqual(actuated.actuators[0].num_actuators, 2)
             self.assertEqual(len(actuated.actuated_dof_indices), 2)
+        finally:
+            actuated.close()
+
+    async def test_from_actuators_grouped_matches_separate_actuators(self) -> None:
+        """Verify that grouping equivalent actuator components does not change their outputs."""
+        import numpy as np
+        import warp as wp
+        from newton.actuators import ClampingMaxEffort, Delay, DrivePD
+
+        dof_names = ["RevoluteJoint", "PrismaticJoint"]
+        kp = [37.0, 61.0]
+        kd = [4.0, 7.0]
+        const_effort = [1.5, -2.0]
+        max_effort = [45.0, 70.0]
+        delay_steps = [1, 2]
+
+        def make_config(indices: list[int]) -> ActuatorConfig:
+            return ActuatorConfig(
+                controller=DrivePD(
+                    kp=wp.array([kp[index] for index in indices], dtype=wp.float32),
+                    kd=wp.array([kd[index] for index in indices], dtype=wp.float32),
+                    const_effort=wp.array([const_effort[index] for index in indices], dtype=wp.float32),
+                ),
+                clamping=[
+                    ClampingMaxEffort(max_effort=wp.array([max_effort[index] for index in indices], dtype=wp.float32))
+                ],
+                delay=Delay(
+                    delay_steps=wp.array([delay_steps[index] for index in indices], dtype=wp.int32),
+                    max_delay=max(delay_steps),
+                ),
+            )
+
+        async def run_case(
+            actuator_specs: list[tuple[ActuatorConfig, str | list[str]]],
+        ) -> tuple[np.ndarray, int]:
+            actuated = ArticulationActuators.from_actuators(
+                _ART_ROOT,
+                actuator_specs,
+                auto_step_pre_physics=False,
+            )
+            dof_indices = [int(actuated.articulation.get_dof_indices(dof_name).numpy()[0]) for dof_name in dof_names]
+            try:
+                actuated.articulation.set_dof_positions([[0.2, -0.3]], dof_indices=dof_indices)
+                actuated.articulation.set_dof_velocities([[0.4, -0.25]], dof_indices=dof_indices)
+
+                position_targets = [[0.8, -0.6], [-0.4, 0.9], [1.2, -0.2], [0.1, 0.3]]
+                velocity_targets = [[0.1, -0.2], [-0.3, 0.4], [0.5, -0.1], [0.0, 0.2]]
+                feedforward_targets = [[3.0, -4.0], [1.0, 2.0], [-2.0, 5.0], [4.0, -1.0]]
+                efforts = []
+                for position_target, velocity_target, feedforward_target in zip(
+                    position_targets, velocity_targets, feedforward_targets, strict=True
+                ):
+                    actuated.articulation.set_dof_position_targets(position_target, dof_indices=dof_indices)
+                    actuated.articulation.set_dof_velocity_targets(velocity_target, dof_indices=dof_indices)
+                    actuated.set_dof_feedforward_effort_targets(feedforward_target, dof_indices=dof_indices)
+                    actuated.step_actuators(step_dt=1.0 / 60.0)
+                    efforts.append(actuated.articulation.get_dof_efforts(dof_indices=dof_indices).numpy()[0].copy())
+
+                return np.asarray(efforts), len(actuated.actuators)
+            finally:
+                actuated.close()
+
+        self._timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+
+        separate_efforts, separate_batch_count = await run_case(
+            [
+                (make_config([0]), dof_names[0]),
+                (make_config([1]), dof_names[1]),
+            ]
+        )
+        grouped_efforts, grouped_batch_count = await run_case([(make_config([0, 1]), dof_names)])
+
+        self.assertEqual(separate_batch_count, 2)
+        self.assertEqual(grouped_batch_count, 1)
+        np.testing.assert_allclose(grouped_efforts, separate_efforts, rtol=0.0, atol=1e-6)
+
+    async def test_from_actuators_supports_position_based_clamping(self) -> None:
+        """Verify that grouped actuators support shared position-clamping lookup tables."""
+        import warp as wp
+        from newton.actuators import ClampingPositionBased, DrivePD
+
+        config = ActuatorConfig(
+            controller=DrivePD(
+                kp=wp.array([1.0, 1.0], dtype=wp.float32),
+                kd=wp.array([1.0, 1.0], dtype=wp.float32),
+            ),
+            clamping=[
+                ClampingPositionBased(
+                    lookup_positions=(-1.0, 0.0, 1.0),
+                    lookup_efforts=(10.0, 20.0, 10.0),
+                )
+            ],
+        )
+        actuated = ArticulationActuators.from_actuators(
+            _ART_ROOT,
+            [(config, ["RevoluteJoint", "PrismaticJoint"])],
+        )
+        try:
+            self.assertEqual(actuated.actuators[0].num_actuators, 2)
         finally:
             actuated.close()
 
@@ -811,7 +998,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         """Verify that a Python-built PD actuator drives the joint toward its position target."""
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
-            [(self._make_pd_config(kp=100.0, kd=100.0), "RevoluteJoint")],
+            [(self._make_pd_config(kp=100.0, kd=100.0), ["RevoluteJoint"])],
             auto_step_pre_physics=True,
         )
         dof_index = int(actuated.articulation.get_dof_indices("RevoluteJoint").numpy()[0])
@@ -847,7 +1034,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         """
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
-            [(self._make_pd_config(kp=0.0, kd=0.0), "RevoluteJoint")],
+            [(self._make_pd_config(kp=0.0, kd=0.0), ["RevoluteJoint"])],
             auto_step_pre_physics=False,
         )
         dof_index = int(actuated.articulation.get_dof_indices("RevoluteJoint").numpy()[0])
@@ -873,7 +1060,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         max_effort = 2.0
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
-            [(self._make_ff_clamped_config(max_effort), "RevoluteJoint")],
+            [(self._make_ff_clamped_config(max_effort), ["RevoluteJoint"])],
             auto_step_pre_physics=False,
         )
         dof_index = int(actuated.articulation.get_dof_indices("RevoluteJoint").numpy()[0])
@@ -902,7 +1089,7 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
 
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
-            [(self._make_pd_config(kp=kp, kd=0.0), "RevoluteJoint")],
+            [(self._make_pd_config(kp=kp, kd=0.0), ["RevoluteJoint"])],
             auto_step_pre_physics=False,
         )
         dof_index = int(actuated.articulation.get_dof_indices("RevoluteJoint").numpy()[0])
@@ -933,8 +1120,8 @@ class TestArticulationActuators(omni.kit.test.AsyncTestCase):
         actuated = ArticulationActuators.from_actuators(
             _ART_ROOT,
             [
-                (self._make_pd_config(kp=0.0, kd=0.0), "RevoluteJoint"),
-                (self._make_pd_config(kp=0.0, kd=0.0), "PrismaticJoint"),
+                (self._make_pd_config(kp=0.0, kd=0.0), ["RevoluteJoint"]),
+                (self._make_pd_config(kp=0.0, kd=0.0), ["PrismaticJoint"]),
             ],
             auto_step_pre_physics=False,
         )
@@ -985,13 +1172,86 @@ class TestArticulationActuatorsMultiFranka(omni.kit.test.AsyncTestCase):
         await omni.kit.app.get_app().next_update_async()
         super().tearDown()
 
+    async def test_usd_model_builder_replicates_and_remaps_actuator(self) -> None:
+        """Verify that one USD actuator template is replicated and remapped over both robots."""
+        from isaacsim.core.experimental.prims import Articulation
+
+        articulation = Articulation(_FRANKA_REGEX)
+        dof_index = int(articulation.get_dof_indices(_FRANKA_ARM_JOINTS[0]).numpy()[0])
+        target_path = Sdf.Path(articulation.dof_paths[0][dof_index])
+
+        stage = stage_utils.get_current_stage(backend="usd")
+        actuator_prim = stage.DefinePrim(f"{_FRANKA_BASE_PATH}_0/Actuators/test_actuator", "NewtonActuator")
+        actuator_prim.AddAppliedSchema("NewtonPDControlAPI")
+        actuator_prim.CreateAttribute("newton:kp", Sdf.ValueTypeNames.Float).Set(100.0)
+        actuator_prim.CreateAttribute("newton:kd", Sdf.ValueTypeNames.Float).Set(10.0)
+        actuator_prim.CreateRelationship("newton:targets").SetTargets([target_path])
+
+        actuated = ArticulationActuators(_FRANKA_REGEX, auto_step_pre_physics=False, device="cpu")
+        try:
+            self.assertEqual(len(actuated.actuators), 1)
+            actuator = actuated.actuators[0]
+            self.assertEqual(actuator.num_actuators, _NUM_FRANKAS)
+            self.assertEqual(
+                actuator.indices.numpy().tolist(),
+                [robot_index * actuated.articulation.num_dofs + dof_index for robot_index in range(_NUM_FRANKAS)],
+            )
+            self.assertEqual(actuator.pos_indices.numpy().tolist(), actuator.indices.numpy().tolist())
+            self.assertEqual(actuator.effort_indices.numpy().tolist(), list(range(_NUM_FRANKAS)))
+        finally:
+            actuated.close()
+
+    async def test_usd_group_preserves_sparse_dof_parameters_across_robots(self) -> None:
+        """Preserve per-joint gains, delays, and compact effort slots when authoring out of DOF order."""
+        from isaacsim.core.experimental.prims import Articulation
+
+        articulation = Articulation(_FRANKA_REGEX)
+        dof_indices = sorted(
+            [int(articulation.get_dof_indices(name).numpy()[0]) for name in ("panda_joint2", "panda_joint7")],
+            reverse=True,
+        )
+        stage = stage_utils.get_current_stage(backend="usd")
+        for index, dof_index in enumerate(dof_indices):
+            prim = stage.DefinePrim(f"{_FRANKA_BASE_PATH}_0/Actuators/test_{index}", "NewtonActuator")
+            prim.AddAppliedSchema("NewtonPDControlAPI")
+            prim.AddAppliedSchema("NewtonActuatorDelayAPI")
+            prim.AddAppliedSchema("NewtonMaxEffortClampingAPI")
+            prim.CreateAttribute("newton:kp", Sdf.ValueTypeNames.Float).Set(10.0 + index)
+            prim.CreateAttribute("newton:kd", Sdf.ValueTypeNames.Float).Set(1.0 + index)
+            prim.CreateAttribute("newton:delaySteps", Sdf.ValueTypeNames.Int).Set(index)
+            prim.CreateAttribute("newton:maxEffort", Sdf.ValueTypeNames.Float).Set(20.0 + index)
+            prim.CreateRelationship("newton:targets").SetTargets([Sdf.Path(articulation.dof_paths[0][dof_index])])
+
+        actuated = ArticulationActuators(_FRANKA_REGEX, auto_step_pre_physics=False, device="cpu")
+        try:
+            self.assertEqual(len(actuated.actuators), 1)
+            actuator = actuated.actuators[0]
+            expected_indices = [
+                robot_index * articulation.num_dofs + dof_index
+                for robot_index in range(_NUM_FRANKAS)
+                for dof_index in dof_indices
+            ]
+            self.assertEqual(actuator.indices.numpy().tolist(), expected_indices)
+            self.assertEqual(actuator.pos_indices.numpy().tolist(), expected_indices)
+            self.assertEqual(actuator.target_pos_indices.numpy().tolist(), expected_indices)
+            self.assertEqual(
+                actuator.effort_indices.numpy().tolist(),
+                [robot_index * 2 + column for robot_index in range(_NUM_FRANKAS) for column in (1, 0)],
+            )
+            self.assertEqual(actuator.drive.kp.numpy().tolist(), [10.0, 11.0] * _NUM_FRANKAS)
+            self.assertEqual(actuator.drive.kd.numpy().tolist(), [1.0, 2.0] * _NUM_FRANKAS)
+            self.assertEqual(actuator.delay.delay_steps.numpy().tolist(), [0, 1] * _NUM_FRANKAS)
+            self.assertEqual(actuator.clamping[0].max_effort.numpy().tolist(), [20.0, 21.0] * _NUM_FRANKAS)
+        finally:
+            actuated.close()
+
     async def test_per_joint_pd_effort_matches_formula(self) -> None:
         """Verify per-(instance, joint) PD effort matches ``kp*(target - q) - kd*qd``.
 
         Spawns ``_NUM_FRANKAS`` Franka Panda instances under ``/World/Franka_<i>`` and attaches
-        a single ``ControllerPD`` per arm joint, with a *distinct* ``kp`` and ``kd`` on every
-        joint so that no two cells of the resulting ``(n_robots, n_arm_dofs)`` effort matrix
-        share the same expected value.  After a few unactuated physics ticks (so velocities
+        one grouped ``DrivePD`` to all arm joints, with a *distinct* ``kp`` and ``kd`` on
+        every joint so that no two cells of the resulting ``(n_robots, n_arm_dofs)`` effort matrix
+        share the same expected value. After a few unactuated physics ticks (so velocities
         are non-trivially non-zero from gravity), the test sets per-(instance, joint) position
         targets, calls ``step_actuators`` once, and asserts that the applied effort on each
         cell equals ``kp[joint] * (target - q) - kd[joint] * qd`` evaluated at the state
@@ -999,7 +1259,7 @@ class TestArticulationActuatorsMultiFranka(omni.kit.test.AsyncTestCase):
         """
         import numpy as np
         import warp as wp
-        from newton.actuators import ControllerPD
+        from newton.actuators import DrivePD
 
         # Distinct gains per joint so each (joint, instance) cell of the effort matrix is
         # uniquely identifiable.  Picking values an order of magnitude apart makes off-by-one
@@ -1007,19 +1267,16 @@ class TestArticulationActuatorsMultiFranka(omni.kit.test.AsyncTestCase):
         joint_kps = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0]
         joint_kds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
 
-        actuators: list[tuple[ActuatorConfig, str]] = []
-        for joint_name, kp, kd in zip(_FRANKA_ARM_JOINTS, joint_kps, joint_kds):
-            cfg = ActuatorConfig(
-                controller=ControllerPD(
-                    kp=wp.array([kp] * _NUM_FRANKAS, dtype=wp.float32),
-                    kd=wp.array([kd] * _NUM_FRANKAS, dtype=wp.float32),
-                )
+        config = ActuatorConfig(
+            controller=DrivePD(
+                kp=wp.array(joint_kps * _NUM_FRANKAS, dtype=wp.float32),
+                kd=wp.array(joint_kds * _NUM_FRANKAS, dtype=wp.float32),
             )
-            actuators.append((cfg, joint_name))
+        )
 
         actuated = ArticulationActuators.from_actuators(
             _FRANKA_REGEX,
-            actuators=actuators,
+            actuators=[(config, _FRANKA_ARM_JOINTS)],
             # Manual stepping is required so that the state we read back matches the state
             # that step_actuators saw when computing the effort.  With auto-stepping, physics
             # advances after the pre-physics callback and the read-back state is one tick
@@ -1028,7 +1285,8 @@ class TestArticulationActuatorsMultiFranka(omni.kit.test.AsyncTestCase):
         )
         try:
             self.assertEqual(len(actuated.articulation), _NUM_FRANKAS)
-            self.assertEqual(len(actuated.actuators), len(_FRANKA_ARM_JOINTS))
+            self.assertEqual(len(actuated.actuators), 1)
+            self.assertEqual(actuated.actuators[0].num_actuators, _NUM_FRANKAS * len(_FRANKA_ARM_JOINTS))
 
             arm_dof_indices = actuated.articulation.get_dof_indices(_FRANKA_ARM_JOINTS).numpy()
 

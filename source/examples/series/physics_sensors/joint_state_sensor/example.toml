@@ -22,22 +22,12 @@ path = "main.py"
 
 [requirements]
 system = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_common"
-surfaces = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_foundation"
-surfaces = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_physics"
-surfaces = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_physics_engines"
-surfaces = ["python"]
+modules = [
+    { name = "isaacsim_common", surfaces = ["python"] },
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+    { name = "isaacsim_physics", surfaces = ["python"] },
+    { name = "isaacsim_physics_engines", surfaces = ["python"] },
+]
 
 [[test]]
 name = "default"

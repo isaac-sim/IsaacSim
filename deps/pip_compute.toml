@@ -20,7 +20,7 @@ gather_licenses_path = "../_build/PACKAGE-LICENSES/PIP-prebundled-LICENSES.txt"
 [[dependency]]
 python = "../_build/target-deps/python"
 packages = [
-    "opencv-python-headless-noffmpeg==4.14.0.94rc1", # SWIPAT filed under: https://nvbugs/4870529 # Used by: isaacsim.benchmark.services, isaacsim.replicator.mobility_gen, isaacsim.ros2.core, isaacsim.ros2.nodes, isaacsim.sensors.camera
+    "opencv-python-headless-noffmpeg==4.14.0.94rc3", # SWIPAT filed under: https://nvbugs/4870529 # Used by: isaacsim.benchmark.services, isaacsim.replicator.mobility_gen, isaacsim.ros2.core, isaacsim.ros2.nodes, isaacsim.sensors.camera
 ]
 
 target = "../_build/target-deps/pip_compute_prebundle"

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0] - 2026-10-01
+
+### Added
+- Curated floating-gripper scene specifications and matching profiles for Robotiq 2F-85 and Hand-E, alongside the existing xArm example.
+- Resolve gripper assets from asset-root fragments, URIs, absolute local files, or definition-relative files through `resolve_floating_gripper_asset_path_async`.
+- Support definition-relative grasp maps alongside portable gripper overlays.
+- Add a single-arm IK profile with velocity-driven base locomotion.
+
+### Changed
+- Bundle Isaac Teleop 1.4.145.
+
+### Fixed
+- Load explicit gripper locations without asset-root discovery and validate asset accessibility before modifying the stage.
+- Check CloudXR IPC liveness before connecting; preserve callbacks after failed connections and reject duplicate providers.
+- Resolve arm IK joints by name so gripper DOFs are not overwritten; correct LM joint-limit indexing and avoid division by zero at singularities.
+- Keep rigid-body velocity commands independent of the transform backend and clear stage-bound input state on reset.
+
+## [0.4.5] - 2026-09-22
+### Fixed
+- `VisualCuesManager`: a stage that disappears after an update callback starts no longer logs an uncaught error.
+
 ## [0.4.4] - 2026-09-04
 ### Fixed
 - `VisualCuesManager`: tolerate updates while the USD stage is temporarily unavailable during replacement.

@@ -35,7 +35,8 @@ _MATERIAL_PURPOSES: tuple[str, ...] = ("", "physics", "preview", "full")
 # Default Configuration Parameters
 _DEFAULT_SCOPE: str = "/"
 _DEFAULT_MATERIALS_LAYER_PATH: str = "materials.usda"
-_DEFAULT_TEXTURES_FOLDER: str = "Textures"
+_DEFAULT_TEXTURES_FOLDER: str = "textures"
+_DEFAULT_MDL_FOLDER: str = "materials"
 _DEFAULT_DEDUPLICATE: bool = True
 _DEFAULT_DOWNLOAD_TEXTURES: bool = False
 
@@ -74,6 +75,13 @@ _MDL_TEXTURE_PATH_PATTERN = re.compile(
     r'"([^"]+\.(?:' + "|".join(sorted(ext.lstrip(".") for ext in _TEXTURE_ASSET_EXTENSIONS)) + r'))"',
     re.IGNORECASE,
 )
+
+# Relative MDL module imports, e.g. ``import OmniPBR_ClearCoat::*;`` or
+# ``using OmniPBRBase import *;``. These name a sibling ``<Module>.mdl`` file
+# co-located with the importing module. Absolute/standard imports start with
+# ``::`` (e.g. ``import ::df::*;``) and are intentionally excluded because they
+# resolve to runtime-provided modules, not to co-located files on disk.
+_MDL_MODULE_IMPORT_PATTERN = re.compile(r"\b(?:import|using)\s+([A-Za-z_]\w*)\s*(?:::|\bimport\b)")
 
 # UDIM tile token as it appears in authored asset paths, matching both the
 # canonical USD form (``<UDIM>``) and the URL-encoded form (``%3CUDIM%3E``)
@@ -191,6 +199,17 @@ class MaterialsRoutingRule(RuleInterface):
                 default_value=_DEFAULT_TEXTURES_FOLDER,
             ),
             RuleConfigurationParam(
+                name="mdl_folder",
+                display_name="MDL Folder",
+                param_type=str,
+                description=(
+                    "Folder name for bundled MDL modules at the root of the destination path. "
+                    "Kept separate from textures so an extracted material module is not shipped "
+                    "inside the textures folder."
+                ),
+                default_value=_DEFAULT_MDL_FOLDER,
+            ),
+            RuleConfigurationParam(
                 name="deduplicate",
                 display_name="Deduplicate",
                 param_type=bool,
@@ -236,20 +255,29 @@ class MaterialsRoutingRule(RuleInterface):
         materials_layer_path = os.path.join(
             self.destination_path, params.get("materials_layer") or _DEFAULT_MATERIALS_LAYER_PATH
         )
-        textures_folder = params.get("textures_folder") or _DEFAULT_TEXTURES_FOLDER
+        configured_textures_folder = params.get("textures_folder") or _DEFAULT_TEXTURES_FOLDER
+        textures_folder = self._resolve_existing_folder_casing(self.package_root, configured_textures_folder)
+        if textures_folder != configured_textures_folder:
+            self.log_operation(f"Reusing existing textures folder casing: {textures_folder}")
+        mdl_folder = params.get("mdl_folder") or _DEFAULT_MDL_FOLDER
         deduplicate = params.get("deduplicate", True)
         download_textures = params.get("download_textures", False)
 
         self.log_operation(
             f"MaterialsRoutingRule start scope={scope} deduplicate={deduplicate} "
             f"materials_layer={materials_layer_path} textures_folder={textures_folder} "
-            f"download_textures={download_textures}"
+            f"mdl_folder={mdl_folder} download_textures={download_textures}"
         )
 
         # Resolve output paths relative to package root
         materials_output_path = os.path.join(self.package_root, materials_layer_path)
         textures_output_path = os.path.join(self.package_root, textures_folder)
         materials_layer_dir = os.path.dirname(materials_output_path)
+        # Bundle MDL modules under the materials-layer directory (not the package
+        # root) so the authored ``info:mdl:sourceAsset`` stays a ``./``-relative,
+        # resolvable reference (VM.MDL.001) instead of a parent-relative ``../``
+        # path when the materials layer lives in a subfolder such as ``payloads/``.
+        mdl_output_path = os.path.join(materials_layer_dir, mdl_folder)
 
         # Ensure output directories exist
         os.makedirs(materials_layer_dir, exist_ok=True)
@@ -290,13 +318,29 @@ class MaterialsRoutingRule(RuleInterface):
         for paths in source_asset_paths.values():
             all_asset_paths.update(paths)
 
-        # Transfer assets and get mapping from original resolved path -> new relative path
+        # Transfer assets and get mapping from original resolved path -> new relative path.
+        # Bundled MDL modules are routed to their own folder so an extracted
+        # material module is not shipped inside the textures folder; textures and
+        # other supporting assets stay in the textures folder.
+        mdl_asset_paths = {p for p in all_asset_paths if os.path.splitext(p)[1].lower() == ".mdl"}
+        texture_asset_paths = all_asset_paths - mdl_asset_paths
+
         asset_path_mapping = self._transfer_all_assets(
-            list(all_asset_paths),
+            list(texture_asset_paths),
             textures_output_path,
             materials_layer_dir,
             download_remote=download_textures,
         )
+        if mdl_asset_paths:
+            os.makedirs(mdl_output_path, exist_ok=True)
+            asset_path_mapping.update(
+                self._transfer_all_assets(
+                    list(mdl_asset_paths),
+                    mdl_output_path,
+                    materials_layer_dir,
+                    download_remote=download_textures,
+                )
+            )
         self.log_operation(f"Transferred {len(asset_path_mapping)} unique assets")
 
         # Update MDL texture references after transfer
@@ -626,9 +670,13 @@ class MaterialsRoutingRule(RuleInterface):
         def add_asset(path: str) -> None:
             if not path:
                 return
-            # Skip built-in MDL files (e.g. OmniPBR.mdl) -- they ship with
-            # the runtime and must not be extracted or have paths rewritten.
-            if utils.is_builtin_mdl(path):
+            # A built-in-named MDL (e.g. OmniPBR.mdl) that is NOT bundled as a
+            # real file ships with the runtime and must not be extracted or have
+            # its path rewritten -- Kit resolves it through the MDL search paths.
+            # But when the asset bundles its own copy (the path resolves to a
+            # real file), transfer it like any other asset so the composed
+            # package stays self-contained and the reference resolves on disk.
+            if utils.is_builtin_mdl(path) and not os.path.isfile(path):
                 return
             asset_paths.add(path)
             if os.path.splitext(path)[1].lower() == ".mdl":
@@ -729,12 +777,67 @@ class MaterialsRoutingRule(RuleInterface):
 
         collect_from_prim(prim)
 
-        # Parse MDL files to collect texture dependencies
+        # Bundle the local MDL module import closure (sibling ``.mdl`` modules
+        # referenced via ``import Foo::*;`` / ``using Foo import *;``). Kit cannot
+        # compile a relocated MDL unless the modules it imports travel with it and
+        # stay co-located, so the whole local closure must be transferred
+        # (VM.BIND.002). ``add_asset`` also adds them to ``mdl_paths``.
         if mdl_paths:
-            for dep_path in self._collect_mdl_texture_paths(mdl_paths, include_remote=include_remote):
+            for module_path in self._collect_mdl_module_imports(set(mdl_paths)):
+                add_asset(module_path)
+
+        # Parse all MDL modules (primary + imported closure) for texture deps.
+        if mdl_paths:
+            for dep_path in self._collect_mdl_texture_paths(set(mdl_paths), include_remote=include_remote):
                 add_asset(dep_path)
 
         return list(asset_paths), list(mdl_paths)
+
+    def _collect_mdl_module_imports(self, mdl_paths: set[str]) -> set[str]:
+        """Resolve the local sibling MDL modules imported by the given MDL files.
+
+        MDL modules import sibling modules by relative module name (e.g.
+        ``import OmniPBR_ClearCoat::*;`` resolves to ``OmniPBR_ClearCoat.mdl`` in
+        the same directory). A relocated/bundled MDL only compiles when the whole
+        local import closure travels with it and stays co-located, so every
+        reachable sibling ``.mdl`` file is collected transitively. Absolute or
+        standard imports (``import ::df::*;``) and module names without a
+        co-located file on disk are ignored -- those are runtime-provided.
+
+        Args:
+            mdl_paths: Set of local (or remote) MDL paths to scan.
+
+        Returns:
+            Set of resolved local sibling ``.mdl`` paths in the import closure.
+
+        """
+        closure: set[str] = set()
+        seen: set[str] = set()
+        worklist = [p for p in mdl_paths if p and not utils.is_remote_path(p) and os.path.isfile(p)]
+        while worklist:
+            mdl_path = worklist.pop()
+            norm = os.path.normpath(mdl_path)
+            if norm in seen:
+                continue
+            seen.add(norm)
+            try:
+                with open(mdl_path, encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+            except Exception as e:
+                self.log_operation(f"Failed to read MDL for import scan {mdl_path}: {e}")
+                continue
+            # Strip comments so commented-out imports are not collected.
+            text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+            text = re.sub(r"//.*", "", text)
+            base_dir = os.path.dirname(mdl_path)
+            for module_name in _MDL_MODULE_IMPORT_PATTERN.findall(text):
+                sibling = os.path.normpath(os.path.join(base_dir, f"{module_name}.mdl"))
+                if os.path.normpath(sibling) in seen:
+                    continue
+                if os.path.isfile(sibling):
+                    closure.add(sibling)
+                    worklist.append(sibling)
+        return closure
 
     def _collect_mdl_texture_paths(self, mdl_paths: set[str], include_remote: bool = False) -> list[str]:
         """Collect texture dependencies referenced inside MDL files.
@@ -1293,6 +1396,53 @@ class MaterialsRoutingRule(RuleInterface):
         """
         return utils.make_explicit_relative(os.path.relpath(dst_path, materials_layer_dir))
 
+    @staticmethod
+    def _resolve_existing_folder_casing(parent: str, name: str) -> str:
+        """Return ``name`` with its on-disk casing if a matching folder already exists.
+
+        This exists to keep in-place asset transformations portable across
+        filesystems with different case-sensitivity rules. On a case-insensitive
+        filesystem (Windows, default macOS), creating ``Textures/`` with
+        ``os.makedirs`` when ``textures/`` already exists is a silent no-op:
+        new files land in the pre-existing directory but the rule still rewrites
+        every shader ``assetPath`` to the configured ``Textures`` casing. The
+        package then loads on Windows (case-insensitive resolution) but fails on
+        Linux. Preferring the existing casing avoids mutating any on-disk state
+        while still producing a USD whose paths match what is actually on disk.
+
+        Falls back to ``name`` unchanged when the parent is not a directory,
+        when no matching subdirectory exists, or when ``name`` itself contains
+        path separators (multi-level resolution is intentionally not attempted).
+
+        Args:
+            parent: Absolute path of the directory that will contain the folder.
+            name: Configured folder name (e.g. ``"Textures"``).
+
+        Returns:
+            Either the existing folder's on-disk name (preferring an exact match,
+            then any case-insensitive match) or ``name`` unchanged when no match
+            is found.
+
+        """
+        if "/" in name or "\\" in name or not os.path.isdir(parent):
+            return name
+
+        target_lower = name.lower()
+        insensitive_match: str | None = None
+
+        try:
+            for entry in sorted(os.listdir(parent)):
+                if not os.path.isdir(os.path.join(parent, entry)):
+                    continue
+                if entry == name:
+                    return entry
+                if insensitive_match is None and entry.lower() == target_lower:
+                    insensitive_match = entry
+        except OSError:
+            return name
+
+        return insensitive_match or name
+
     def _update_mdl_texture_paths(
         self,
         mdl_paths: set[str],
@@ -1533,14 +1683,26 @@ class MaterialsRoutingRule(RuleInterface):
                     old_resolved = value.resolvedPath
                     new_rel_path = None
 
-                    # Built-in MDLs are resolved by Kit's MDL search paths and
-                    # cannot safely be relocated (the MDL system ties module
-                    # identity to filesystem location). If a project-local
-                    # copy was authored as an absolute or explicit-relative
-                    # path, rewrite it to the canonical bare/suffix form so
-                    # the package is portable; if it is already canonical,
-                    # leave it untouched.
-                    if utils.is_builtin_mdl(old_path or old_resolved or ""):
+                    # Determine whether the authored MDL is actually bundled as
+                    # a real file in the package/source (as opposed to a bare
+                    # reference to a runtime-provided module). A bundled copy is
+                    # kept and referenced with a resolvable, self-contained path;
+                    # only a non-bundled built-in reference is collapsed to the
+                    # canonical Kit identifier.
+                    bundled_on_disk = bool(old_resolved and os.path.isfile(old_resolved))
+                    if not bundled_on_disk and old_path and not os.path.isabs(old_path):
+                        candidate = os.path.normpath(os.path.join(materials_layer_dir, old_path))
+                        bundled_on_disk = os.path.isfile(candidate)
+
+                    # Built-in MDLs that are NOT bundled are resolved by Kit's
+                    # MDL search paths and cannot safely be relocated (the MDL
+                    # system ties module identity to filesystem location), so a
+                    # bare or project-local reference is rewritten to the
+                    # canonical bare/suffix form. A bundled copy of a
+                    # built-in-named MDL (the authored path resolves to a real
+                    # file) is instead kept and re-anchored like any other
+                    # transferred asset, so the package stays self-contained.
+                    if not bundled_on_disk and utils.is_builtin_mdl(old_path or old_resolved or ""):
                         canonical = utils.canonical_builtin_mdl_path(old_path or old_resolved or "")
                         if canonical and canonical != old_path:
                             attr_spec.default = Sdf.AssetPath(canonical)

@@ -20,8 +20,8 @@ from functools import partial
 from pathlib import Path
 
 import omni.ext
+import omni.kit.commands
 import omni.usd
-from isaacsim.robot.surface_gripper import create_surface_gripper
 from isaacsim.robot.surface_gripper.ui.widgets.SurfaceGripperPropertiesWidget import SurfaceGripperPropertiesWidget
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 
@@ -117,7 +117,7 @@ class Extension(omni.ext.IExt):
                 prim_path = str(default_prim.GetPath())
             else:
                 prim_path = "/"
-        create_surface_gripper(stage, prim_path)
+        omni.kit.commands.execute("CreateSurfaceGripperPrim", prim_path=prim_path)
 
     def _register_widget(self) -> None:
         """Registers the Surface Gripper Properties widget in the property window.

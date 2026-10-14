@@ -109,10 +109,10 @@ struct SurfaceGripperInterface
     bool(CARB_ABI* setWriteToUsd)(const bool writeToUsd);
 
     /**
-     * @brief Gets statuses for multiple surface grippers in parallel.
+     * @brief Gets statuses for multiple surface grippers in input order.
      * @details
      * Batch operation that queries the status of multiple grippers efficiently
-     * by processing them in parallel.
+     * in input order. Repeated paths are processed once per occurrence.
      *
      * @param[in] primPaths Array of USD paths for grippers to query
      * @param[in] count Number of grippers in the array
@@ -121,9 +121,10 @@ struct SurfaceGripperInterface
     std::vector<int>(CARB_ABI* getGripperStatusBatch)(const char* const* primPaths, size_t count);
 
     /**
-     * @brief Opens multiple surface grippers in parallel.
+     * @brief Opens multiple surface grippers in input order.
      * @details
-     * Batch operation that opens multiple grippers efficiently by processing them in parallel.
+     * Batch operation that opens multiple grippers in input order.
+     * Repeated paths are processed once per occurrence.
      *
      * @param[in] primPaths Array of USD paths for grippers to open
      * @param[in] count Number of grippers in the array
@@ -132,9 +133,10 @@ struct SurfaceGripperInterface
     std::vector<bool>(CARB_ABI* openGripperBatch)(const char* const* primPaths, size_t count);
 
     /**
-     * @brief Closes multiple surface grippers in parallel.
+     * @brief Closes multiple surface grippers in input order.
      * @details
-     * Batch operation that closes multiple grippers efficiently by processing them in parallel.
+     * Batch operation that closes multiple grippers in input order.
+     * Repeated paths are processed once per occurrence.
      *
      * @param[in] primPaths Array of USD paths for grippers to close
      * @param[in] count Number of grippers in the array
@@ -143,10 +145,10 @@ struct SurfaceGripperInterface
     std::vector<bool>(CARB_ABI* closeGripperBatch)(const char* const* primPaths, size_t count);
 
     /**
-     * @brief Sets actions for multiple surface grippers in parallel.
+     * @brief Sets actions for multiple surface grippers in input order.
      * @details
      * Batch operation that sets gripper actions for multiple grippers efficiently
-     * by processing them in parallel.
+     * in input order. Repeated paths are processed once per occurrence.
      *
      * @param[in] primPaths Array of USD paths for grippers to control
      * @param[in] actions Array of action values corresponding to each gripper
@@ -156,10 +158,10 @@ struct SurfaceGripperInterface
     std::vector<bool>(CARB_ABI* setGripperActionBatch)(const char* const* primPaths, const float* actions, size_t count);
 
     /**
-     * @brief Gets gripped objects for multiple surface grippers in parallel.
+     * @brief Gets gripped objects for multiple surface grippers in input order.
      * @details
      * Batch operation that retrieves the list of gripped objects for multiple grippers
-     * efficiently by processing them in parallel.
+     * efficiently in input order. Repeated paths are processed once per occurrence.
      *
      * @param[in] primPaths Array of USD paths for grippers to query
      * @param[in] count Number of grippers in the array

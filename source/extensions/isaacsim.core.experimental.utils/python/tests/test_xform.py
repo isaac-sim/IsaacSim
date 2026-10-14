@@ -21,7 +21,10 @@ import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.core.experimental.utils.xform as xform_utils
 import numpy as np
+import omni.kit.app
 import omni.kit.test
+import usdrt
+from pxr import Gf, UsdGeom
 
 
 class TestXform(omni.kit.test.AsyncTestCase):
@@ -84,6 +87,36 @@ class TestXform(omni.kit.test.AsyncTestCase):
 
         np.testing.assert_allclose(translation.numpy(), [4.0, 5.0, 6.0], atol=1e-4)
         np.testing.assert_allclose(orientation.numpy(), [0.7071, 0.7071, 0.0, 0.0], atol=1e-4)
+
+    async def test_set_pose_usdrt_preserves_scale(self) -> None:
+        """Test USDRT local and world orientation updates preserve authored non-unit scale."""
+        for pose_space, setter in (
+            ("local", xform_utils.set_local_pose),
+            ("world", xform_utils.set_world_pose),
+        ):
+            await stage_utils.create_new_stage_async()
+            path = f"/World/{pose_space.capitalize()}Scaled"
+            prim = stage_utils.define_prim(path)
+            xformable = UsdGeom.Xformable(prim)
+            xformable.AddTranslateOp().Set(Gf.Vec3d(7.0, 8.0, 9.0))
+            xformable.AddOrientOp().Set(Gf.Quatf(0.9659258, 0.258819, 0.0, 0.0))
+            xformable.AddScaleOp().Set(Gf.Vec3f(2.0, 3.0, 4.0))
+            await omni.kit.app.get_app().next_update_async()
+
+            with backend_utils.use_backend("usdrt", raise_on_unsupported=True, raise_on_fallback=True):
+                setter(path, orientation=[0.9238795, 0.0, 0.3826834, 0.0])
+                pose_getter = xform_utils.get_local_pose if pose_space == "local" else xform_utils.get_world_pose
+                translation, orientation = pose_getter(path)
+
+            fabric_stage = stage_utils.get_current_stage(backend="fabric")
+            hierarchy = usdrt.hierarchy.IFabricHierarchy().get_fabric_hierarchy(
+                fabric_stage.GetFabricId(), fabric_stage.GetStageIdAsStageId()
+            )
+            matrix_getter = hierarchy.get_local_xform if pose_space == "local" else hierarchy.get_world_xform
+            matrix = matrix_getter(usdrt.Sdf.Path(path))
+            np.testing.assert_allclose(usdrt.Gf.Transform(matrix).GetScale(), [2.0, 3.0, 4.0], atol=1e-5)
+            np.testing.assert_allclose(translation.numpy(), [7.0, 8.0, 9.0], atol=1e-5)
+            np.testing.assert_allclose(orientation.numpy(), [0.9238795, 0.0, 0.3826834, 0.0], atol=1e-5)
 
     async def test_get_relative_transform(self) -> None:
         """Verify get_relative_transform resolves USD prims and returns a valid 4x4 matrix."""

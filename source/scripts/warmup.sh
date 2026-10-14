@@ -43,6 +43,7 @@ set +e # Workaround post-install script failure
     --/omni/kit/plugin/syncUsdLoads=1 \
     --/rtx/hydra/materialSyncLoads=1 \
     --/app/asyncRendering=0 \
+    --/renderer/asyncInit=0 \
     --/app/quitAfter=1000 \
     --/app/fastShutdown=1 \
     --/app/file/ignoreUnsavedStage=1 \
@@ -56,6 +57,7 @@ echo "Shader cache is warmed up."
 # Warm up shader cache for Python app
 "$SCRIPT_DIR/python.sh" "$SCRIPT_DIR/standalone_examples/testing/isaacsim.simulation_app/test_viewport_ready.py" \
     --portable-root "$PORTABLE_ROOT" \
+    --/renderer/asyncInit=0 \
     --/log/flushStandardStreamOutput=1 \
     --no-window \
     --silent

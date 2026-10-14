@@ -14,9 +14,10 @@ Control manipulator arms with differential IK, schema-native poser workflows, gr
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For the verified robot-motion library route: a completed `source/libraries`
+  build or matching installed distributions.
+- For RobotPoser, live articulation, grasp/contact, or interactive work: built
+  Isaac Sim and the shell environment from `isaac-sim-orchestrator`.
 
 ## Limitations
 
@@ -27,9 +28,17 @@ Control manipulator arms with differential IK, schema-native poser workflows, gr
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Library versus Kit route
+
+The `isaacsim.robot_motion.controllers`, `isaacsim.robot_motion.cumotion`, and
+`isaacsim.robot_motion.experimental.motion_generation` modules are library-owned
+under `source/libraries/isaacsim/robot_motion/`; route their proven standalone
+behavior through `motion-generation` and `source/examples/series/motion_generation/`.
+RobotPoser, live `Articulation` control, contact/grasp integration, and UI stay
+on the Kit route.
 
 Patterns reference Isaac Sim docs and local example files; embedded code is a pattern sketch, not the canonical source. Always read the linked example; upstream code reflects the installed Isaac Sim version.
 
@@ -68,7 +77,7 @@ From a built Isaac Sim tree, run the same file with `./python.sh` (Linux) or `py
 | Pinocchio / PINK | `isaacsim.robot_motion.pink.PinkIKController` | alternative full IK stack with joint limits / task hierarchies |
 | Lula motion generation | `isaacsim.robot_motion.lula` + `isaacsim.robot_motion.motion_generation` | legacy; supported but use one of the above for new work ([rename map](https://docs.isaacsim.omniverse.nvidia.com/latest/migration_guides/isaac_sim_4_5/extensions_renaming.html)) |
 
-## Local example files (canonical source)
+## Kit example files
 
 Relative to `$ISAAC_SIM_DIR/source/standalone_examples/api/isaacsim.robot_motion.examples/manipulation/`:
 
@@ -227,7 +236,9 @@ After executing, validate **object state** (not just tool pose) at three gates, 
 5. Run standalone scripts with `$ISAAC_SIM_DIR/python.sh`, not `isaaclab.sh -p`, when using `SimulationApp` directly.
 6. Jacobian column layout: `[virtual base DOFs | real DOFs]` for fixed-base robots. Always slice past the virtual base.
 7. Store reusable poses with `store_named_pose`; do not re-solve IK from scratch every session.
-8. `print()` is unreliable in headless mode; use file writes for debug logging.
+8. Use `isaacsim.common.logging.Logger` for library diagnostics and `carb.log_*`
+   in Kit adapters. Reserve `print()` for intentional result output; writing an
+   evidence artifact is not a substitute for diagnostic logging.
 9. Validate visually at every phase. Smooth motion is not successful manipulation.
 10. Hybrid IK + joint-space is the pragmatic default for arms with < 6 DOF.
 

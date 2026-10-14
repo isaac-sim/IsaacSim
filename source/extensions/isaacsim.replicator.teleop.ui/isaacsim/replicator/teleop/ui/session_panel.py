@@ -17,8 +17,11 @@
 
 from __future__ import annotations
 
+import carb.eventdispatcher
 import carb.settings
+import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
+import omni.timeline
 import omni.ui as ui
 import omni.usd
 from isaacsim.gui.components.ui_utils import get_style
@@ -109,6 +112,17 @@ class SessionPanel:
         self._settings = carb.settings.get_settings()
         self._capabilities: TeleopCapabilities = get_teleop_capabilities()
         self._tm.set_on_status_changed(self._on_session_status_changed)
+        event_dispatcher = carb.eventdispatcher.get_eventdispatcher()
+        self._timeline_play_sub = event_dispatcher.observe_event(
+            event_name=omni.timeline.GLOBAL_EVENT_PLAY,
+            on_event=self._on_timeline_changed,
+            observer_name="SessionPanel._on_timeline_play",
+        )
+        self._timeline_stop_sub = event_dispatcher.observe_event(
+            event_name=omni.timeline.GLOBAL_EVENT_STOP,
+            on_event=self._on_timeline_changed,
+            observer_name="SessionPanel._on_timeline_stop",
+        )
 
         self._settings.set_default_string(f"{_SETTINGS_PREFIX}/tracking_space_path", "")
         self._settings.set_default_float(f"{_SETTINGS_PREFIX}/anchor_x", 0.0)
@@ -575,7 +589,7 @@ class SessionPanel:
                         with ui.HStack(spacing=ROW_SPACING, height=ROW_HEIGHT):
                             ui.Spacer(width=INDENT)
                             ui.Label(
-                                "Write Backend:", width=85, tooltip="Global XformPrim backend for all teleop writes"
+                                "Transform Backend:", width=120, tooltip="Backend for teleop transform reads and writes"
                             )
                             initial_debug_backend_idx = next(
                                 (i for i, (_, val) in enumerate(_MARKER_BACKENDS) if val == get_teleop_backend()), 0
@@ -585,9 +599,10 @@ class SessionPanel:
                                 *[name for name, _ in _MARKER_BACKENDS],
                                 width=100,
                                 tooltip=(
-                                    "Global teleop backend for XformPrim writes.\n"
-                                    "USD: plain attribute writes (default).\n"
-                                    "USD-RT / Fabric: faster paths (require FSD)."
+                                    "Teleop transform backend for markers and locomotion poses.\n"
+                                    "USD: plain attribute access (default).\n"
+                                    "USD-RT / Fabric: require Fabric Scene Delegate.\n"
+                                    "Rigid-body velocity commands use Tensor or USD independently."
                                 ),
                             )
                             self._debug_backend_combo.model.add_item_changed_fn(
@@ -610,31 +625,43 @@ class SessionPanel:
     # ------------------------------------------------------------------
 
     def _on_debug_tracking_toggled(self, enabled: bool) -> None:
-        """Ensure markers exist before enabling debug mode.
+        """Create markers for debug input and remove them when debug input stops.
 
         Args:
             enabled: Whether debug mode should be enabled.
         """
-        if enabled:
-            if self._tm.is_connected:
+        if not enabled:
+            if self._tm.debug_tracking_enabled:
+                self._tm.execute_command(TeleopCommand.STOP)
+                self._on_remove_markers()
+            self._sync_ui()
+            return
+
+        if not self._tm.debug_tracking_enabled and not app_utils.is_stopped():
+            set_status(self._marker_status, "Stop the timeline before enabling Debug Mode", CLR_YELLOW)
+            if self._debug_tracking_cb:
+                self._debug_tracking_cb.model.set_value(False)
+            self._sync_ui()
+            return
+
+        if self._tm.is_connected:
+            if self._debug_tracking_cb:
+                self._debug_tracking_cb.model.set_value(False)
+            return
+        if not stage_utils.is_stage_set() and omni.usd.get_context().get_stage() is None:
+            set_status(self._marker_status, "No stage", CLR_RED, emit_terminal=True)
+            if self._debug_tracking_cb:
+                self._debug_tracking_cb.model.set_value(False)
+            return
+        for name in ("origin", "left", "right", "head"):
+            ok, msg = self._mm.ensure_marker(name)
+            if not ok:
+                set_status(self._marker_status, msg, CLR_RED, emit_terminal=True)
                 if self._debug_tracking_cb:
                     self._debug_tracking_cb.model.set_value(False)
                 return
-            if not stage_utils.is_stage_set() and omni.usd.get_context().get_stage() is None:
-                set_status(self._marker_status, "No stage", CLR_RED, emit_terminal=True)
-                if self._debug_tracking_cb:
-                    self._debug_tracking_cb.model.set_value(False)
-                return
-            for name in ("origin", "left", "right", "head"):
-                ok, msg = self._mm.ensure_marker(name)
-                if not ok:
-                    set_status(self._marker_status, msg, CLR_RED, emit_terminal=True)
-                    if self._debug_tracking_cb:
-                        self._debug_tracking_cb.model.set_value(False)
-                    return
-        self._tm.set_debug_tracking(enabled)
-        if enabled:
-            self._tm.set_builtin_tracking_space()
+        self._tm.set_debug_tracking(True)
+        self._tm.set_builtin_tracking_space()
         self._sync_ui()
 
     def _on_debug_carry_toggled(self, enabled: bool) -> None:
@@ -1076,6 +1103,11 @@ class SessionPanel:
 
     def on_stage_closed(self) -> None:
         """Clear stage-bound runtime state while preserving the configured profile in the UI."""
+        if self._debug_tracking_cb and self._debug_tracking_cb.model.get_value_as_bool():
+            self._debug_tracking_cb.model.set_value(False)
+        for widget in self._debug_input_widgets:
+            if isinstance(widget, ui.FloatSlider) and widget.model.get_value_as_float() != 0.0:
+                widget.model.set_value(0.0)
         self._set_status(self._idle_status_text())
         self._sync_ui()
         set_status(self._marker_status, "", CLR_DIM)
@@ -1109,6 +1141,9 @@ class SessionPanel:
         if text and emit_terminal:
             print(f"[Teleop][{_LOG_NAMESPACE}] {text}")
 
+    def _on_timeline_changed(self, _event: object) -> None:
+        self._sync_ui()
+
     def _sync_ui(self) -> None:
         connected = self._tm.is_connected
         debug = self._tm.debug_tracking_enabled
@@ -1117,7 +1152,7 @@ class SessionPanel:
         if self._disconnect_btn:
             self._disconnect_btn.enabled = connected
         if self._debug_tracking_cb:
-            self._debug_tracking_cb.enabled = not connected
+            self._debug_tracking_cb.enabled = not connected and (debug or app_utils.is_stopped())
         if self._debug_backend_combo:
             self._debug_backend_combo.enabled = not connected
         debug_inputs_enabled = debug
@@ -1129,6 +1164,11 @@ class SessionPanel:
             carry_enabled = self._tm.carry_tracking_space_enabled
             if self._debug_carry_cb.model.get_value_as_bool() != carry_enabled:
                 self._debug_carry_cb.model.set_value(carry_enabled)
+
+    def destroy(self) -> None:
+        """Release timeline subscriptions when the Teleop window closes."""
+        self._timeline_play_sub = None
+        self._timeline_stop_sub = None
 
     def _idle_status_text(self) -> str:
         """Return the disconnected status appropriate for available inputs."""

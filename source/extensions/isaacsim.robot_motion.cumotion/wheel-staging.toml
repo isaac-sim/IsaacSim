@@ -1,0 +1,14 @@
+[wheel]
+distribution = "isaacsim_robot_motion"
+python-modules = ["isaacsim.robot_motion.cumotion"]
+wheel-paths = ["_cumotion*", "cumotion"]
+
+[wheel.platform-wheel-paths]
+win_amd64 = ["cumotion.dll"]
+
+[wheel.dependency-extensions]
+isaacsim_deprecated = [
+    "isaacsim.core.experimental.objects",
+    "isaacsim.core.experimental.prims",
+    "isaacsim.core.experimental.utils",
+]

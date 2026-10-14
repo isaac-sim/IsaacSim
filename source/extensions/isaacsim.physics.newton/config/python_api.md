@@ -26,6 +26,25 @@
   - joint_damping: float
   - pd_scale: float
   - solver_cfg: NewtonSolverConfig
+  - collision_cfg: CollisionConfig
+
+- class CollisionConfig
+  - broad_phase: Literal[nxn, sap, explicit]
+  - rigid_contact_max: int | None
+  - hydroelastic: HydroelasticConfig
+
+- class HydroelasticConfig
+  - enabled: bool
+  - reduce_contacts: bool
+  - buffer_fraction: float
+  - buffer_mult_broad: int
+  - buffer_mult_iso: int
+  - buffer_mult_contact: int
+  - normal_matching: bool
+  - anchor_contact: bool
+  - margin_contact_area: float
+  - output_contact_surface: bool
+  - mc_edge_clamp_min: float
 
 - class NewtonStage
   - def __init__(self, cfg: NewtonConfig | None = None, device: str | None = None)
@@ -45,39 +64,31 @@
 - class XPBDSolverConfig(NewtonSolverConfig)
   - solver_type: Literal[xpbd]
   - iterations: int
-  - soft_body_relaxation: float
-  - soft_contact_relaxation: float
-  - joint_linear_relaxation: float
-  - joint_angular_relaxation: float
-  - joint_linear_compliance: float
-  - joint_angular_compliance: float
-  - rigid_contact_relaxation: float
-  - rigid_contact_con_weighting: bool
-  - angular_damping: float
-  - enable_restitution: bool
 
 - class MuJoCoSolverConfig(NewtonSolverConfig)
   - solver_type: Literal[mujoco]
   - njmax: int
   - nconmax: int | None
-  - iterations: int
-  - ls_iterations: int
-  - solver: str
-  - integrator: str
-  - cone: str
-  - impratio: float
+  - cone: Literal['pyramidal', 'elliptic'] | None
   - use_mujoco_cpu: bool
   - disable_contacts: bool
   - update_data_interval: int
   - save_to_mjcf: str | None
   - use_mujoco_contacts: bool
-  - tolerance: float
-  - ls_tolerance: float
   - include_sites: bool
 
 ## Functions
 
 - def acquire_physics_interface() -> NewtonPhysicsInterface | None
 - def acquire_stage() -> NewtonStage | None
+- def configure_newton(cfg: NewtonConfig)
+- def get_newton_config() -> NewtonConfig | None
 - def get_active_physics_engine() -> str
 - def get_available_physics_engines(verbose: bool = False) -> list[tuple[str, bool]]
+- def get_newton_solver_to_physics_scene_object() -> dict
+- def switch_newton_solver(newton_solver: str, prim: Usd.Prim) -> bool
+- def get_newton_solver(prim: Usd.Prim) -> str
+
+## Variables
+
+- newton_solver_to_api_schema: Dict

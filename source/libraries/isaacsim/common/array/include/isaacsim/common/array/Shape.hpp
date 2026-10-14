@@ -162,6 +162,7 @@ public:
      * @brief Returns the total number of elements described by this shape.
      * @return Product of all dimension sizes, or 1 for a zero-dimensional shape.
      * @throws std::invalid_argument if any dimension is negative.
+     * @throws std::overflow_error if the product of the dimensions exceeds `size_t`.
      */
     size_t size() const;
 

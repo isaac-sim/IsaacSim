@@ -15,7 +15,10 @@
 
 """Tests for the robot schema UI extension."""
 
+import tempfile
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -101,7 +104,7 @@ class TestSchemaUI(OmniUiTest):
 
         foreign_live_path_notices = []
 
-        def _on_objects_changed(notice, sender) -> None:
+        def _on_objects_changed(notice: Usd.Notice.ObjectsChanged, sender: Usd.Stage) -> None:
             if sender == self._stage:
                 return
             for path in notice.GetResyncedPaths():
@@ -306,6 +309,40 @@ class TestLinkJointPosition(omni.kit.test.AsyncTestCase):
         position = ui_utils.get_joint_position("/World/Robot", "/World/Robot/joint1")
         self.assertIsNotNone(position)
         self.assertIsInstance(position, Gf.Vec3d)
+
+    async def test_background_joint_positions_use_worker_stage(self) -> None:
+        """Keep all hierarchy modes independent of live session transforms."""
+        robot = UsdGeom.Xform.Define(self._stage, "/World/Robot").GetPrim()
+        link = UsdGeom.Xform.Define(self._stage, "/World/Robot/link").GetPrim()
+        UsdPhysics.ArticulationRootAPI.Apply(robot)
+        for prim in (robot, link):
+            UsdPhysics.RigidBodyAPI.Apply(prim)
+        joint = UsdPhysics.RevoluteJoint.Define(self._stage, "/World/Robot/joint")
+        joint.CreateBody0Rel().SetTargets([robot.GetPath()])
+        joint.CreateBody1Rel().SetTargets([link.GetPath()])
+        joint.CreateLocalPos0Attr(Gf.Vec3f(1, 0, 0))
+        robot_schema.ApplyRobotAPI(robot)
+        with tempfile.TemporaryDirectory() as directory:
+            filename = str(Path(directory) / "stage.usda")
+            self._stage.GetRootLayer().Export(filename)
+            with Usd.EditContext(self._stage, self._stage.GetSessionLayer()):
+                UsdGeom.Xformable(robot).AddTranslateOp().Set(Gf.Vec3d(0, 0, 1000))
+            for mode in ui_utils.HierarchyMode:
+                with mock.patch.object(ui_utils, "get_stage_safe", side_effect=AssertionError("Live stage read")):
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        result = executor.submit(
+                            ui_utils.generate_robot_hierarchy_stage_in_background,
+                            filename,
+                            None,
+                            mode,
+                            str(robot.GetPath()),
+                        ).result()
+                self.assertIsNotNone(result)
+                self.assertTrue(result["connections"])
+                for connection in result["connections"]:
+                    self.assertAlmostEqual(connection[4][2], 0.0)
+                    if connection[5] is not None:
+                        self.assertAlmostEqual(connection[5][2], 0.0)
 
 
 class TestHierarchyModes(OmniUiTest):
@@ -1417,6 +1454,112 @@ class TestMaskingOperationsMask(omni.kit.test.AsyncTestCase):
         self.assertIsNone(ops.get_masking_layer_id())
 
 
+class TestMaskingOperationsSharedOpinions(omni.kit.test.AsyncTestCase):
+    """Tests for mask and bypass opinions sharing one masking-layer prim spec."""
+
+    async def setUp(self) -> None:
+        """Set up a fresh USD stage for each test."""
+        await omni.usd.get_context().new_stage_async()
+        await omni.kit.app.get_app().next_update_async()
+        self._stage = omni.usd.get_context().get_stage()
+
+    def _build_chain(self) -> tuple[str, str, str]:
+        """Build a two-joint chain whose forward joint is reparented by a link bypass.
+
+        Returns:
+            Paths for the robot, bypassed link, and forward joint.
+        """
+        robot_path = "/World/Robot"
+        link_path = "/World/Robot/L"
+        forward_link_path = "/World/Robot/L2"
+        backward_joint_path = "/World/Robot/joint_back"
+        forward_joint_path = "/World/Robot/joint_fwd"
+
+        robot_prim = UsdGeom.Xform.Define(self._stage, robot_path).GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(robot_prim)
+        UsdPhysics.ArticulationRootAPI.Apply(robot_prim)
+        robot_schema.ApplyRobotAPI(robot_prim)
+
+        for path, translation in ((link_path, 1.0), (forward_link_path, 2.0)):
+            link = UsdGeom.Xform.Define(self._stage, path)
+            link.AddTranslateOp().Set(Gf.Vec3d(translation, 0.0, 0.0))
+            UsdPhysics.RigidBodyAPI.Apply(link.GetPrim())
+            robot_schema.ApplyLinkAPI(link.GetPrim())
+
+        for joint_path, body0_path, body1_path, local_position in (
+            (backward_joint_path, robot_path, link_path, 0.0),
+            (forward_joint_path, link_path, forward_link_path, 1.0),
+        ):
+            joint = UsdPhysics.Joint.Define(self._stage, joint_path)
+            joint.CreateBody0Rel().SetTargets([body0_path])
+            joint.CreateBody1Rel().SetTargets([body1_path])
+            joint.CreateLocalPos0Attr().Set(Gf.Vec3f(local_position, 0.0, 0.0))
+            joint.CreateLocalRot0Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+            joint.CreateLocalPos1Attr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+            joint.CreateLocalRot1Attr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+            robot_schema.ApplyJointAPI(joint.GetPrim())
+
+        return robot_path, link_path, forward_joint_path
+
+    @staticmethod
+    def _get_masking_properties(state: ms.MaskingState, prim_path: str) -> set[str]:
+        """Return property names authored for a prim in the masking layer.
+
+        Args:
+            state: Masking state that owns the operations backend.
+            prim_path: Path of the prim to inspect.
+
+        Returns:
+            Names of the properties authored on the masking-layer prim spec.
+        """
+        layer_id = state.operations.get_masking_layer_id()
+        layer = Sdf.Layer.Find(layer_id) if layer_id else None
+        spec = layer.GetPrimAtPath(Sdf.Path(prim_path)) if layer else None
+        return set(spec.properties.keys()) if spec else set()
+
+    async def test_unbypass_link_preserves_forward_joint_mask(self) -> None:
+        """Unbypassing a link must not remove a forward joint's independent mask."""
+        from isaacsim.robot.schema.ui.masking_ops import MaskingOperations
+
+        _, link_path, forward_joint_path = self._build_chain()
+        state = ms.MaskingState()
+        state.operations = MaskingOperations()
+
+        self.assertTrue(state.toggle_bypassed(link_path))
+        self.assertTrue(state.toggle_deactivated(forward_joint_path))
+        self.assertFalse(state.toggle_bypassed(link_path))
+
+        joint = UsdPhysics.Joint(self._stage.GetPrimAtPath(forward_joint_path))
+        self.assertFalse(joint.GetJointEnabledAttr().Get())
+        self.assertTrue(state.is_deactivated(forward_joint_path))
+        self.assertEqual(self._get_masking_properties(state, forward_joint_path), {"physics:jointEnabled"})
+        self.assertEqual([str(path) for path in joint.GetBody0Rel().GetTargets()], [link_path])
+
+    async def test_unmask_forward_joint_preserves_link_bypass_reparenting(self) -> None:
+        """Unmasking a forward joint must not remove an active link bypass's reparenting."""
+        from isaacsim.robot.schema.ui.masking_ops import MASKED_KEY, MaskingOperations
+
+        robot_path, link_path, forward_joint_path = self._build_chain()
+        state = ms.MaskingState()
+        state.operations = MaskingOperations()
+
+        self.assertTrue(state.toggle_bypassed(link_path))
+        self.assertTrue(state.toggle_deactivated(forward_joint_path))
+        self.assertFalse(state.toggle_deactivated(forward_joint_path))
+
+        joint_prim = self._stage.GetPrimAtPath(forward_joint_path)
+        joint = UsdPhysics.Joint(joint_prim)
+        self.assertTrue(state.is_bypassed(link_path))
+        self.assertFalse(state.is_deactivated(forward_joint_path))
+        self.assertTrue(joint.GetJointEnabledAttr().Get())
+        self.assertFalse(joint_prim.GetCustomDataByKey(MASKED_KEY))
+        self.assertEqual([str(path) for path in joint.GetBody0Rel().GetTargets()], [robot_path])
+        self.assertEqual(
+            self._get_masking_properties(state, forward_joint_path),
+            {"physics:body0", "physics:localPos0", "physics:localRot0"},
+        )
+
+
 class TestRobotInspectorUI(MenuUITestCase):
     """UI tests verifying Robot Inspector widget identifiers and click interactions."""
 
@@ -2096,3 +2239,126 @@ class TestRobotInspectorScaling(omni.kit.test.AsyncTestCase):
             f"{self._SMALL_COUNT}: scaling ratio is not 1 — the function "
             f"is no longer scoped to the active robot.",
         )
+
+
+class TestDeferredHierarchyRefresh(omni.kit.test.AsyncTestCase):
+    """Deterministically interleave state changes with in-flight hierarchy workers."""
+
+    async def test_changes_during_worker_apply_only_latest_result(self) -> None:
+        """Coalesce each burst but retain its replacement while a worker is running."""
+        import asyncio
+        from types import SimpleNamespace
+
+        from isaacsim.robot.schema.ui import robot_inspector_window as module
+
+        for change in ("robot", "mode", "stage", "structure"):
+            with self.subTest(change=change):
+                first, second = Future(), Future()
+                stage = Usd.Stage.CreateInMemory()
+                window = SimpleNamespace(
+                    _refresh_ui_generation=0,
+                    _refresh_ui_pending=False,
+                    _refresh_ui_task=None,
+                    _stage_widget=mock.Mock(),
+                    _active_robot_root_path=Sdf.Path("/Robot"),
+                    _usd_context=mock.Mock(get_stage=mock.Mock(return_value=stage)),
+                    _masking_state=None,
+                    _hierarchy_executor=mock.Mock(submit=mock.Mock(side_effect=[first, second])),
+                    _hierarchy_mode=0,
+                    _is_effectively_visible=lambda: True,
+                    _apply_hierarchy_result=mock.Mock(),
+                )
+                for name in ("_schedule_refresh_ui", "_deferred_refresh_ui", "_generate_hierarchy_async"):
+                    setattr(window, name, getattr(module.RobotInspectorWindow, name).__get__(window))
+                with mock.patch.object(module, "deserialize_hierarchy_result", return_value=(stage, {}, [])) as decode:
+                    window._schedule_refresh_ui()
+                    for _ in range(5):
+                        await omni.kit.app.get_app().next_update_async()
+                        if window._hierarchy_executor.submit.call_count:
+                            break
+                    self.assertEqual(window._hierarchy_executor.submit.call_count, 1)
+                    # Unrelated work on the shared loop must not consume the Inspector's planned futures.
+                    foreign_result = await asyncio.get_running_loop().run_in_executor(None, str, "unrelated")
+                    self.assertEqual(foreign_result, "unrelated")
+                    if change == "robot":
+                        window._active_robot_root_path = Sdf.Path("/Other")
+                    elif change == "mode":
+                        window._hierarchy_mode = 1
+                    elif change == "stage":
+                        window._usd_context.get_stage.return_value = Usd.Stage.CreateInMemory()
+                    for _ in range(3):
+                        window._schedule_refresh_ui()
+                    self.assertEqual(window._hierarchy_executor.submit.call_count, 1)
+                    first.set_result("stale")
+                    for _ in range(5):
+                        await omni.kit.app.get_app().next_update_async()
+                        if window._hierarchy_executor.submit.call_count == 2:
+                            break
+                    self.assertEqual(window._hierarchy_executor.submit.call_count, 2)
+                    window._apply_hierarchy_result.assert_not_called()
+                    second.set_result("latest")
+                    await window._refresh_ui_task
+                    decode.assert_called_once_with("latest")
+                    window._apply_hierarchy_result.assert_called_once()
+                    self.assertIsNone(window._refresh_ui_task)
+                    self.assertFalse(window._refresh_ui_pending)
+
+    async def test_reopen_cancels_old_worker_without_consuming_replacement(self) -> None:
+        """Apply one replacement result when hiding and reopening during a worker await."""
+        import asyncio
+        from types import SimpleNamespace
+
+        from isaacsim.robot.schema.ui import robot_inspector_window as module
+
+        first, second = Future(), Future()
+        stage = Usd.Stage.CreateInMemory()
+        window = SimpleNamespace(
+            _refresh_ui_generation=0,
+            _refresh_ui_pending=False,
+            _refresh_ui_task=None,
+            _stage_widget=mock.Mock(),
+            _active_robot_root_path=Sdf.Path("/Robot"),
+            _usd_context=mock.Mock(get_stage=mock.Mock(return_value=stage)),
+            _masking_state=None,
+            _hierarchy_executor=mock.Mock(submit=mock.Mock(side_effect=[first, second])),
+            _hierarchy_mode=0,
+            _is_effectively_visible=lambda: True,
+            _apply_hierarchy_result=mock.Mock(),
+        )
+        for name in ("_schedule_refresh_ui", "_deferred_refresh_ui", "_generate_hierarchy_async"):
+            setattr(window, name, getattr(module.RobotInspectorWindow, name).__get__(window))
+        with mock.patch.object(module, "deserialize_hierarchy_result", return_value=(stage, {}, [])) as decode:
+            window._schedule_refresh_ui()
+            old_task = window._refresh_ui_task
+            new_task = None
+            try:
+                for _ in range(5):
+                    await omni.kit.app.get_app().next_update_async()
+                    if window._hierarchy_executor.submit.call_count:
+                        break
+                self.assertEqual(window._hierarchy_executor.submit.call_count, 1)
+                # Mirror hiding and immediately reopening before cancellation is delivered.
+                old_task.cancel()
+                window._refresh_ui_task = None
+                window._refresh_ui_pending = False
+                window._schedule_refresh_ui()
+                new_task = window._refresh_ui_task
+                for _ in range(5):
+                    await omni.kit.app.get_app().next_update_async()
+                self.assertTrue(old_task.done())
+                self.assertIs(window._refresh_ui_task, new_task)
+                self.assertEqual(window._hierarchy_executor.submit.call_count, 2)
+                window._apply_hierarchy_result.assert_not_called()
+                second.set_result("replacement")
+                await new_task
+                decode.assert_called_once_with("replacement")
+                window._apply_hierarchy_result.assert_called_once()
+                self.assertIsNone(window._refresh_ui_task)
+                self.assertFalse(window._refresh_ui_pending)
+            finally:
+                for task in (old_task, new_task):
+                    if task is not None and not task.done():
+                        task.cancel()
+                await asyncio.gather(
+                    *(task for task in (old_task, new_task) if task is not None), return_exceptions=True
+                )

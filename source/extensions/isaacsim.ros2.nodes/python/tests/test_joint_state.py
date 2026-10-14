@@ -322,13 +322,16 @@ class TestRos2JointStatePublisherFromSensor(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
         await self.wait_for_publishers_on_topic(node, "joint_states", timeout_sec=10.0, per_frame_callback=spin)
+        comp_velocity = [5 * PI / 180.0, 0.1, -2.5 * PI / 180.0]
         condition_met = await self.simulate_until_condition(
-            lambda: len(self.js_ros.velocity) > 0, max_frames=60, per_frame_callback=spin
+            lambda: len(self.js_ros.velocity) == len(comp_velocity)
+            and all(abs(actual - expected) < 1e-3 for actual, expected in zip(self.js_ros.velocity, comp_velocity)),
+            max_frames=240,
+            per_frame_callback=spin,
         )
-        self.assertTrue(condition_met, "Timed out waiting for sensor joint_states velocity message")
+        self.assertTrue(condition_met, "Timed out waiting for the commanded sensor joint-state velocities")
         received_velocity = self.js_ros.velocity
 
-        comp_velocity = [5 * PI / 180.0, 0.1, -2.5 * PI / 180.0]
         self.assertAlmostEqual(received_velocity[0], comp_velocity[0], delta=1e-3)
         self.assertAlmostEqual(received_velocity[1], comp_velocity[1], delta=1e-3)
         self.assertAlmostEqual(received_velocity[2], comp_velocity[2], delta=1e-3)

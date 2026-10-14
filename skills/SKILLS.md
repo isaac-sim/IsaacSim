@@ -30,6 +30,7 @@ without reading this file.
 - [`isaac-sim-installation`](isaac-sim-installation/SKILL.md)
 - [`isaac-sim-migration`](isaac-sim-migration/SKILL.md)
 - [`isaac-sim-remote`](isaac-sim-remote/SKILL.md)
+- [`isaac-sim-web-viewer`](isaac-sim-web-viewer/SKILL.md)
 - [`profile-isaac-sim`](profile-isaac-sim/SKILL.md)
 - [`validation-diff-gifs`](validation-diff-gifs/SKILL.md)
 
@@ -45,6 +46,7 @@ without reading this file.
 ### Robot asset pipeline
 
 - [`urdf-mjcf-to-usd-conversion`](urdf-mjcf-to-usd-conversion/SKILL.md)
+- [`physx-to-newton-conversion`](physx-to-newton-conversion/SKILL.md)
 - [`usd-articulation`](usd-articulation/SKILL.md)
 
 ### Physics

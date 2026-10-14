@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.9.3] - 2026-10-02
+### Fixed
+- ROS 2 menu tests share UI setup and cleanup, wait for widgets to become ready, and wait for camera publisher discovery before collecting messages.
+
 ## [1.9.2] - 2026-08-04
 ### Fixed
 - `ROS 2 OmniGraphs > Joint States` now creates the migrated joint-state publisher graph.

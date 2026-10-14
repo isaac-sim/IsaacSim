@@ -33,19 +33,25 @@ nanobind = "==2.12.0"
 ninja = "==1.13.2"
 ovphysx-sdk = { path = "deps/recipes/ovphysx-sdk/recipe.yaml" }
 pip = "==26.2.1"
-sdl3 = { path = "deps/recipes/sdl3/recipe.yaml" }
+# Keep the combined examples environment compatible with ovphysx's packaging<24 constraint.
+wheel = "==0.45.1"
+sdl3 = "==3.4.14"
 stb = { path = "deps/recipes/stb/recipe.yaml" }
 tsl_robin_map = "==1.4.0"
 libgrpc = "==1.83.0"
 zlib = "==1.3.2"
 
 [feature.build-tools.target.linux-64-glibc-2-35.dependencies]
+gcc_linux-64 = "==11.4.0"
+gxx_linux-64 = "==11.4.0"
 doctest = "==2.5.3"
 libegl-devel = "==1.7.0"
 libgles-devel = "==1.7.0"
 libopengl-devel = "==1.7.0"
 
 [feature.build-tools.target.linux-aarch64-glibc-2-35.dependencies]
+gcc_linux-aarch64 = "==11.4.0"
+gxx_linux-aarch64 = "==11.4.0"
 doctest = { path = "deps/recipes/doctest/recipe.yaml" }
 libegl-devel = "==1.7.0"
 libgles-devel = "==1.7.0"
@@ -56,27 +62,49 @@ doctest = "==2.5.3"
 
 [feature.examples-runner.dependencies]
 packaging = "==26.3"
+textual = "==8.2.8"
+nsight-systems-cli = "==2026.3.2.476"
+
+[feature.installer-build.dependencies]
+pip = "==26.2.1"
+setuptools = "==84.0.0"
+
+[feature.installer-build.pypi-dependencies]
+build = "==1.5.0"
+pytest = "==9.1.1"
+pytest-asyncio = "==1.4.0"
 
 [feature.schema-runtime.pypi-dependencies]
-ovstage = { version = "==0.1.1.355824", index = "https://pypi.org/simple" }
+ovstage = { version = "==0.2.0.377349", index = "https://pypi.org/simple" }
 physx-usd-schemas = "==25.11.1"
 
 [feature.runtime.pypi-dependencies]
-newton = "==1.5.0"
-ovnewton = "==0.1.1"
+newton = { version = "==1.6.1", extras = ["sim"], index = "https://pypi.org/simple" }
+ovphysx = "==0.6.3"
+# ovrtx is NVIDIA Proprietary Software (LicenseRef-NvidiaProprietary). Complete SWIPAT and
+# license validation before publishing it in a release build. Its distribution carries the
+# CMake package and native runtime that the falling cube render examples consume.
+ovrtx = "==0.5.0.377615"
 coacd = "==1.0.7"
 fast-simplification = "==0.1.13"
-mujoco-usd-converter = { version = "==0.5.0", index = "https://pypi.org/simple" }
-newton-usd-schemas = "==0.4.1"
+mujoco = { version = "==3.12.0", index = "https://pypi.org/simple" }
+mujoco-warp = { version = "==3.12.0", index = "https://pypi.org/simple" }
+mujoco-usd-converter = { version = "==0.6.1", index = "https://pypi.org/simple" }
+newton-usd-schemas = "==0.5.0"
 nvidia-ml-py = "==13.610.43"
 scipy = "==1.16.3"
 tinyobjloader = "==2.0.0rc13"
+urdf-usd-converter = { version = "==0.3.2", index = "https://pypi.org/simple" }
 usd-exchange = "==2.3.0"
 usd-optimize = { version = "==1.1.0", index = "https://pypi.org/simple" }
-warp-lang = "==1.16.0"
+warp-lang = "==1.17.0"
+
+[feature.runtime.pypi-dependencies.ovnewton]
+version = "==0.1.1"
+index = "https://pypi.org/simple"
 
 [feature.native-runtime.pypi-dependencies]
-newton-usd-schemas = "==0.4.1"
+newton-usd-schemas = "==0.5.0"
 
 [feature.schema-build.pypi-dependencies]
 jinja2 = "==3.1.5"
@@ -92,18 +120,26 @@ packaging = "==26.2"
 scikit-build-core = "==1.0.3"
 
 [feature.minimum-runtime.pypi-dependencies]
-newton = "==1.5.0"
-ovnewton = "==0.1.1"
+newton = { version = "==1.6.1", extras = ["sim"], index = "https://pypi.org/simple" }
+ovphysx = "==0.6.3"
+ovrtx = "==0.5.0.377615"
 coacd = "==1.0.7"
-fast-simplification = "==0.1.11"
-mujoco-usd-converter = { version = "==0.5.0", index = "https://pypi.org/simple" }
-newton-usd-schemas = "==0.4.1"
+fast-simplification = "==0.1.13"
+mujoco = { version = "==3.12.0", index = "https://pypi.org/simple" }
+mujoco-warp = { version = "==3.12.0", index = "https://pypi.org/simple" }
+mujoco-usd-converter = { version = "==0.6.1", index = "https://pypi.org/simple" }
+newton-usd-schemas = "==0.5.0"
 nvidia-ml-py = "==13.610.43"
 scipy = "==1.11.2"
 tinyobjloader = "==2.0.0rc13"
+urdf-usd-converter = { version = "==0.3.2", index = "https://pypi.org/simple" }
 usd-exchange = "==2.3.0"
 usd-optimize = { version = "==1.1.0", index = "https://pypi.org/simple" }
-warp-lang = "==1.16.0"
+warp-lang = "==1.17.0"
+
+[feature.minimum-runtime.pypi-dependencies.ovnewton]
+version = "==0.1.1"
+index = "https://pypi.org/simple"
 
 [feature.minimum-runtime.target.linux-aarch64-glibc-2-35.pypi-dependencies]
 fast-simplification = "==0.1.13"
@@ -119,13 +155,14 @@ packaging = "==24.2"
 scikit-build-core = "==1.0.3"
 
 [environments]
+installer-build = { features = ["python", "examples-runner", "installer-build"], no-default-feature = true }
 examples-runner = { features = ["python", "examples-runner"], no-default-feature = true }
 build-driver = { features = ["python", "build-tools", "examples-runner"], no-default-feature = true }
 runtime = { features = ["python", "schema-runtime", "runtime"], no-default-feature = true, solve-group = "locked-python" }
 native-runtime = { features = ["python", "schema-runtime", "native-runtime"], no-default-feature = true, solve-group = "locked-python" }
 schema-build = { features = ["python", "schema-build"], no-default-feature = true, solve-group = "locked-python" }
-test = { features = ["python", "test"], no-default-feature = true, solve-group = "locked-python" }
-wheel-build = { features = ["python", "wheel-build"], no-default-feature = true, solve-group = "locked-python" }
+test = { features = ["python", "test"], no-default-feature = true, solve-group = "locked-tools" }
+wheel-build = { features = ["python", "wheel-build"], no-default-feature = true, solve-group = "locked-tools" }
 minimum-runtime = { features = ["python", "schema-runtime", "minimum-runtime"], no-default-feature = true, solve-group = "minimum-python" }
-minimum-test = { features = ["python", "minimum-test"], no-default-feature = true, solve-group = "minimum-python" }
-minimum-wheel-build = { features = ["python", "minimum-wheel-build"], no-default-feature = true, solve-group = "minimum-python" }
+minimum-test = { features = ["python", "minimum-test"], no-default-feature = true, solve-group = "minimum-tools" }
+minimum-wheel-build = { features = ["python", "minimum-wheel-build"], no-default-feature = true, solve-group = "minimum-tools" }

@@ -2,8 +2,8 @@
 
 **MobilityGen** (`isaacsim.replicator.experimental.mobility_gen`) is an experimental toolkit for
 building **synthetic mobility datasets** in Isaac Sim.  A dataset contains synchronized robot
-trajectories, occupancy maps, and multi-camera sensor outputs (RGB, depth, segmentation, normals)
-suitable for navigation and mobility research.
+trajectories, occupancy maps, and multi-camera sensor outputs (RGB, depth, semantic and instance ID
+segmentation, and normals) suitable for navigation and mobility research.
 
 ## Workflow
 
@@ -18,8 +18,8 @@ sensor readings are written — recording is purely physics state and runs at fu
 **Step 2 — Replay.**  Given a recording directory, MobilityGen restores the recorded robot
 trajectory pose-by-pose into the simulation and renders the scene from the robot's camera sensors
 at each step.  The output is a new directory containing the original state plus rendered images.
-You choose which modalities to render (RGB, depth, segmentation, normals) at replay time without
-re-running the physics simulation.
+You choose which modalities to render (RGB, depth, semantic and instance ID segmentation, and
+normals) at replay time without re-running the physics simulation.
 
 This two-step approach keeps recording fast and decouples the choice of render modalities from data
 collection.  The same recording can be replayed multiple times with different render settings — for example,
@@ -38,8 +38,8 @@ my_recording/
 │   └── map.png                          # freespace bitmap
 └── state/
     ├── common/
-    │   ├── 00000000.npy                 # robot pose, joint state, velocities at step 0
-    │   ├── 00000001.npy                 # step 1 …
+    │   ├── 00000000.npz                 # robot pose, joint state, velocities at step 0
+    │   ├── 00000001.npz                 # step 1 …
     │   └── …                            # written during recording
     ├── rgb/
     │   └── sensor_rig.front_hawk_left.rgb_image/
@@ -51,6 +51,10 @@ my_recording/
     │       └── …
     ├── segmentation/
     │   └── sensor_rig.front_hawk_left.segmentation_image/
+    │       └── …
+    ├── instance_id_segmentation/
+    │   └── sensor_rig.front_hawk_left.instance_id_segmentation_image/
+    │       ├── 00000000.npy             # lossless uint32 instance IDs
     │       └── …
     └── normals/
         └── sensor_rig.front_hawk_left.normals_image/
@@ -64,7 +68,7 @@ during **replay** — one subfolder per camera per modality, named by the camera
 
 - **`MobilityGenRobot`** — Abstract articulation-backed robot: sensor rig, chase camera, velocity/command buffers, 2D pose helpers, keyboard/gamepad hooks, and hooks for writing actions vs. replaying recorded state. Robot parameters (USD asset, wheel geometry, control gains, sensor rig) are declared in a YAML file referenced via `robot_config_path`; they are loaded once at class-definition time. Concrete robots are registered on `ROBOTS`.
 - **`MobilityGenScenario`** — Abstract scenario tying a robot to a buffered region of the occupancy map (`from_robot_occupancy_map`). Concrete scenarios are registered on `SCENARIOS`.
-- **`MobilityGenCamera`** — Replicator-based rendering module. Attaches a render product and annotators (RGB, semantic segmentation, depth, normals) to an existing `UsdGeom.Camera` prim in the stage. Exposes captured data via `Buffer` instances for dataset export.
+- **`MobilityGenCamera`** — Replicator-based rendering module. Attaches a render product and annotators (RGB, semantic and instance ID segmentation, depth, and normals) to an existing `UsdGeom.Camera` prim in the stage. Exposes captured data via `Buffer` instances for dataset export.
 - **`MobilityGenSensorRig`** — Python `Module` container that groups all sensors on a robot. Cascade methods (`update_state`, `enable_rgb_rendering`, `state_dict_rgb`) propagate to all sensors automatically. Sensors are declared in the robot YAML under `sensor_rig.sensors`. Currently only `type: camera` is supported; `lidar`, `imu`, and `radar` entries are logged and skipped. See `sensor_rig.md` for details.
 - **`OccupancyMap`** — Load/save and freespace masks from ROS map conventions; used for planning and visualization.
 - **Path utilities** — Grid path generation and simplification (`generate_paths`, `compress_path`) backed by the extension's native path-planner bindings for efficient coverage of freespace.
@@ -141,6 +145,7 @@ Use the provided replay script to process all recordings in a directory:
     --input               ~/MobilityGenData/recordings \
     --output              ~/MobilityGenData/replays \
     --render_interval     1 \
+    --write_interval      1 \
     --rgb_enabled         True \
     --depth_enabled       True \
     --segmentation_enabled True \
@@ -149,6 +154,7 @@ Use the provided replay script to process all recordings in a directory:
 
 `--input` and `--output` are required; all other flags are optional and shown with their defaults.
 `--render_interval` is the most useful tuning knob — increase it to skip frames and run faster.
+`--write_interval` writes only every N rendered frames while preserving the render cadence.
 
 Each output directory has the same layout as a recording plus the rendered sensor subfolders
 (`state/rgb/`, `state/depth/`, etc.).

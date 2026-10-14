@@ -162,9 +162,8 @@ inline int convertDeviceKindToDLPack(DeviceKind deviceKind)
     }
 }
 
-// Convert a Python ndarray into a non-owning TensorDescription the C++ side can
-// read/write. The underlying buffer stays owned by Python; impls must not
-// retain pointers past their invocation.
+// Retain the imported ndarray, including a consumed DLPack owner, across callback retention.
+inline std::shared_ptr<void> createArrayKeepAlive(nb::ndarray<> array);
 inline TensorDescription convertArrayToTensorDescriptor(const nb::ndarray<>& array)
 {
     TensorDescription descriptor;
@@ -182,6 +181,7 @@ inline TensorDescription convertArrayToTensorDescriptor(const nb::ndarray<>& arr
     }
     descriptor.device = convertDLPackDeviceToDeviceKind(array.device_type());
     descriptor.deviceOrdinal = array.device_id();
+    descriptor.keepAlive = createArrayKeepAlive(array);
     return descriptor;
 }
 
@@ -219,7 +219,7 @@ inline void validateInt32IndexDataType(const TensorDescription& indices, const c
 // `view.get_data(...)` boundary. Used on the *result* path.
 inline nb::ndarray<> convertTensorDescriptorToArray(const TensorDescription& descriptor, nb::handle owner)
 {
-    if (descriptor.data == nullptr)
+    if (descriptor.data == nullptr && descriptor.shape.empty())
     {
         return nb::ndarray<>{};
     }
@@ -231,6 +231,13 @@ inline nb::ndarray<> convertTensorDescriptorToArray(const TensorDescription& des
         shape.push_back(static_cast<size_t>(dimension));
     }
 
+    nb::object retainedOwner;
+    if (descriptor.keepAlive)
+    {
+        retainedOwner = nb::capsule(new std::shared_ptr<void>(descriptor.keepAlive), [](void* pointer) noexcept
+                                    { delete static_cast<std::shared_ptr<void>*>(pointer); });
+        owner = retainedOwner;
+    }
     return nb::ndarray<>(descriptor.data, shape.size(), shape.data(), owner,
                          descriptor.strides.empty() ? nullptr : descriptor.strides.data(),
                          convertDataTypeToDLPack(descriptor.dtype), convertDeviceKindToDLPack(descriptor.device),
@@ -282,8 +289,7 @@ inline std::shared_ptr<void> createArrayKeepAlive(nb::ndarray<> array)
 // Convert a Python GET-result object into an OWNING TensorDescription, pinning whatever
 // actually owns the aliased storage: a TensorDescription's own owner, or the imported
 // ndarray for a bare ndarray / DLPack capsule. When the result aliases the
-// caller-supplied `outputAlias`, drop the keepAlive so the binding pins the caller's
-// real `out` -- the synthetic alias handed to the callback is non-owning.
+// caller-supplied `outputAlias`, retain its owner for both descriptor and Array dispatch.
 [[maybe_unused]] inline TensorDescription convertResultToTensorDescriptor(nb::object object,
                                                                           const TensorDescription* outputAlias)
 {
@@ -309,7 +315,8 @@ inline std::shared_ptr<void> createArrayKeepAlive(nb::ndarray<> array)
     }
     if (outputAlias && !outputAlias->isEmpty() && descriptor.data == outputAlias->data)
     {
-        descriptor.keepAlive.reset();
+        if (outputAlias->keepAlive)
+            descriptor.keepAlive = outputAlias->keepAlive;
     }
     return descriptor;
 }

@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import re
 from abc import ABC
 from typing import Any
 
@@ -323,8 +322,9 @@ class Prim(ABC):
             self._deregister_callbacks()
             self._is_valid = False
             return
-        for path in self._raw_paths:
-            if re.match(pattern=f'^{"/".join(path.split("/")[: prim_path.count("/") + 1])}$', string=prim_path):
+        deleted_path = Sdf.Path(prim_path)
+        for path in self._paths:
+            if Sdf.Path(path).HasPrefix(deleted_path):
                 self._deregister_callbacks()
                 self._is_valid = False
                 return

@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.3.0] - 2026-10-01
+### Added
+- Add SimReady feature and capability definitions for authored RTX camera, depth, lens calibration, ISP, SPG, Lidar, and Radar sensor assets.
+- Register independently selectable checkers for 372 sensor requirements, including warnings where authored USD cannot establish the result.
+
+### Changed
+- Validate sensor definitions within the default-prim or explicitly selected prim subtree, including composed variant selections, without checking unrelated stage prims.
+- Require at least one RenderProduct for a sensor asset and warn about individual sensor prims without one.
+- Consolidate the six Lidar rule groups into the 75-requirement RTX Lidar Core capability and organize rule implementations by capability.
+- Remove duplicate Radar requirements, read only OpenEXR headers for LUT metadata, and share SPG output-port traversal.
+- Exclude permissive SPG statements from validation, warn for legacy parameters and duplicate SPG output names, and refine Shader eligibility and Lua launch-argument checks.
+
 ## [2.2.0] - 2026-08-10
 ### Added
 - Expose SimReady foundation tier rules in the Asset Validator interface.

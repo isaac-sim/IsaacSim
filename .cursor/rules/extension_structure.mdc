@@ -49,6 +49,23 @@ Every extension MUST include:
     writeTarget.platform = true
     ```
 
+## Staging a library wheel in an extension
+
+An extension can deliver an independently built `source/libraries` distribution to Kit by staging its wheel and SDK.
+The library remains the implementation owner.
+
+Wheel staging makes the library available to Kit; a host adapter connects its API to Kit-owned lifecycle or services.
+One extension may do both.
+
+- Add `wheel-staging.toml` at the extension root. Its `[wheel].distribution` names the library distribution.
+- In `premake5.lua`, use `tools/isaac_build/extension_wheel.lua` and `stage_isaacsim_extension_wheel` to stage built
+  artifacts. Never copy generated library artifacts into extension source or commit them.
+- Keep only Kit lifecycle and host adapters in the extension. Do not duplicate the library implementation.
+- A consumer extension depends on the extension that stages the wheel so the runtime loads first; it must not include
+  `source/libraries` directly.
+- Library artifacts use `source/libraries/VERSION`; the extension's `extension.toml` uses its independent extension
+  version. They do not need to match.
+
 ## Optional Folders
 
 Extensions MAY include the following folders with specific requirements:

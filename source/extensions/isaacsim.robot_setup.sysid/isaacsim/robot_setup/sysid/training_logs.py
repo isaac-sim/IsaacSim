@@ -18,11 +18,12 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import carb
 
 from .trajectory_csv import TrajectoryDataset
 from .trajectory_segments import TelemetryChunkRunSpec, TrajectorySegmentError
@@ -35,8 +36,6 @@ _MAX_COMPANION_JSON_BYTES = 4 * 1024 * 1024
 _MAX_PHASE_EVENTS_BYTES = 16 * 1024 * 1024
 _MIN_PHASE_COVERAGE_RATIO = 0.5
 _MIN_PHASE_CONTAINMENT_RATIO = 0.5
-
-_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -237,7 +236,7 @@ def phase_chunks_from_metadata(trajectory: TrajectoryDataset | None) -> list[Tel
         try:
             chunks.append(TelemetryChunkRunSpec.from_dict(item))
         except TrajectorySegmentError as exc:
-            _LOGGER.warning("SysId: ignoring invalid companion phase chunk at index %d: %s", index, exc)
+            carb.log_warn(f"SysId: ignoring invalid companion phase chunk at index {index}: {exc}")
     return chunks
 
 
@@ -273,25 +272,20 @@ def _read_companion_text(path: Path, *, max_bytes: int, label: str) -> str | Non
     if not path.is_file():
         return None
     if path.is_symlink():
-        _LOGGER.warning("SysId: refusing symlinked optional companion %s file '%s'.", label, path)
+        carb.log_warn(f"SysId: refusing symlinked optional companion {label} file '{path}'.")
         return None
     try:
         size = path.stat().st_size
     except OSError as exc:
-        _LOGGER.warning("SysId: could not inspect optional companion %s file '%s': %s", label, path, exc)
+        carb.log_warn(f"SysId: could not inspect optional companion {label} file '{path}': {exc}")
         return None
     if size > max_bytes:
-        _LOGGER.warning(
-            "SysId: optional companion %s file '%s' exceeds the %d-byte safety limit.",
-            label,
-            path,
-            max_bytes,
-        )
+        carb.log_warn(f"SysId: optional companion {label} file '{path}' exceeds the {max_bytes}-byte safety limit.")
         return None
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        _LOGGER.warning("SysId: could not read optional companion %s file '%s': %s", label, path, exc)
+        carb.log_warn(f"SysId: could not read optional companion {label} file '{path}': {exc}")
         return None
 
 
@@ -302,10 +296,10 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        _LOGGER.warning("SysId: could not parse optional companion JSON file '%s': %s", path, exc)
+        carb.log_warn(f"SysId: could not parse optional companion JSON file '{path}': {exc}")
         return {}
     if not isinstance(payload, dict):
-        _LOGGER.warning("SysId: optional companion JSON file '%s' must contain a JSON object.", path)
+        carb.log_warn(f"SysId: optional companion JSON file '{path}' must contain a JSON object.")
         return {}
     return payload
 
@@ -322,12 +316,7 @@ def _load_jsonl_objects(path: Path) -> list[dict[str, Any]]:
         try:
             payload = json.loads(text)
         except json.JSONDecodeError as exc:
-            _LOGGER.warning(
-                "SysId: ignoring malformed optional companion JSONL row %d in '%s': %s",
-                line_number,
-                path,
-                exc,
-            )
+            carb.log_warn(f"SysId: ignoring malformed optional companion JSONL row {line_number} in '{path}': {exc}")
             continue
         if isinstance(payload, dict):
             rows.append(payload)
@@ -380,14 +369,10 @@ def _chunks_from_events(
     if selected:
         return _intervals_to_chunks(selected, manifest_by_phase, data_start=data_start, data_end=data_end), selected_key
     if rejected:
-        _LOGGER.warning(
+        carb.log_warn(
             "SysId: ignoring companion phase events because no time key matches the telemetry window "
-            "[%g, %g]; required coverage >= %.2f and containment >= %.2f, got %s.",
-            data_start,
-            data_end,
-            _MIN_PHASE_COVERAGE_RATIO,
-            _MIN_PHASE_CONTAINMENT_RATIO,
-            ", ".join(rejected),
+            f"[{data_start:g}, {data_end:g}]; required coverage >= {_MIN_PHASE_COVERAGE_RATIO:.2f} and "
+            f"containment >= {_MIN_PHASE_CONTAINMENT_RATIO:.2f}, got {', '.join(rejected)}."
         )
     return [], ""
 

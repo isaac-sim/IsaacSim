@@ -24,6 +24,7 @@
 // clang-format on
 
 #include <omni/usd/UsdContext.h>
+#include <pxr/usd/usdPhysics/joint.h>
 
 #include <chrono>
 #include <iostream>
@@ -53,6 +54,8 @@ namespace includes
  * @details Used to specify custom names for prims that differ from their USD names.
  */
 static const PXR_NS::TfToken g_kIsaacNameOveride{ "isaac:nameOverride" };
+/// Canonical robot-schema joint name override.
+static const PXR_NS::TfToken g_kIsaacJointNameOverride{ "isaac:NameOverride" };
 
 /**
  * enum to show effective timesamples in layerstacks based on current authoring layer
@@ -443,8 +446,9 @@ void safeGetAttribute(const pxr::UsdAttribute& attr, T& inputValue)
  * @details
  * Determines the name of a prim by:
  * 1. Using the default prim name from USD
- * 2. Checking for "isaac:nameOverride" attribute to allow custom naming
- * 3. Using the override value if present and not empty
+ * 2. Checking authored "isaac:NameOverride" joint names before legacy names
+ * 3. Falling back to "isaac:nameOverride" (still canonical for links)
+ * An authored empty or blocked canonical value selects the prim name.
  *
  * @param[in] prim USD prim whose name to retrieve
  * @return std::string Name of the prim, potentially from override attribute
@@ -454,13 +458,31 @@ void safeGetAttribute(const pxr::UsdAttribute& attr, T& inputValue)
  */
 inline std::string getName(const pxr::UsdPrim& prim)
 {
-    if (prim.HasAttribute(g_kIsaacNameOveride))
+    static const pxr::TfToken kLinkAPI{ "IsaacLinkAPI" };
+    static const pxr::TfToken kJointAPI{ "IsaacJointAPI" };
+    const bool isLink = prim.HasAPI(kLinkAPI);
+    const auto canonical = prim.GetAttribute(g_kIsaacJointNameOverride);
+    if (!isLink && canonical && canonical.HasAuthoredValueOpinion())
     {
-        std::string primNameOverride;
-        safeGetAttribute<std::string>(prim.GetAttribute(g_kIsaacNameOveride), primNameOverride);
-        if (!primNameOverride.empty())
+        std::string name;
+        canonical.Get(&name);
+        return name.empty() ? prim.GetName().GetString() : name;
+    }
+    const auto legacy = prim.GetAttribute(g_kIsaacNameOveride);
+    if (legacy)
+    {
+        std::string name;
+        if (legacy.Get(&name) && !name.empty())
         {
-            return primNameOverride;
+            if (!isLink && (prim.HasAPI(kJointAPI) || prim.IsA<pxr::UsdPhysicsJoint>()))
+            {
+                CARB_LOG_WARN(
+                    "Joint %s uses legacy isaac:nameOverride. Joint naming has switched to the robot schema "
+                    "attribute isaac:NameOverride; legacy support will be removed in a future version. "
+                    "Update the asset to use isaac:NameOverride.",
+                    prim.GetPath().GetText());
+            }
+            return name;
         }
     }
     return prim.GetName().GetString();

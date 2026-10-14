@@ -1,6 +1,6 @@
 {
     "UCXSubscribeJointCommand": {
-        "version": 1,
+        "version": 2,
         "icon": "icons/isaac-sim.svg",
         "description": "This node subscribes to joint command data via UCX",
         "metadata": {
@@ -25,7 +25,7 @@
             },
             "timeoutMs": {
                 "type": "uint",
-                "description": "Timeout in milliseconds for UCX receive requests. If 0, waits indefinitely.",
+                "description": "How long a posted UCX receive request may stay outstanding before it is cancelled and replaced, in milliseconds. If 0, the request stays outstanding until a message arrives. The node never blocks graph evaluation at any value.",
                 "uiName": "Timeout (ms)",
                 "default": 0
             }
@@ -51,9 +51,15 @@
             "effortCommand": {
                 "type": "double[]",
                 "description": "Effort commands"
+            },
+            "stiffness": {
+                "type": "double[]",
+                "description": "Optional proportional gains; connect to the articulation gain controller."
+            },
+            "damping": {
+                "type": "double[]",
+                "description": "Optional derivative gains; connect to the articulation gain controller."
             }
         }
     }
 }
-
-

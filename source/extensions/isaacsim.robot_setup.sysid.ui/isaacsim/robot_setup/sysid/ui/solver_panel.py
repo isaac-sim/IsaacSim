@@ -32,25 +32,20 @@ from collections.abc import Callable
 from typing import Optional
 
 import omni.ui as ui
-from isaacsim.gui.components.element_wrappers import (
-    CheckBox,
-    FloatField,
-    IntField,
-    StringField,
-)
+from isaacsim.gui.components.element_wrappers import CheckBox, StringField
 from isaacsim.gui.components.ui_utils import dropdown_builder
-
-from ..optimizer_config import (
+from isaacsim.robot_setup.sysid.optimizer_config import (
     _BACKEND_FROM_LABEL,
     _BACKEND_TO_LABEL,
     OPTIMIZER_BACKEND_LABELS,
     OptimizerBackend,
     OptimizerBackendConfig,
 )
-from ..residual_config import ResidualWeightConfig, load_residual_weight_config
-from ..run_spec import SamplingRunSpec
-from ..settings import CarbOptimizerSettingsStore
-from .styles import HINT_LABEL_STYLE as _HINT_LABEL_STYLE
+from isaacsim.robot_setup.sysid.residual_config import ResidualWeightConfig, load_residual_weight_config
+from isaacsim.robot_setup.sysid.run_spec import SamplingRunSpec
+from isaacsim.robot_setup.sysid.settings import CarbOptimizerSettingsStore
+from isaacsim.robot_setup.sysid.ui.numeric_inputs import ExactFloatField, ExactIntField
+from isaacsim.robot_setup.sysid.ui.styles import HINT_LABEL_STYLE as _HINT_LABEL_STYLE
 
 _SAMPLING_MODE_LABELS = ("Auto", "Off", "Always")
 _SAMPLING_MODE_VALUES = {"Auto": "auto", "Off": "off", "Always": "always"}
@@ -108,33 +103,33 @@ class SolverPanel:
 
         self._backend_model = None
         self._backend_hint_label: Optional[ui.Label] = None
-        self._lambda_field: Optional[FloatField] = None
-        self._epsilon_field: Optional[FloatField] = None
-        self._max_iter_field: Optional[FloatField] = None
-        self._max_rollout_steps_field: Optional[IntField] = None
+        self._lambda_field: Optional[ExactFloatField] = None
+        self._epsilon_field: Optional[ExactFloatField] = None
+        self._max_iter_field: Optional[ExactIntField] = None
+        self._max_rollout_steps_field: Optional[ExactIntField] = None
         self._analytical_presolve_cb: Optional[CheckBox] = None
         self._sampling_mode_label = "Auto"
         self._sampling_command_label = "Hold"
-        self._sampling_max_steps_field: Optional[IntField] = None
+        self._sampling_max_steps_field: Optional[ExactIntField] = None
 
-        self._weight_pos_field: Optional[FloatField] = None
-        self._weight_vel_field: Optional[FloatField] = None
-        self._weight_torque_field: Optional[FloatField] = None
-        self._weight_ee_field: Optional[FloatField] = None
-        self._weight_contact_field: Optional[FloatField] = None
+        self._weight_pos_field: Optional[ExactFloatField] = None
+        self._weight_vel_field: Optional[ExactFloatField] = None
+        self._weight_torque_field: Optional[ExactFloatField] = None
+        self._weight_ee_field: Optional[ExactFloatField] = None
+        self._weight_contact_field: Optional[ExactFloatField] = None
         self._residual_weights_path_field: Optional[StringField] = None
-        self._ee_link_index_field: Optional[IntField] = None
+        self._ee_link_index_field: Optional[ExactIntField] = None
 
-        self._cma_sigma_field: Optional[FloatField] = None
-        self._cma_batch_size_field: Optional[IntField] = None
-        self._cma_seed_field: Optional[IntField] = None
-        self._bo_initial_samples_field: Optional[IntField] = None
-        self._bo_candidate_count_field: Optional[IntField] = None
-        self._bo_batch_size_field: Optional[IntField] = None
-        self._bo_seed_field: Optional[IntField] = None
-        self._gd_learning_rate_field: Optional[FloatField] = None
-        self._gd_num_restarts_field: Optional[IntField] = None
-        self._gd_seed_field: Optional[IntField] = None
+        self._cma_sigma_field: Optional[ExactFloatField] = None
+        self._cma_batch_size_field: Optional[ExactIntField] = None
+        self._cma_seed_field: Optional[ExactIntField] = None
+        self._bo_initial_samples_field: Optional[ExactIntField] = None
+        self._bo_candidate_count_field: Optional[ExactIntField] = None
+        self._bo_batch_size_field: Optional[ExactIntField] = None
+        self._bo_seed_field: Optional[ExactIntField] = None
+        self._gd_learning_rate_field: Optional[ExactFloatField] = None
+        self._gd_num_restarts_field: Optional[ExactIntField] = None
+        self._gd_seed_field: Optional[ExactIntField] = None
 
         self._apply_parameters_to_usd_cb: Optional[CheckBox] = None
         self._write_usd_provenance_cb: Optional[CheckBox] = None
@@ -165,10 +160,13 @@ class SolverPanel:
                 on_clicked_fn=self._handle_backend_changed,
             )
             self._backend_hint_label = ui.Label("", word_wrap=True, visible=False, style=_HINT_LABEL_STYLE)
-            self._max_iter_field = FloatField("Max iterations", default_value=20, tooltip="Maximum solver iterations")
-            self._max_rollout_steps_field = IntField(
+            self._max_iter_field = ExactIntField(
+                "Max iterations", default_value=20, lower_limit=1, tooltip="Maximum solver iterations"
+            )
+            self._max_rollout_steps_field = ExactIntField(
                 "Max rollout steps",
                 default_value=300,
+                lower_limit=2,
                 tooltip="Cap physics steps per rollout (min 2; also limits residual length)",
                 on_value_changed_fn=self._notify_check_inputs_changed,
             )
@@ -236,14 +234,18 @@ class SolverPanel:
         self._lm_group = ui.Frame()
         with self._lm_group:
             with ui.VStack(spacing=6):
-                self._lambda_field = FloatField(
-                    "Initial damping (lambda)", default_value=1e-2, tooltip="Levenberg-Marquardt initial lambda"
+                self._lambda_field = ExactFloatField(
+                    "Initial damping (lambda)",
+                    default_value=1e-2,
+                    lower_limit=0.0,
+                    tooltip="Levenberg-Marquardt initial lambda",
                 )
-                self._epsilon_field = FloatField(
+                self._epsilon_field = ExactFloatField(
                     "Finite difference step (epsilon)",
                     default_value=1e-4,
                     step=1e-5,
                     format="%.6f",
+                    lower_limit=1e-12,
                     tooltip="Parameter perturbation for Jacobian columns",
                 )
 
@@ -251,21 +253,24 @@ class SolverPanel:
         self._cma_group = ui.Frame()
         with self._cma_group:
             with ui.VStack(spacing=6):
-                self._cma_sigma_field = FloatField(
+                self._cma_sigma_field = ExactFloatField(
                     "CMA-ES sigma",
                     default_value=float(self._backend_config.cma_sigma),
+                    lower_limit=1e-12,
                     tooltip="Initial step size for CMA-ES (normalized search space)",
                 )
-                self._cma_batch_size_field = IntField(
+                self._cma_batch_size_field = ExactIntField(
                     "CMA-ES batch size",
                     default_value=int(self._backend_config.cma_batch_size or 0),
+                    lower_limit=0,
                     tooltip=(
                         "Population candidates evaluated per rollout batch; 0 evaluates the full population together"
                     ),
                 )
-                self._cma_seed_field = IntField(
+                self._cma_seed_field = ExactIntField(
                     "CMA-ES seed",
                     default_value=int(self._backend_config.cma_seed),
+                    lower_limit=0,
                     tooltip="Non-negative random seed for reproducible CMA-ES populations",
                 )
 
@@ -273,24 +278,28 @@ class SolverPanel:
         self._bo_group = ui.Frame()
         with self._bo_group:
             with ui.VStack(spacing=6):
-                self._bo_initial_samples_field = IntField(
+                self._bo_initial_samples_field = ExactIntField(
                     "BO initial samples",
                     default_value=int(self._backend_config.bo_initial_samples),
+                    lower_limit=1,
                     tooltip="Random evaluations before GP-guided Bayesian optimization",
                 )
-                self._bo_candidate_count_field = IntField(
+                self._bo_candidate_count_field = ExactIntField(
                     "BO acquisition candidates",
                     default_value=int(self._backend_config.bo_candidate_count),
+                    lower_limit=1,
                     tooltip=("Random query points scored by expected improvement before choosing rollout candidates"),
                 )
-                self._bo_batch_size_field = IntField(
+                self._bo_batch_size_field = ExactIntField(
                     "BO batch size",
                     default_value=int(self._backend_config.bo_batch_size),
+                    lower_limit=1,
                     tooltip="Rollout candidates evaluated together when parallel clones are available",
                 )
-                self._bo_seed_field = IntField(
+                self._bo_seed_field = ExactIntField(
                     "BO seed",
                     default_value=int(self._backend_config.bo_seed),
+                    lower_limit=0,
                     tooltip="Non-negative random seed for reproducible Bayesian candidate generation",
                 )
 
@@ -298,21 +307,24 @@ class SolverPanel:
         self._gd_group = ui.Frame()
         with self._gd_group:
             with ui.VStack(spacing=6):
-                self._gd_learning_rate_field = FloatField(
+                self._gd_learning_rate_field = ExactFloatField(
                     "GD learning rate",
                     default_value=float(self._backend_config.gd_learning_rate),
                     step=1e-3,
                     format="%.4f",
+                    lower_limit=1e-12,
                     tooltip="Adam learning rate for gradient descent on differentiable bridges",
                 )
-                self._gd_num_restarts_field = IntField(
+                self._gd_num_restarts_field = ExactIntField(
                     "GD restarts",
                     default_value=int(self._backend_config.gd_num_restarts),
+                    lower_limit=1,
                     tooltip="Random multi-start rows optimized in parallel (batched on the differentiable bridge)",
                 )
-                self._gd_seed_field = IntField(
+                self._gd_seed_field = ExactIntField(
                     "GD seed",
                     default_value=int(self._backend_config.gd_seed),
+                    lower_limit=0,
                     tooltip="Non-negative random seed for reproducible gradient-descent restarts",
                 )
 
@@ -344,40 +356,46 @@ class SolverPanel:
             tooltip="Hold commands between recorded samples or linearly interpolate smooth references",
             on_clicked_fn=self._on_sampling_command_changed,
         )
-        self._sampling_max_steps_field = IntField(
+        self._sampling_max_steps_field = ExactIntField(
             "Max resampled steps",
             default_value=0,
+            lower_limit=0,
             tooltip="0 uses Max rollout steps; otherwise caps generated samples per chunk",
         )
 
     def _build_residual_group(self) -> None:
-        self._weight_pos_field = FloatField(
+        self._weight_pos_field = ExactFloatField(
             "Weight: position",
             default_value=1.0,
+            lower_limit=0.0,
             tooltip="Residual weight for joint position errors",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
-        self._weight_vel_field = FloatField(
+        self._weight_vel_field = ExactFloatField(
             "Weight: velocity",
             default_value=1.0,
+            lower_limit=0.0,
             tooltip="Residual weight for joint velocity errors",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
-        self._weight_torque_field = FloatField(
+        self._weight_torque_field = ExactFloatField(
             "Weight: torque",
             default_value=0.0,
+            lower_limit=0.0,
             tooltip="Residual weight for joint torque errors (requires torque telemetry)",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
-        self._weight_ee_field = FloatField(
+        self._weight_ee_field = ExactFloatField(
             "Weight: end-effector pose",
             default_value=0.0,
+            lower_limit=0.0,
             tooltip="Residual weight for EE pose errors (requires EE telemetry)",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
-        self._weight_contact_field = FloatField(
+        self._weight_contact_field = ExactFloatField(
             "Weight: contact force",
             default_value=0.0,
+            lower_limit=0.0,
             tooltip="Residual weight for contact force errors",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
@@ -387,9 +405,10 @@ class SolverPanel:
             tooltip="Optional JSON file with channel weights and per-sample weights",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
-        self._ee_link_index_field = IntField(
+        self._ee_link_index_field = ExactIntField(
             "EE link index",
             default_value=-1,
+            lower_limit=-1,
             tooltip="Link index for EE pose/contact (-1 uses last link)",
             on_value_changed_fn=self._notify_check_inputs_changed,
         )
@@ -398,7 +417,10 @@ class SolverPanel:
         self._apply_parameters_to_usd_cb = CheckBox(
             "Apply optimized parameters to USD",
             default_value=True,
-            tooltip="Author final optimized link, joint drive, and friction values onto the open USD stage",
+            tooltip=(
+                "Author final optimized values as verified instance-local overrides in the open stage; "
+                "save the stage to persist them"
+            ),
         )
         self._write_usd_provenance_cb = CheckBox(
             "Write USD provenance",

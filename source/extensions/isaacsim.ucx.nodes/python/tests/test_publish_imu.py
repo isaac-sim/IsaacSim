@@ -22,7 +22,7 @@ import numpy as np
 import omni
 import omni.graph.core as og
 import ucxx._lib.libucxx as ucx_api
-from isaacsim.ucx.nodes.messages.isaac import Imu
+from isaacsim.ucx.nodes.messages.holoscan.schema import Imu
 from isaacsim.ucx.nodes.tests.common import UCXTestCase, _read_tensor_f32
 from ucxx._lib.arr import Array
 
@@ -41,12 +41,13 @@ def unpack_imu_message(buffer: object) -> tuple:
     buf = bytearray(buffer.tobytes())
     msg = Imu.Imu.GetRootAs(buf, 0)
 
-    timestamp = msg.Header().Stamp().TimeNs() / 1e9
+    timestamp = msg.Header().CaptureTimestampNs() / 1e9
     frame_id = msg.Header().FrameId().decode("utf-8") if msg.Header().FrameId() else ""
 
     orientation = None
-    if msg.Orientation() is not None:
-        orientation = _read_tensor_f32(msg.Orientation())
+    if msg.Flags() & 1:
+        q = msg.Orientation()
+        orientation = np.array([q.W(), q.X(), q.Y(), q.Z()], dtype=np.float32)
 
     angular_velocity = None
     if msg.AngularVelocity() is not None:

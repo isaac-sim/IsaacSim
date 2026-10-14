@@ -9,10 +9,10 @@ The `isaacsim.robot_setup.sysid` extension identifies robot simulation parameter
 The extension is the headless backend for the interactive `isaacsim.robot_setup.sysid.ui` extension. Use the UI for guided identification in Isaac Sim, or use the Python API and command-line tools for repeatable and automated runs.
 
 Headless integrations import `run_sysid` from `isaacsim.robot_setup.sysid.execution` and call
-`await run_sysid(spec, ...)`. The package root contains no dynamic exports; portable APIs are imported from
-their owning modules without loading Kit. Isaac Sim stage, PhysX, and Fabric execution still requires a
-bootstrapped Kit runtime. Newton execution can run in ordinary Python with the `newton` wheel dependencies
-installed.
+`await run_sysid(spec, ...)`. The package root contains no dynamic exports; import APIs from their owning
+modules. The backend requires the Isaac Sim Python environment and logs through Carbonite. Isaac Sim stage,
+PhysX, and Fabric execution requires a bootstrapped Kit runtime; Newton execution opens the USD directly
+instead of using the Kit stage.
 
 For a complete Kit-hosted lifecycle,
 {func}`run_headless_sysid_job <isaacsim.robot_setup.sysid.headless_job.run_headless_sysid_job>` loads the stage and
@@ -66,8 +66,8 @@ unspecified torque channels are excluded rather than guessed.
 
 The pre-solve check report combines telemetry quality with per-parameter identifiability and
 uses `unknown` when a stage or compatible analytical equation is unavailable. Unknown verdicts
-do not produce an `ok` result. The run report records configuration, optimizer status, validation
-metrics and artifacts, delay quantization, tuning assessment, and parameter sensitivity. The
+do not produce an `ok` result. The run report records configuration, optimizer status, paired
+untuned/tuned validation metrics and artifacts, delay quantization, tuning assessment, and parameter sensitivity. The
 reported `sens. span` is the parameter offset associated with a 10% modeled cost rise; it is not
 a statistical confidence interval.
 
@@ -78,11 +78,12 @@ Both reports have versioned JSON schemas under `resources/schemas/`.
 Bundled recipes configure parameter families, solver settings, chunking, and compatible residual
 channels for common robot classes. Changing parameter-space flags clears an existing selection so
 stale parameter rows cannot survive a recipe change. Optional validation artifacts include
-position, velocity, effort, and angle-delta plots, RMSE summaries, and a trajectory animation or
-storyboard. Generated artifact paths are contained beneath the configured artifact directory.
+position, velocity, effort, and angle-delta plots, grouped untuned/tuned RMSE summaries, and a trajectory animation or
+storyboard. After optimization, validation replays both the authored launch values and the accepted values on
+the identical chunk sequence. Generated artifact paths are contained beneath the configured artifact directory.
 
-Importing the package root does not require Kit or Carbonite. Kit-dependent services are imported
-only when their adapters are called, preserving use from standalone Python and wheel builds.
+Importing the package root does not bootstrap Kit. Kit-dependent services are imported only when their
+adapters are called.
 
 ## Getting started with a new robot
 
@@ -91,7 +92,7 @@ only when their adapters are called, preserving use from standalone Python and w
 - {class}`ParameterSpace <isaacsim.robot_setup.sysid.parameter_space.ParameterSpace>` maps bounded optimizer variables to physical robot parameters.
 - {func}`create_optimizer <isaacsim.robot_setup.sysid.optimizer_factory.create_optimizer>` provides Levenberg-Marquardt, CMA-ES, Bayesian, and Adam gradient-descent backends.
 - {class}`IsaacSimSysIdBridge <isaacsim.robot_setup.sysid.isaac_sim_sysid_bridge.IsaacSimSysIdBridge>` evaluates candidates in an Isaac Sim-hosted rollout.
-- {class}`NewtonSysIdBridge <isaacsim.robot_setup.sysid.newton_sysid_bridge.NewtonSysIdBridge>` and {class}`NewtonDifferentiableSysIdBridge <isaacsim.robot_setup.sysid.newton_diff_sysid_bridge.NewtonDifferentiableSysIdBridge>` provide standalone Newton rollout paths.
+- {class}`NewtonSysIdBridge <isaacsim.robot_setup.sysid.newton_sysid_bridge.NewtonSysIdBridge>` and {class}`NewtonDifferentiableSysIdBridge <isaacsim.robot_setup.sysid.newton_diff_sysid_bridge.NewtonDifferentiableSysIdBridge>` provide Newton rollout paths that do not use the Kit stage.
 
 Importing contracts and portable helpers does not bootstrap Kit, USD, or a simulator. Isaac Sim rollouts still require a bootstrapped Kit runtime.
 
@@ -104,7 +105,7 @@ Enable `isaacsim.robot_setup.sysid.ui`, then open **Tools > Robotics > Asset Edi
 3. **Parameters** selects the values and bounds to optimize.
 4. **Check** evaluates data quality and identifiability before spending rollout time.
 5. **Solve** configures and runs the optimizer.
-6. **Results** compares parameter values, residuals, confidence ranges, and held-out validation metrics.
+6. **Results** compares parameter values, residuals, confidence ranges, and untuned-versus-tuned validation metrics.
 
 Start with a built-in recipe when possible. Recipes pre-fill the workflow for common robot classes while leaving every setting editable.
 
@@ -168,14 +169,61 @@ The rollout host, physics backend, and actuator implementation are independent r
 selects `auto`, `physx`, or `newton`; and `simulation.actuator_runtime` selects `auto`,
 `implicit_drive`, `newton_explicit`, or `mixed`. Isaac Sim + Newton requires the optional
 `isaacsim.physics.newton` extension and switches through `SimulationManager`, while standalone
-Newton uses the Newton 1.5 dependency set declared by the `newton` package extra.
+Newton uses the Newton 1.6 dependency set delivered by `isaacsim.pip.newton` in the Isaac Sim Python environment.
 
 For standalone Newton, `mixed` is the recommended actuator mode. Existing USD Newton actuator prims own only their
 target joints; the remaining joints continue to use implicit USD drives. Stateful parameters
 such as PID integral gain and `actuator_command_delay_seconds` can promote only the selected joints into temporary
 session-layer actuator prims by setting `explicit_actuator_policy` to `promote_selected`.
 Promotion is non-destructive during a run. Accepted results are copied to the root layer only
-when actuator writeback is requested; cancellation or cleanup discards the session edits.
+when actuator writeback is requested and both validation passes succeed; cancellation, validation failure,
+writeback failure, or cleanup discards/restores the session edits.
+
+The interactive Robot page exposes these axes independently under **Advanced simulation settings**.
+`auto` resolves to implicit drives for in-app Isaac Sim, mixed ownership for standalone Newton MuJoCo,
+and explicit ownership for differentiable Featherstone. The pre-solve Check rejects unsupported combinations
+instead of silently changing the selected runtime.
+
+### Backend capability boundaries
+
+- **Isaac Sim + PhysX** supports every parameter family and position, velocity, torque, end-effector pose,
+  and contact-force residuals. Integral gain and command delay still require an explicit or mixed actuator runtime.
+- **Isaac-hosted Newton** supports the same parameter families except joint friction. Its current hosted tensor
+  interface provides position, velocity, and end-effector pose for residuals, but does not provide projected joint
+  force or incoming link force. Commanded actuator effort is not substituted for those missing measurements, so
+  torque and contact-force residuals are rejected.
+- **Standalone Newton MuJoCo** supports joint friction, drive gains, integral gain, armature, command delay, mass,
+  center of mass, and inertia. Joint-limit scales, end-effector pose residuals, and contact-force residuals are not
+  supported by this bridge.
+- **Differentiable Newton Featherstone** supports joint friction/stiffness/damping, link mass, center-of-mass
+  offsets, and log-Cholesky inertia. It produces position, velocity, and applied-torque residuals. It is
+  contact-free and rejects armature, integral gain, command delay, joint-limit scales, end-effector pose, and
+  contact-force residuals.
+
+These boundaries are one shared contract used by quick-start recipe synthesis, preflight, and the runtime bridges.
+An unsupported selection therefore fails before rollout instead of reaching a late bridge error.
+
+## Paired untuned and tuned validation
+
+When validation chunks exist, the session evaluates them twice: first with the values authored in the RunSpec,
+before analytical presolve or optimization, and then with the accepted optimizer output. Both passes use the
+same resampled chunks, horizons, signal weights, and rollout reset path. Analytical presolve may change the
+optimizer seed, but it never changes the reported untuned baseline.
+
+Per-chunk and overall comparisons report untuned RMSE, tuned RMSE, absolute delta, percentage improvement,
+and an improved/unchanged/regressed verdict for every available signal. Overall RMSE uses pooled sample-count
+weighting. `outputs.validation_relative_change_threshold` (default 1%) and
+`outputs.validation_absolute_change_threshold` (default `1e-12`) define the numerical-noise band. Percentage
+improvement is intentionally unavailable when the untuned RMSE is zero. If no independent
+validation chunk is configured, the same comparison replays every prepared training chunk, but reports and the UI
+label it **training-data replay (not a holdout)**.
+
+In report schema version 4, `untuned_validation_metrics` describes the authored launch values before analytical
+presolve, while `tuned_validation_metrics` describes the selected accepted optimizer output. The legacy
+`validation_metrics` and `validation_summary` fields remain aliases of their tuned counterparts. A true
+`parameters_written` value means authoring to the requested USD edit targets succeeded; it does not prove that the
+layers were saved or reopened. `extra.writeback.live_parameters_applied` separately records verified mutation of the
+current live articulation. Save and reopen the USD in a fresh process when durable composition is required evidence.
 
 Telemetry timing correction is a separate operation. `telemetry.command_alignment_seconds`
 shifts the imported command series once to remove common recording/transport offset. The actuator
@@ -228,6 +276,26 @@ seconds captured, a 26.4x speedup after warmup. Treat this result as workload- a
 than a guaranteed ratio. Set `simulation.newton.cuda_graph_capture` to `false` when diagnosing an individual
 rollout or when capture setup cannot be amortized.
 
+## Newton MuJoCo stability
+
+MuJoCo integrates drive damping implicitly but drive stiffness explicitly. A drive of stiffness `k` on an
+effective inertia `I` is stable only when `h * sqrt(k / I)` stays well below 2, where `h` is the physics
+step. By default the bridge takes one MuJoCo step per telemetry sample. Set `simulation.newton.mujoco_substeps`
+(**MuJoCo substeps** on the Robot page) to split each sample into equal physics steps. Commands and explicit
+actuators still update once per sample, so substeps do not stabilize a DOF owned by an explicit actuator.
+
+After every physics step, each candidate world is checked for non-finite joint state or joint rates above
+`1e4` rad/s or m/s. A diverged world is reset to its initial state so MuJoCo never runs collision detection on
+runaway poses, which previously surfaced as CUDA error 700. The world is then scored as an invalid
+candidate, and a warning reports the stiffest drive and the recommended substep count. When every world in a
+rollout diverges, the rollout fails with that estimate instead of returning a sentinel cost. Check the
+asset's drive gains first: USD angular drive stiffness is per degree, so a gain meant per radian is 57.3x too
+stiff.
+
+Gravity and inverse-dynamics feedforward require a fixed-base articulation of revolute, prismatic, and fixed
+joints. A fully locked generic (`D6`) joint with no free coordinates is treated as fixed. Any other joint type
+is reported by name and model joint index.
+
 ## Differentiable Newton bridge (contact-free)
 
 Setting `simulation.newton.solver = "featherstone_diff"` in the run spec selects a
@@ -248,3 +316,30 @@ factorization workspace, so the mass matrix is rebuilt at the current configurat
 overwriting values required by the reverse pass. Mapped-joint PD, feedforward, friction, and
 maximum-effort limiting are evaluated together, and the reported torque is the torque applied
 to the simulated plant.
+
+Joint friction is modelled as `-friction * tanh(qd * eps)`. Although that torque saturates, its
+linearization near zero velocity is an effective damping of `friction * eps`, which the symplectic
+integrator must still carry on every substep, and which the reverse pass propagates even when the
+forward rollout stays bounded. The bridge therefore measures the mapped joints' inverse mass matrix
+once per robot and caps `eps` inside the torque kernel so that the combined slope of Newton's passive
+joint damping, the drive damping, and friction stays inside the integrator's stability limit for
+whichever friction the optimizer proposes.
+
+Three properties of that bound are worth knowing when reading the logs. It is sized against the
+*coupled* modes rather than each joint independently, because a chain of three or more identified
+joints can breach the limit collectively while every joint is inside its own budget. It is sized
+against the lowest inertials a candidate can reach rather than the authored ones, so identifying
+link mass, center of mass (each axis at both ends of its default range), or inertia alongside
+friction tightens it further. And when that inertia is so low that the authored and passive damping
+would leave friction less than half the budget, the bridge raises `featherstone_substeps` on its own,
+up to 16, and logs the count it uses. `LINK_INERTIA_LOG_CHOLESKY` admits near-singular inertia
+tensors that no affordable substep count can integrate, so past that cap the budget is sized at the
+inertia that still leaves friction half of it. A candidate that really reaches a lower inertia can
+then diverge, and is rejected when its rollout or gradient turns non-finite.
+
+A capped `eps` makes friction behave viscously below the resulting knee velocity, which biases
+identified friction low; the bridge logs that knee together with the substep count that would carry
+the full scale. Raise `simulation.newton.featherstone_substeps` or author `physxJoint:armature` to
+recover the sharper Coulomb transition. If a candidate's drive damping grows until it would leave
+friction no influence at all, the run fails rather than reporting a friction value the result never
+depended on.

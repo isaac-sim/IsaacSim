@@ -35,6 +35,7 @@ isaacsim_add_module(
         src/SceneQuery.cpp
         src/tensors/EntityView.cpp
     PUBLIC_DEPENDENCIES
+        isaacsim::common-array
         isaacsim::physics-registration
     PRIVATE_DEPENDENCIES
         isaacsim::common-logging
@@ -86,3 +87,20 @@ isaacsim_add_cpp_tests(
         tests/cpp/TestTensorEntityView.cpp
     RESOURCE_DIR resources/tests
 )
+
+# Build-only native factory fixture: Python-only factories cannot reproduce the
+# shared_ptr keepalive ownership of views created in C++.
+if(BUILD_TESTING AND ISAACSIM_ENABLE_PYTHON AND ISAACSIM_ENABLE_PYTHON_BINDINGS)
+    nanobind_add_module(tests-isaacsim-physics-manager-native-fixture STABLE_ABI
+        tests/native/TensorFactoryFixture.cpp)
+    target_link_libraries(tests-isaacsim-physics-manager-native-fixture PRIVATE isaacsim::physics-manager)
+    _isaacsim_apply_nanobind_msvc_debug_workaround(tests-isaacsim-physics-manager-native-fixture)
+    set_target_properties(tests-isaacsim-physics-manager-native-fixture PROPERTIES
+        OUTPUT_NAME "_isaacsim_tensor_native_fixture"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/python-test-support/isaacsim-physics-manager"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/python-test-support/isaacsim-physics-manager")
+    _isaacsim_stage_windows_test_runtime(tests-isaacsim-physics-manager-native-fixture isaacsim-physics-manager)
+    add_dependencies(stage-isaacsim-physics-manager-python-tests tests-isaacsim-physics-manager-native-fixture)
+    set_property(TEST tests-python-isaacsim-physics-manager APPEND PROPERTY ENVIRONMENT_MODIFICATION
+        "PYTHONPATH=path_list_append:$<TARGET_FILE_DIR:tests-isaacsim-physics-manager-native-fixture>")
+endif()

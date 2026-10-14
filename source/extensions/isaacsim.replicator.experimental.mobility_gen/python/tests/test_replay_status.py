@@ -49,6 +49,7 @@ def _args(**overrides: Any) -> argparse.Namespace:
     values = {
         "self_contained": False,
         "render_interval": 5,
+        "write_interval": 20,
         "render_rt_subframes": 36,
         "warmup_frames": 4,
         "max_frames": None,
@@ -81,6 +82,33 @@ class TestReplayStatus(omni.kit.test.AsyncTestCase):
         config = replay_config_from_args(self._recording, _args(max_frames=12))
         self.assertEqual(config["source_recording"], os.path.abspath(self._recording))
         self.assertEqual(config["max_frames"], 12)
+
+    async def test_replay_config_from_args_includes_write_interval_when_present(self) -> None:
+        """Replay configs include the requested write interval when provided."""
+        config = replay_config_from_args(self._recording, _args(write_interval=20))
+        self.assertEqual(config["write_interval"], 20)
+
+    async def test_completion_marker_tracks_written_frames(self) -> None:
+        """Sparse replay reports the number of output frames separately from rendered frames."""
+        mark_replay_complete(self._output, frames_rendered=25, frames_written=2)
+        with open(os.path.join(self._output, COMPLETE_MARKER_NAME)) as marker:
+            self.assertEqual(marker.read(), "frames_rendered: 25\nframes_written: 2\n")
+
+    async def test_completion_marker_defaults_to_writing_every_frame(self) -> None:
+        """Existing callers retain matching rendered and written frame counts."""
+        mark_replay_complete(self._output, frames_rendered=5)
+        with open(os.path.join(self._output, COMPLETE_MARKER_NAME)) as marker:
+            self.assertEqual(marker.read(), "frames_rendered: 5\nframes_written: 5\n")
+
+    async def test_write_interval_mismatch_removes_stale_marker(self) -> None:
+        """Changing the output cadence requires regenerating a completed replay."""
+        config = replay_config_from_args(self._recording, _args(write_interval=1))
+        write_replay_config(self._output, config)
+        mark_replay_complete(self._output, frames_rendered=25)
+        next_config = replay_config_from_args(self._recording, _args(write_interval=20))
+
+        self.assertFalse(is_complete(self._output, next_config))
+        self.assertFalse(os.path.exists(os.path.join(self._output, COMPLETE_MARKER_NAME)))
 
     async def test_complete_requires_marker_and_matching_config(self) -> None:
         """A replay is complete only with a marker and matching config."""
@@ -161,7 +189,12 @@ class TestReplayOutputs(omni.kit.test.AsyncTestCase):
             path: Directory to populate.
             steps: Number of steps to write.
         """
-        for modality, extension in (("common", "npz"), ("rgb", "jpg"), ("depth", "png")):
+        for modality, extension in (
+            ("common", "npz"),
+            ("rgb", "jpg"),
+            ("instance_id_segmentation", "npy"),
+            ("depth", "png"),
+        ):
             os.makedirs(os.path.join(path, "state", modality), exist_ok=True)
             for step in range(steps):
                 with open(os.path.join(path, "state", modality, f"{step:08d}.{extension}"), "w") as f:
@@ -218,6 +251,7 @@ class TestReplayOutputs(omni.kit.test.AsyncTestCase):
         # images deleted would be a step MobilityGenReader indexes but cannot read.
         self.assertEqual(self._common_steps(self._output), [])
         self.assertFalse(os.path.isdir(os.path.join(self._output, "state", "rgb")))
+        self.assertFalse(os.path.isdir(os.path.join(self._output, "state", "instance_id_segmentation")))
         self.assertFalse(os.path.exists(os.path.join(self._output, REPLAY_CONFIG_NAME)))
         self.assertFalse(os.path.exists(os.path.join(self._output, COMPLETE_MARKER_NAME)))
         # The source recording is untouched.
@@ -233,6 +267,7 @@ class TestReplayOutputs(omni.kit.test.AsyncTestCase):
         # In place, state/common IS the input; clearing it would destroy the recording.
         self.assertEqual(self._common_steps(self._recording), ["00000000.npz", "00000001.npz"])
         self.assertFalse(os.path.isdir(os.path.join(self._recording, "state", "rgb")))
+        self.assertFalse(os.path.isdir(os.path.join(self._recording, "state", "instance_id_segmentation")))
         self.assertFalse(os.path.exists(os.path.join(self._recording, COMPLETE_MARKER_NAME)))
 
     async def test_render_retry_budget_is_bounded_and_positive(self) -> None:

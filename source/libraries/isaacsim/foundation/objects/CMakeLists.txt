@@ -22,6 +22,7 @@ isaacsim_add_module(
         isaacsim::common-exceptions
     PRIVATE_DEPENDENCIES
         isaacsim::common-logging
+        isaacsim::common-string
         isaacsim::foundation-usd-openusd
         isaacsim::foundation-usd-ovstage
     PUBLIC_CPP_HEADERS

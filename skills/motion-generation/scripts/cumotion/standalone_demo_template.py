@@ -22,6 +22,7 @@ task-specific object, grasp point, and success oracle.
 from __future__ import annotations
 
 import argparse
+import json
 
 from isaacsim import SimulationApp
 
@@ -31,7 +32,7 @@ parser = argparse.ArgumentParser()
 # video, gate that behind a separate explicit flag (e.g. --render OUTPUT.MP4)
 # that switches to headless capture; never capture/encode unless asked.
 parser.add_argument("--headless", action="store_true")
-parser.add_argument("--test", action="store_true")
+parser.add_argument("--test", action="store_true", help="Validate all motion phases; timeouts fail the run.")
 parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
 parser.add_argument("--asset-root", default=None, help="Optional /persistent/isaac/asset_root/default override.")
 args, _ = parser.parse_known_args()
@@ -40,13 +41,14 @@ simulation_app = SimulationApp({"headless": args.headless, "hide_ui": False})
 
 import carb.settings
 import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import isaacsim.robot_motion.experimental.motion_generation as mg
 import numpy as np
 import omni.kit.app
 import warp as wp
 from isaacsim.core.experimental.objects import Cone, Cube, Cylinder, DomeLight, GroundPlane, Mesh
-from isaacsim.core.experimental.prims import Articulation, GeomPrim, RigidPrim
+from isaacsim.core.experimental.prims import Articulation, GeomPrim, XformPrim
 from isaacsim.core.rendering_manager import ViewportManager
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.robot_motion.cumotion import CumotionWorldInterface, RmpFlowController, load_cumotion_supported_robot
@@ -61,6 +63,9 @@ class CumotionPhaseDemoTemplate:
     TARGET_PATH = "/World/target"
     PHYSICS_DT = 1.0 / 60.0
     PHASE_TIMEOUTS = (240, 240, 120)
+    POSITION_TOLERANCE = 0.01
+    ORIENTATION_TOLERANCE = 0.05
+    CONVERGED_STEPS = 5
     PHASE_LABELS = ("move above target", "descend to target", "retract")
     # WXYZ quaternion for 180 degrees about Y. Avoids running Warp-backed Euler conversion during startup.
     DOWN_ORI = np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32)
@@ -73,6 +78,11 @@ class CumotionPhaseDemoTemplate:
         self.controller = None
         self.site_space = None
         self.tool_frame = None
+        self.tool = None
+        self.pose_backend = (
+            "usdrt" if carb.settings.get_settings().get_as_bool("/app/useFabricSceneDelegate") else "usd"
+        )
+        self.converged_steps = 0
         self.phase = 0
         self.phase_step = 0
         self.controller_time = 0.0
@@ -100,6 +110,16 @@ class CumotionPhaseDemoTemplate:
         zeros = np.zeros(len(self.robot.dof_names), dtype=np.float32)
         self.robot.set_dof_positions(wp.array(zeros, dtype=wp.float32))
         self.robot.set_dof_position_targets(wp.array(zeros, dtype=wp.float32))
+        # Resolve the measured tool frame explicitly; never substitute the gripper tip.
+        stage = stage_utils.get_current_stage()
+        paths = [
+            str(prim.GetPath())
+            for prim in stage.Traverse()
+            if str(prim.GetPath()).startswith(self.ROBOT_PATH + "/") and prim.GetName() == self.tool_frame
+        ]
+        if len(paths) != 1:
+            raise RuntimeError(f"Resolve a unique measured prim for tool frame {self.tool_frame!r}: {paths}")
+        self.tool = XformPrim(paths[0])
         self.reset()
 
     def _build_world_binding(self) -> None:
@@ -139,6 +159,7 @@ class CumotionPhaseDemoTemplate:
         self.controller.get_rmp_flow_config().set_param("cspace_target_rmp/metric_scalar", 1.0)
 
     def reset(self) -> None:
+        self.converged_steps = 0
         self.phase = 0
         self.phase_step = 0
         self.controller_time = 0.0
@@ -171,6 +192,21 @@ class CumotionPhaseDemoTemplate:
             )
         )
 
+    def measure_target_error(self, position: np.ndarray, orientation: np.ndarray) -> tuple[float, float]:
+        """Measure tool position and shortest quaternion angle errors in world space."""
+        # Read live Fabric transforms when FSD is active; authored USD may be stale.
+        with backend_utils.use_backend(self.pose_backend):
+            positions, orientations = self.tool.get_world_poses()
+        measured_position = positions.numpy()[0]
+        measured_orientation = orientations.numpy()[0]
+        position_error = float(np.linalg.norm(measured_position - position))
+        norm = float(np.linalg.norm(measured_orientation) * np.linalg.norm(orientation))
+        if not np.isfinite(position_error) or not np.isfinite(norm) or norm <= 0.0:
+            raise RuntimeError("Invalid measured tool pose or target.")
+        cosine = abs(float(np.dot(measured_orientation, orientation))) / norm
+        orientation_error = float(2.0 * np.arccos(np.clip(cosine, 0.0, 1.0)))
+        return position_error, orientation_error
+
     def step(self) -> bool:
         if self.phase >= len(self.PHASE_LABELS):
             return False
@@ -200,10 +236,29 @@ class CumotionPhaseDemoTemplate:
                 self.robot.set_dof_efforts(joints.efforts, dof_indices=joints.effort_indices)
 
         self.phase_step += 1
-        if self.phase_step >= self.PHASE_TIMEOUTS[self.phase]:
+        position_error, orientation_error = self.measure_target_error(target_pos, target_orn)
+        converged = position_error <= self.POSITION_TOLERANCE and orientation_error <= self.ORIENTATION_TOLERANCE
+        self.converged_steps = self.converged_steps + 1 if converged else 0
+        if self.converged_steps >= self.CONVERGED_STEPS:
+            print(
+                json.dumps(
+                    {
+                        "phase": self.PHASE_LABELS[self.phase],
+                        "status": "CONVERGED",
+                        "position_error_m": position_error,
+                        "orientation_error_rad": orientation_error,
+                    }
+                )
+            )
             self.phase += 1
             self.phase_step = 0
-        return True
+            self.converged_steps = 0
+        elif self.phase_step >= self.PHASE_TIMEOUTS[self.phase]:
+            raise TimeoutError(
+                f"Phase {self.PHASE_LABELS[self.phase]!r} timed out after {self.phase_step} steps: "
+                f"position_error_m={position_error:.6f}, orientation_error_rad={orientation_error:.6f}"
+            )
+        return self.phase < len(self.PHASE_LABELS)
 
 
 def main() -> None:
@@ -214,18 +269,25 @@ def main() -> None:
     simulation_app.update()
     demo.initialize_after_play()
 
-    frames = 0
     while simulation_app.is_running():
         simulation_app.update()
         if app_utils.is_playing() and SimulationManager.is_simulating():
             running = demo.step()
-            frames += 1
-            if not running or (args.test and frames > 180):
+            if not running:
                 break
+
+    if demo.phase != len(demo.PHASE_LABELS):
+        raise RuntimeError("Run interrupted before all required motion phases converged.")
+    # This scaffold validates tool motion only. Adapted manipulation demos must also
+    # validate physical grasp, transport, release, and settled object pose before PASS.
+    print(json.dumps({"status": "MOTION_COMPLETE", "scope": "tool_motion_only"}))
 
 
 if __name__ == "__main__":
     try:
         main()
+    except Exception as exc:
+        print(json.dumps({"status": "FAIL", "reason": str(exc)}))
+        raise
     finally:
         simulation_app.close()

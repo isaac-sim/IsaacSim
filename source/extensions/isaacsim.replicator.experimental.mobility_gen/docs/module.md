@@ -16,7 +16,7 @@ These methods call into Omniverse APIs such as `isaacsim.core.experimental` (art
 `omni.replicator.core` (render products, annotators).  The relevant APIs by component:
 
 - **Robot state** — `isaacsim.core.experimental`: `Articulation` → world poses, joint positions, joint velocities, linear/angular velocities
-- **Camera** — `omni.replicator.core`: render product + annotator → RGB (`LdrColor`), depth (`distance_to_camera`), segmentation, surface normals
+- **Camera** — `omni.replicator.core`: render product + annotator → RGB (`LdrColor`), depth (`distance_to_camera`), semantic and instance ID segmentation, surface normals
 - **LiDAR** — `omni.replicator.core`: RTX LiDAR render product + annotator → point cloud (xyz, intensity, range)
 - **IMU** — `isaacsim.sensors.physx` → linear acceleration, angular velocity
 
@@ -114,7 +114,9 @@ scenario.state_dict(include_tags=["rgb"])
 # → {"robot.sensor_rig.front_hawk_left.rgb_image": array,
 #    "robot.sensor_rig.front_hawk_right.rgb_image": array}
 
-scenario.state_dict(exclude_tags=["rgb", "depth", "segmentation", "normals"])
+scenario.state_dict(
+    exclude_tags=["rgb", "depth", "segmentation", "instance_id_segmentation", "normals"]
+)
 # → {"robot.position": array, "robot.joint_positions": array, …}
 #    (pose and joints only — heavy image buffers excluded)
 ```

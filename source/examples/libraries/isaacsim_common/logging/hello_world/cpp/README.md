@@ -3,6 +3,6 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# C++ Hello World
+# C++ hello world
 
 `Main.cpp` reports a message through the public `isaacsim.common.logging` C++ API.

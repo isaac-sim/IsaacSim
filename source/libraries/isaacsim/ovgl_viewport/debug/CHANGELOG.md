@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Python wheels reuse the OmniClient runtime, OVStage plugins, and USD schemas supplied by the pinned `ovstage`
+  dependency instead of packaging duplicate copies.
+
+### Fixed
+
+- Load OpenGL functions for the current adopted context before rendering to a texture or framebuffer on Windows.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added
@@ -26,6 +35,13 @@
 
 ### Changed
 
-- The public C++ viewport configuration type is `ViewportConfiguration`; Python exposes it as `ViewportConfig`.
+- The public C++ viewport configuration type is `ViewportConfiguration`; the native Python binding
+  `ViewportConfig` is used internally by the higher-level Python `Viewport`.
 - The `isaacsim-ovgl-viewport` distribution declares `isaacsim-common` and `isaacsim-foundation` runtime dependencies
   and uses `scikit-build-core>=1.0.3` for source builds.
+
+## [6.1.0] - 2026-08-31
+
+### Added
+
+- Add the concrete OVGL debug viewport for populated OVStage scenes.

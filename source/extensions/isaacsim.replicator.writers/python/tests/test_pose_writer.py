@@ -30,6 +30,7 @@ import omni.kit
 import omni.replicator.core as rep
 import omni.usd
 from isaacsim.replicator.writers import PoseWriter
+from isaacsim.replicator.writers.scripts.writers.ycb_video_writer import YCBVideoWriter
 from isaacsim.test.utils.file_validation import validate_folder_contents
 from isaacsim.test.utils.image_comparison import compare_images_in_directories
 
@@ -223,6 +224,35 @@ class TestPoseWriter(omni.kit.test.AsyncTestCase):
             parent="/World",
             semantics=[("class", "cube_scaled")],
         )
+
+    async def test_pose_annotator_empty_semantic_types(self) -> None:
+        """Keep empty Pose output distinct from a populated capture on the same scene."""
+        await self._setup_stage()
+        camera = rep.functional.create.camera(
+            position=(0, 0, 10), look_at=(0, 0, 0), name="PoseEmptyCamera", parent="/World"
+        )
+        empty_product = rep.create.render_product(camera, (512, 512), name="rp_pose_empty")
+        class_product = rep.create.render_product(camera, (512, 512), name="rp_pose_class")
+        YCBVideoWriter.register_pose_annotator({"WIDTH": 512, "HEIGHT": 512, "CAMERA_ROTATION": [0.0, 0.0, 0.0]})
+
+        common_params = {"cameraRotation": np.array([0.0, 0.0, 0.0]), "getCenters": True}
+        empty_annotator = rep.annotators.get("pose", init_params={**common_params, "semanticTypes": []})
+        class_annotator = rep.annotators.get("pose", init_params={**common_params, "semanticTypes": ["class"]})
+        attached_annotators = []
+        try:
+            empty_annotator.attach(empty_product)
+            attached_annotators.append(empty_annotator)
+            class_annotator.attach(class_product)
+            attached_annotators.append(class_annotator)
+
+            await rep.orchestrator.step_async(rt_subframes=16)
+            self.assertEqual(len(empty_annotator.get_data(use_legacy_structure=False)["data"]), 0)
+            self.assertGreater(len(class_annotator.get_data(use_legacy_structure=False)["data"]), 0)
+        finally:
+            for annotator in reversed(attached_annotators):
+                annotator.detach()
+            empty_product.destroy()
+            class_product.destroy()
 
     async def test_pose_writer_with_pinhole_camera(self) -> None:
         """Test PoseWriter with pinhole camera projection."""

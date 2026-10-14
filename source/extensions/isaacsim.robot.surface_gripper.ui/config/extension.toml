@@ -1,5 +1,5 @@
 [package]
-version = "3.1.4"
+version = "3.1.5"
 category = "Simulation"
 title = "Isaac Sim Surface Gripper UI Components"
 description = "UI components for the Surface Gripper extension"

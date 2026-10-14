@@ -3,8 +3,8 @@ namespace isaac;
 // Describes a twist.
 table Twist {
   // Linear velocity of the twist (x, y, z) in meters per second.
-  linear: Tensor (id: 0);
+  linear: holoscan.schema.Tensor (id: 0);
   // Angular velocity of the twist (x, y, z) in radians per second.
-  angular: Tensor (id: 1);
+  angular: holoscan.schema.Tensor (id: 1);
 }
 root_type Twist;

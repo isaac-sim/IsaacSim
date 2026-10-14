@@ -23,9 +23,12 @@ Trajectories must be fixed-base or otherwise contact-free.
 Known approximations and limitations:
 
 - ``SolverFeatherstone`` does not apply ``Model.joint_friction``; joint friction is
-  applied by a custom kernel as a smooth Coulomb torque ``-friction * tanh(qd * 100)``
+  applied by a custom kernel as a smooth Coulomb torque ``-friction * tanh(qd * eps)``
   through ``Control.joint_f``, matching the torque convention of the other SysID
-  bridges.
+  bridges. ``eps`` is requested at :data:`FRICTION_INV_VELOCITY_EPS` but capped per
+  DOF so the torque's zero-velocity slope stays inside the explicit integrator's
+  stability region; a capped knee softens Coulomb friction toward viscous damping
+  at low speed and is reported.
 - Feedforward modes are ``"none"``, ``"gravity"``, and ``"inverse_dynamics"``.
   Feedforward is evaluated at the measured trajectory, remains theta-independent,
   and requires a fixed base.
@@ -52,16 +55,19 @@ from __future__ import annotations
 
 import gc
 import importlib
-import logging
+import itertools
 import math
 import time
+import traceback
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
+import carb
 import numpy as np
 import torch
 
 from .actuator_compatibility import ACTUATOR_RUNTIME_EXPLICIT
+from .backend_capabilities import NEWTON_FEATHERSTONE_CAPABILITIES
 from .env_bridge import SysIdEnvironmentBridgeError
 from .feedforward import (
     FF_CACHE_MAX_ENTRIES,
@@ -81,7 +87,12 @@ from .parameter_apply_torch import (
     decode_theta_batch_to_tensors,
     validate_differentiable_entries,
 )
-from .parameter_types import GLOBAL_LINK_INDEX, SysIdParameterEntry, SysIdParameterType
+from .parameter_types import (
+    GLOBAL_LINK_INDEX,
+    SysIdParameterEntry,
+    SysIdParameterType,
+    default_bounds_for_type,
+)
 from .rollout_result import SysIdRolloutResult
 from .run_spec import NEWTON_SOLVER_FEATHERSTONE_DIFF, NewtonSimulationRunSpec
 from .trajectory_csv import TrajectoryDataset
@@ -89,11 +100,56 @@ from .trajectory_csv import TrajectoryDataset
 if TYPE_CHECKING:
     from .usd_parameter_io import JointUsdSnapshot
 
-_LOGGER = logging.getLogger(__name__)
-
-# Inverse velocity scale of the smooth Coulomb friction torque; matches the
-# `tanh(qd * 100)` convention used by the Newton MuJoCo bridge.
+# Requested inverse velocity scale of the smooth Coulomb friction torque
+# `-friction * tanh(qd * eps)`. The MuJoCo bridge uses `tanh(qd * 100)`, but
+# only to reconstruct its reported torque channel after physics: there friction
+# is a solver constraint, so the value is never integrated or differentiated.
+# Here the same term is a force on an explicit integrator under a Warp tape, so
+# the kernel lowers it per DOF whenever the integrator cannot carry the
+# resulting stiffness.
 FRICTION_INV_VELOCITY_EPS = 100.0
+
+# `-f * tanh(qd * eps)` saturates in the forward rollout but linearizes to an
+# effective damping of `f * eps` at `qd = 0`, and that linearization is what the
+# reverse pass propagates. Symplectic Euler stays stable while the total
+# velocity-proportional slope satisfies
+# `(passive + kd + f*eps) * sub_dt / inertia < 2`, where `passive` is the
+# model's own `joint_damping`; budget half of that so the adjoint decays rather
+# than merely staying bounded, which also leaves room for the effective-inertia
+# estimate to be imperfect.
+FRICTION_SLOPE_STABILITY_RATIO = 1.0
+
+#: Share of the slope budget held for friction when the substep count is
+#: raised to fit it. Splitting the budget evenly keeps the authored drive
+#: damping and the Coulomb knee equally representable.
+FRICTION_BUDGET_SHARE = 0.5
+
+#: Upper bound on the substep count the bridge raises to on its own. Taped
+#: memory and rollout time grow linearly with it, and identifying inertia
+#: drives the requested count without bound, so past this the budget falls
+#: back to flooring the inertia instead of making every candidate slower.
+MAX_AUTO_FEATHERSTONE_SUBSTEPS = 16
+
+# Guards the in-kernel division by the candidate friction. Below this the
+# capped scale would exceed the requested one anyway, so the cap never binds
+# and the value only keeps the division finite.
+_FRICTION_SLOPE_MIN_DENOM = 1.0e-6
+
+# Trajectory poses sampled when measuring the articulated inertia. The mass
+# matrix varies with configuration and each sample costs a solver step per DOF,
+# so this trades probe time for how much of the pose range the bound covers.
+_INERTIA_PROBE_SAMPLES = 4
+
+# Half-range used when a mapped joint declares no finite limit, so the probe
+# still samples poses away from rest.
+_INERTIA_PROBE_FALLBACK_RANGE = 1.0
+
+#: Cartesian axis each centre-of-mass offset type is added along.
+_COM_OFFSET_TYPES: dict[SysIdParameterType, int] = {
+    SysIdParameterType.LINK_COM_OFFSET_X: 0,
+    SysIdParameterType.LINK_COM_OFFSET_Y: 1,
+    SysIdParameterType.LINK_COM_OFFSET_Z: 2,
+}
 
 _FALLBACK_HINT = "set simulation.newton.solver='mujoco' or use a derivative-free backend (CMA-ES, Bayesian)"
 
@@ -111,16 +167,7 @@ def _capture_max_launches() -> int:
         return _CAPTURE_MAX_LAUNCHES_DEFAULT
 
 
-_DIFF_SUPPORTED_PARAMETERS = {
-    SysIdParameterType.JOINT_FRICTION,
-    SysIdParameterType.JOINT_STIFFNESS,
-    SysIdParameterType.JOINT_DAMPING,
-    SysIdParameterType.LINK_MASS,
-    SysIdParameterType.LINK_COM_OFFSET_X,
-    SysIdParameterType.LINK_COM_OFFSET_Y,
-    SysIdParameterType.LINK_COM_OFFSET_Z,
-    SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY,
-}
+_DIFF_SUPPORTED_PARAMETERS = NEWTON_FEATHERSTONE_CAPABILITIES.parameter_types
 
 _KERNEL_CACHE: dict[int, tuple[Any, Any, Any]] = {}
 
@@ -147,6 +194,8 @@ def _load_diff_kernels(wp) -> tuple[Any, Any, Any]:  # noqa: ANN001
     if cached is not None:
         return cached
 
+    min_friction_denom = wp.constant(_FRICTION_SLOPE_MIN_DENOM)
+
     @wp.kernel
     def mapped_joint_torque(  # noqa: ANN202
         joint_q: wp.array(dtype=wp.float32),
@@ -160,6 +209,7 @@ def _load_diff_kernels(wp) -> tuple[Any, Any, Any]:  # noqa: ANN001
         damping: wp.array(dtype=wp.float32),
         friction: wp.array(dtype=wp.float32),
         inv_velocity_eps: float,
+        friction_slope_budget: wp.array(dtype=wp.float32),
         feedforward: wp.array2d(dtype=wp.float32),
         feedforward_step: int,
         effort_limit: wp.array(dtype=wp.float32),
@@ -172,11 +222,20 @@ def _load_diff_kernels(wp) -> tuple[Any, Any, Any]:  # noqa: ANN001
         coord = coord_index_map[tid]
         dof = dof_index_map[tid]
         velocity = joint_qd[dof]
+        # `-f * tanh(qd * eps)` saturates at `f`, but its slope at `qd = 0` is
+        # `f * eps`, an effective damping the explicit integrator has to carry
+        # on every substep. Spend what the budget leaves after the candidate's
+        # own damping, so the total slope stays inside the stability region for
+        # any candidate. Capping here rather than on the host is what keeps the
+        # tape's friction adjoint consistent with the torque actually applied.
+        slope_headroom = wp.max(friction_slope_budget[tid] - damping[tid], 0.0)
+        capped_eps = slope_headroom / wp.max(friction[tid], min_friction_denom)
+        eps = wp.min(inv_velocity_eps, capped_eps)
         torque = (
             stiffness[tid] * (target_pos_stage[target_step, dof] - joint_q[coord])
             + damping[tid] * (target_vel_stage[target_step, dof] - velocity)
             + feedforward[feedforward_step, tid]
-            - friction[tid] * wp.tanh(velocity * inv_velocity_eps)
+            - friction[tid] * wp.tanh(velocity * eps)
         )
         if clamp_effort != 0:
             torque = wp.clamp(torque, -effort_limit[tid], effort_limit[tid])
@@ -242,6 +301,10 @@ class _DiffRolloutContext:
     stiffness_wp: Any  # (world_count * num_dof,) float32, requires_grad
     damping_wp: Any  # (world_count * num_dof,) float32, requires_grad
     friction_wp: Any  # (world_count * num_dof,) float32, requires_grad
+    #: (world_count * num_dof,) float32 total velocity-proportional slope each
+    #: DOF may carry. Constant on the tape; the kernel divides it by the
+    #: candidate friction so that dependency stays recorded.
+    friction_slope_budget_wp: Any
     effort_limit_wp: Any  # (world_count * num_dof,) float32
     clamp_effort: bool
     default_joint_q: np.ndarray
@@ -260,6 +323,29 @@ class _DiffRolloutContext:
     final_joint_f: Any = None
     sim_steps: int = 0
     held_gain_cap_logged: bool = False
+    #: Lowest articulated inertia per mapped DOF (world-0 order) the identified
+    #: inertials can reach. Kept so a budget resize does not have to re-probe.
+    probed_inertia_np: np.ndarray | None = None
+    #: Inertia the budget is built from: the probe, floored only where the
+    #: substep cap cannot carry the authored damping at the probed value.
+    mapped_inertia_np: np.ndarray | None = None
+    #: Model ``joint_damping`` per mapped DOF (world-0 order). Featherstone
+    #: applies it explicitly alongside the drive, so it spends the same budget.
+    passive_damping_np: np.ndarray | None = None
+    #: Substep count and floored DOFs last reported, so mixed-rate chunks do
+    #: not repeat the same warning on every rollout.
+    budget_sizing_logged: tuple | None = None
+    #: Factor pulling the coupled modes inside the per-DOF scalar bound.
+    #: Independent of the timestep, so it survives a budget resize.
+    mapped_coupling: float = 1.0
+    #: Inertial corners the probe last minimized over. Changing which inertial
+    #: parameters are identified changes the bound, so it re-probes.
+    probed_corners: tuple[_WorstCaseInertials, ...] | None = None
+    #: Allowed total velocity-proportional slope per mapped DOF.
+    friction_slope_budget_np: np.ndarray | None = None
+    #: Command sample period the slope budget was last sized for. The budget
+    #: scales with ``sub_dt``, so a trajectory at a different rate must resize.
+    friction_budget_dt: float = 0.0
     #: Theta-independent controller feedforward; constant on the tape.
     gravity_ff_active: bool = False
     gravity_ff_wp: Any = None
@@ -389,7 +475,7 @@ class NewtonDifferentiableSysIdBridge:
             )
         self._feedforward_mode = mode
         self._capture_enabled = bool(getattr(self.newton_config, "cuda_graph_capture", True))
-        _log_feedforward_status(f"SysId: differentiable bridge feedforward mode = '{mode}'.", warn=True)
+        carb.log_warn(f"SysId: differentiable bridge feedforward mode = '{mode}'.")
         self._trajectory: TrajectoryDataset | None = None
         self._ff_cache: dict[int, FeedforwardCacheEntry] = {}
         self._diagnostics_logged = False
@@ -409,6 +495,9 @@ class NewtonDifferentiableSysIdBridge:
             "solver": NEWTON_SOLVER_FEATHERSTONE_DIFF,
             "actuator_runtime": self.actuator_runtime,
             "featherstone_substeps": self._substeps,
+            "featherstone_substeps_effective": max(
+                (ctx.substeps for ctx in self._ctx_cache.values()), default=self._substeps
+            ),
             "contact_free": True,
             "feedforward": self._feedforward_mode,
             "effort_clamp": self._effort_clamp,
@@ -463,12 +552,15 @@ class NewtonDifferentiableSysIdBridge:
         if requires_backward:
             self._acquire_backward_lease()
         try:
-            ctx = self._get_context(world_count, num_dof, num_steps)
-            entries = self._remap_entries_for_newton(param_entries, ctx)
+            # The friction slope budget scales with sub_dt, so the context has
+            # to be sized against the period this rollout will actually use.
+            dt = self._rollout_dt(num_steps)
+            ctx = self._get_context(world_count, num_dof, num_steps, dt, param_entries)
+            entries = self._remap_entries_for_newton(param_entries, ctx.link_to_body)
             decoded = decode_theta_batch_to_tensors(rows, entries, ctx.baselines)
+            _require_representable_friction(ctx, decoded.kd, decoded.friction, dt)
 
             q0, dq0 = self._initial_state(num_dof)
-            dt = self._rollout_dt(num_steps)
 
             commands_np = commands[:num_steps].detach().cpu().numpy().astype(np.float32)
             self._ensure_gravity_feedforward(ctx, num_steps, commands_np)
@@ -506,12 +598,11 @@ class NewtonDifferentiableSysIdBridge:
             )
             ke_now = decoded.ke[0].detach().cpu().numpy()
             kd_now = decoded.kd[0].detach().cpu().numpy()
-            _log_feedforward_status(
+            carb.log_warn(
                 f"SysId: rollout torque channel: ff_active={ctx.gravity_ff_active} steps={num_steps} "
                 f"|tau|mean={float(torques.detach().abs().mean()):.2f} ff_means={ff_means} "
                 f"ke={[round(float(v), 1) for v in ke_now]} kd={[round(float(v), 1) for v in kd_now]} mapping="
-                + ", ".join(getattr(self, "_joint_mapping_summary", [])),
-                warn=True,
+                + ", ".join(getattr(self, "_joint_mapping_summary", []))
             )
         return SysIdRolloutResult(positions=positions, velocities=velocities, torques=torques)
 
@@ -544,19 +635,163 @@ class NewtonDifferentiableSysIdBridge:
     # Context construction
     # ------------------------------------------------------------------
 
-    def _get_context(self, world_count: int, num_dof: int, num_steps: int) -> _DiffRolloutContext:
+    def _get_context(
+        self,
+        world_count: int,
+        num_dof: int,
+        num_steps: int,
+        dt: float,
+        param_entries: Sequence[SysIdParameterEntry],
+    ) -> _DiffRolloutContext:
+        """Return the rollout context for a world count, building it if needed.
+
+        Contexts are cached per world count and reused across chunks, so the
+        timestep-dependent arrays are re-sized here rather than at construction.
+
+        Args:
+            world_count: Candidates evaluated in parallel.
+            num_dof: Identified joints per world.
+            num_steps: Command samples this rollout will integrate.
+            dt: Command sample period this rollout will use.
+            param_entries: Parameters being identified, which set how low the
+                candidate inertials the budget must stay valid for can go.
+
+        Returns:
+            Context sized for this rollout.
+
+        Raises:
+            SysIdEnvironmentBridgeError: If the trajectory's DOF count does not
+                match the model's actuated joint count.
+        """
         ctx = self._ctx_cache.get(world_count)
         if ctx is None:
-            ctx = self._build_context(world_count, num_dof)
+            ctx = self._build_context(world_count, num_dof, param_entries)
             self._ctx_cache[world_count] = ctx
         if ctx.num_dof != num_dof:
             raise SysIdEnvironmentBridgeError(
                 f"Trajectory has {num_dof} DOFs but the Newton model exposes {ctx.num_dof} actuated joints per world."
             )
+        # The context is cached per world count, but the slope budget scales
+        # with sub_dt and multiple-shooting re-enters with chunks recorded at
+        # different rates. Resize in place so captured graphs keep their
+        # pointer into the same array.
+        self._resize_friction_budget(ctx, dt, param_entries)
         self._ensure_rollout_buffers(ctx, num_steps)
         return ctx
 
-    def _build_context(self, world_count: int, num_dof: int) -> _DiffRolloutContext:
+    def _resize_friction_budget(
+        self,
+        ctx: _DiffRolloutContext,
+        dt: float,
+        param_entries: Sequence[SysIdParameterEntry],
+    ) -> None:
+        """Re-sizes the substep count and friction slope budget for a rollout.
+
+        The substep count is raised, up to
+        :data:`MAX_AUTO_FEATHERSTONE_SUBSTEPS`, until the authored drive damping
+        plus the passive joint damping leave friction
+        :data:`FRICTION_BUDGET_SHARE` of the stability budget at the lowest
+        inertia the identified parameters can reach. Only where the cap still
+        falls short is the inertia floored, see :func:`_integrable_inertia`.
+
+        Args:
+            ctx: Rollout context whose budget is being resized.
+            dt: Command sample period of the rollout about to run.
+            param_entries: Parameters being identified this rollout.
+        """
+        entries = self._remap_entries_for_newton(param_entries, ctx.link_to_body)
+        corners = _candidate_inertial_corners(entries, ctx.bodies_per_world)
+        probed = ctx.probed_corners is not None and _same_corners(ctx.probed_corners, corners)
+        if probed and math.isclose(ctx.friction_budget_dt, dt, rel_tol=1e-9, abs_tol=1e-12):
+            return
+        if not probed:
+            ctx.probed_inertia_np, ctx.mapped_coupling = _articulated_axis_inertia(
+                self._modules.warp,
+                ctx.model,
+                ctx.solver_cls,
+                ctx.dof_map_np[: ctx.num_dof],
+                ctx.coord_map_np[: ctx.num_dof],
+                ctx.default_joint_q,
+                corners,
+                ctx.bodies_per_world,
+            )
+            ctx.probed_corners = corners
+        damping = ctx.baselines.damping.detach().cpu().numpy()[: ctx.num_dof]
+        ctx.substeps = _integrable_substeps(
+            ctx.probed_inertia_np,
+            damping,
+            ctx.passive_damping_np,
+            ctx.mapped_coupling,
+            self._substeps,
+            dt,
+        )
+        ctx.mapped_inertia_np = _integrable_inertia(
+            ctx.probed_inertia_np,
+            damping,
+            ctx.passive_damping_np,
+            ctx.mapped_coupling,
+            ctx.substeps,
+            dt,
+        )
+        sizing = (ctx.substeps, tuple(np.flatnonzero(ctx.mapped_inertia_np > ctx.probed_inertia_np).tolist()))
+        if sizing != ctx.budget_sizing_logged:
+            ctx.budget_sizing_logged = sizing
+            _log_budget_sizing(
+                ctx.substeps,
+                self._substeps,
+                ctx.probed_inertia_np,
+                ctx.mapped_inertia_np,
+                damping,
+                ctx.passive_damping_np,
+                dt,
+                ctx.dof_map_np[: ctx.num_dof],
+            )
+        budget = _friction_slope_budget(
+            ctx.mapped_inertia_np, ctx.mapped_coupling, ctx.substeps, dt, ctx.passive_damping_np
+        )
+        ctx.friction_slope_budget_np = budget
+        ctx.friction_budget_dt = float(dt)
+        ctx.friction_slope_budget_wp.assign(np.tile(budget, ctx.world_count).astype(np.float32))
+        _warn_softened_friction_knee(
+            budget,
+            ctx.mapped_inertia_np,
+            ctx.baselines.friction.detach().cpu().numpy(),
+            ctx.baselines.damping.detach().cpu().numpy(),
+            self._commanded_peak_velocity(),
+            ctx.mapped_coupling,
+            ctx.substeps,
+            dt,
+            ctx.dof_map_np[: ctx.num_dof],
+            ctx.passive_damping_np,
+        )
+
+    def _commanded_peak_velocity(self) -> float:
+        """Return the largest joint speed the configured trajectory reaches.
+
+        Used only to decide how loudly to report a softened friction knee: a
+        knee above this speed means the trajectory never leaves the linear part
+        of the tanh, so Coulomb friction was refit as viscous damping.
+
+        Returns:
+            Peak absolute joint velocity, or 0.0 when it cannot be determined.
+        """
+        trajectory = self._trajectory
+        if trajectory is None:
+            return 0.0
+        velocities = getattr(trajectory, "velocities", None)
+        if velocities is None:
+            return 0.0
+        values = np.asarray(velocities, dtype=np.float64)
+        if values.size == 0 or not np.all(np.isfinite(values)):
+            return 0.0
+        return float(np.abs(values).max())
+
+    def _build_context(
+        self,
+        world_count: int,
+        num_dof: int,
+        param_entries: Sequence[SysIdParameterEntry],
+    ) -> _DiffRolloutContext:
         newton = self._modules.newton
         wp = self._modules.warp
         robot = self._get_robot_builder()
@@ -649,6 +884,30 @@ class NewtonDifferentiableSysIdBridge:
                     effort_limits[idx] = max(max_force, 0.0)
         effort_limits = np.tile(effort_limits, world_count)
 
+        # Smooth friction is stiff in the adjoint even where it saturates in the
+        # forward pass, so the kernel caps its slope against what this model and
+        # sub_dt can integrate. Probe the inertia that cap is measured against
+        # here, once, because it costs a solver step per DOF per sample.
+        corners = _candidate_inertial_corners(
+            self._remap_entries_for_newton(param_entries, link_to_body), bodies_per_world
+        )
+        mapped_inertia, mapped_coupling = _articulated_axis_inertia(
+            wp,
+            model,
+            solver_cls,
+            dof0,
+            coord0,
+            default_joint_q,
+            corners,
+            bodies_per_world,
+        )
+        joint_damping = getattr(model, "joint_damping", None)
+        passive_damping = (
+            np.abs(np.asarray(joint_damping.numpy(), dtype=np.float64)[dof0])
+            if joint_damping is not None
+            else np.zeros(num_dof, dtype=np.float64)
+        )
+
         ctx = _DiffRolloutContext(
             model=model,
             solver_cls=solver_cls,
@@ -681,6 +940,15 @@ class NewtonDifferentiableSysIdBridge:
                 device=model.device,
                 requires_grad=True,
             ),
+            friction_slope_budget_wp=wp.zeros(world_count * num_dof, dtype=wp.float32, device=model.device),
+            probed_inertia_np=mapped_inertia,
+            mapped_inertia_np=mapped_inertia,
+            passive_damping_np=passive_damping,
+            mapped_coupling=mapped_coupling,
+            probed_corners=corners,
+            # Left unset so the first `_resize_friction_budget` call sizes the
+            # substeps and budget instead of duplicating that here.
+            friction_budget_dt=0.0,
             effort_limit_wp=wp.array(effort_limits, dtype=wp.float32, device=model.device),
             clamp_effort=self._effort_clamp == "max_effort",
             default_joint_target=default_joint_target,
@@ -846,17 +1114,21 @@ class NewtonDifferentiableSysIdBridge:
 
     def _remap_entries_for_newton(
         self,
-        param_entries: list[SysIdParameterEntry],
-        ctx: _DiffRolloutContext,
+        param_entries: Sequence[SysIdParameterEntry],
+        link_to_body: dict[int, int],
     ) -> list[SysIdParameterEntry]:
         """Translate SysID link indices into Newton world-0 body indices.
 
         Args:
-            param_entries: Value supplied for ``param_entries``.
-            ctx: Value supplied for ``ctx``.
+            param_entries: Parameters in SysID link order.
+            link_to_body: SysID link index to Newton world-0 body index.
 
         Returns:
-            Result produced by the operation.
+            Entries whose link parameters index Newton bodies.
+
+        Raises:
+            SysIdEnvironmentBridgeError: If a link parameter names a link with
+                no matching Newton body.
         """
         link_types = (
             SysIdParameterType.LINK_MASS,
@@ -870,7 +1142,7 @@ class NewtonDifferentiableSysIdBridge:
             if entry.param_type not in link_types or entry.link_index == GLOBAL_LINK_INDEX:
                 remapped.append(entry)
                 continue
-            body = ctx.link_to_body.get(entry.link_index)
+            body = link_to_body.get(entry.link_index)
             if body is None:
                 path = (
                     self._link_paths[entry.link_index]
@@ -902,11 +1174,10 @@ class NewtonDifferentiableSysIdBridge:
         try:
             self._grow_rollout_buffers(ctx, num_steps)
         except Exception as exc:  # noqa: BLE001 - allocation failure mode is driver-specific
-            _log_capture_status(
+            carb.log_warn(
                 f"SysId: rollout buffer allocation failed for steps={num_steps} x substeps={ctx.substeps} "
                 f"(worlds={ctx.world_count}): {exc}. Releasing captured graphs and cached rollout buffers, "
-                "then retrying once.",
-                warn=True,
+                "then retrying once."
             )
             self._reclaim_rollout_memory(keep_ctx=ctx)
             try:
@@ -1113,10 +1384,9 @@ class NewtonDifferentiableSysIdBridge:
                 f"Could not compute the requested '{self._feedforward_mode}' feedforward for the "
                 f"differentiable Featherstone rollout: {exc}"
             ) from exc
-        _log_feedforward_status(
+        carb.log_warn(
             f"SysId: differentiable bridge '{self._feedforward_mode}' feedforward active over "
-            f"{num_steps} steps (|ff| max {float(np.abs(feedforward).max()):.2f} Nm).",
-            warn=True,
+            f"{num_steps} steps (|ff| max {float(np.abs(feedforward).max()):.2f} Nm)."
         )
         return FeedforwardCacheEntry(
             key=key,
@@ -1297,14 +1567,808 @@ def _compute_feedforward(
     )
 
 
-def _log_feedforward_status(message: str, warn: bool = False) -> None:
-    """Surface feedforward activation/fallback through the package logger.
+def _inertia_probe_poses(
+    model: Any,  # noqa: ANN401
+    dof0: np.ndarray,
+    coord0: np.ndarray,
+    default_joint_q: np.ndarray,
+) -> np.ndarray:
+    """Return the configurations the articulated-inertia probe evaluates.
+
+    The rest pose plus deterministic interior samples of each joint's limit
+    range. Sampling all joints together rather than one at a time keeps the
+    probe linear in DOF count; a serial chain's distal inertia is dominated by
+    how folded the chain is, which joint-wide samples do capture.
 
     Args:
-        message: Value supplied for ``message``.
-        warn: Value supplied for ``warn``.
+        model: Finalized Newton model supplying joint limits.
+        dof0: World-0 DOF index per mapped DOF. Joint limits are DOF-indexed.
+        coord0: World-0 coordinate index per mapped DOF.
+        default_joint_q: Full rest coordinate vector.
+
+    Returns:
+        ``(num_samples, num_mapped)`` array of joint coordinates.
     """
-    (_LOGGER.warning if warn else _LOGGER.info)(message)
+    rest = np.asarray(default_joint_q, dtype=np.float64)[coord0]
+    lower = _limit_array(model, "joint_limit_lower", dof0, rest - _INERTIA_PROBE_FALLBACK_RANGE)
+    upper = _limit_array(model, "joint_limit_upper", dof0, rest + _INERTIA_PROBE_FALLBACK_RANGE)
+    span = np.where(upper > lower, upper - lower, 0.0)
+    centre = np.where(upper > lower, 0.5 * (lower + upper), rest)
+
+    poses = [rest]
+    # Fixed fractions of the range rather than random draws, so the bound is
+    # reproducible across processes and runs.
+    for fraction in np.linspace(-0.5, 0.5, num=_INERTIA_PROBE_SAMPLES):
+        poses.append(centre + fraction * span)
+    return np.asarray(poses, dtype=np.float64)
+
+
+def _limit_array(
+    model: Any,  # noqa: ANN401
+    name: str,
+    dof0: np.ndarray,
+    fallback: np.ndarray,
+) -> np.ndarray:
+    """Read a per-DOF joint limit, substituting a range where it is unbounded.
+
+    Args:
+        model: Finalized Newton model.
+        name: Model attribute holding the DOF-indexed limit array.
+        dof0: World-0 DOF index per mapped DOF.
+        fallback: Values to use where the limit is missing or not finite.
+
+    Returns:
+        Finite limit value per mapped DOF.
+    """
+    source = getattr(model, name, None)
+    if source is None:
+        return np.asarray(fallback, dtype=np.float64)
+    values = np.asarray(source.numpy(), dtype=np.float64)
+    fallback = np.asarray(fallback, dtype=np.float64)
+    # Fall back per DOF: one index past the end of a short array must not throw
+    # away the real limits of every other joint.
+    in_range = dof0 < values.shape[0]
+    picked = np.where(in_range, values[np.minimum(dof0, max(values.shape[0] - 1, 0))], np.inf)
+    usable = in_range & np.isfinite(picked) & (np.abs(picked) < 1.0e6)
+    return np.where(usable, picked, fallback)
+
+
+def _articulated_axis_inertia(
+    wp: Any,  # noqa: ANN401
+    model: Any,  # noqa: ANN401
+    solver_cls: Any,  # noqa: ANN401
+    dof0: np.ndarray,
+    coord0: np.ndarray,
+    default_joint_q: np.ndarray,
+    corners: tuple[_WorstCaseInertials, ...],
+    bodies_per_world: int,
+) -> tuple[np.ndarray, float]:
+    """Return the effective inertia each mapped DOF feels for its own torque.
+
+    Stability of an explicit integrator at joint ``i`` is governed by the
+    *articulated* inertia ``1 / (H^-1)[i, i]``, not by the mass-matrix diagonal
+    ``H[i, i]``. Those differ: coupling to the rest of the chain reduces what a
+    joint feels, and ``1/(H^-1)[i, i] <= H[i, i]`` always. Summing link
+    inertials onto the joint axis would compute the latter and overestimate the
+    former -- unsafe in exactly the direction that matters, and worst for the
+    distal joints of a serial arm.
+
+    Measured rather than derived: a unit torque is applied at one DOF and the
+    resulting acceleration differenced against a zero-torque step of the same
+    state. Differencing cancels gravity, Coriolis, drive, and limit forces, so
+    what remains is ``qdd = H^-1 tau``. The minimum over the sampled
+    configurations is returned, because ``H`` depends on ``q`` and the smallest
+    inertia gives the strictest bound. Those poses are drawn deterministically
+    from the joint limits rather than from the loaded trajectory, so the bound
+    is a property of the robot and cannot change between chunks of one solve.
+
+    Args:
+        wp: Imported ``warp`` module.
+        model: Finalized Newton model.
+        solver_cls: Featherstone solver class used for the probe.
+        dof0: World-0 DOF index per mapped DOF.
+        coord0: World-0 coordinate index per mapped DOF.
+        default_joint_q: Rest coordinates the probe starts from. Taken from the
+            context rather than the live model, whose coordinates hold
+            whatever the previous rollout ended on.
+        corners: Inertial corners to minimize over, so the bound stays valid
+            for candidate mass, centre-of-mass, and inertia values.
+        bodies_per_world: Body count of a single replicated world.
+
+    Returns:
+        Effective inertia per mapped DOF over the sampled configurations, and
+        the derating that keeps the coupled modes inside the same bound.
+    """
+    num_mapped = int(dof0.shape[0])
+    # The probe writes the model's inertials to reach each candidate corner and
+    # steps throwaway states through it, so everything it touches has to be put
+    # back before the rollout context reads its defaults.
+    restore = {
+        name: getattr(model, name).numpy().copy()
+        for name in ("joint_q", "joint_qd", "body_q", "body_qd", "body_mass", "body_com", "body_inertia")
+        if getattr(model, name, None) is not None
+    }
+    default_q = np.asarray(default_joint_q, dtype=np.float32).copy()
+    tau = np.zeros(int(model.joint_dof_count), dtype=np.float32)
+    # Small enough that the measured qd/dt is the instantaneous acceleration,
+    # large enough to stay well clear of float32 cancellation.
+    probe_dt = 1.0e-5
+
+    def accelerations(
+        solver: Any, states: tuple[Any, Any, Any], torque: np.ndarray, joint_q: np.ndarray
+    ) -> np.ndarray:  # noqa: ANN401
+        """Return the joint accelerations one torque produces at one pose.
+
+        Args:
+            solver: Solver built against the inertials being probed.
+            states: Input state, output state, and control to step with.
+            torque: Applied joint torque, indexed by model DOF.
+            joint_q: Joint coordinates to evaluate at.
+
+        Returns:
+            Acceleration per model DOF, from rest.
+        """
+        state_in, state_out, control = states
+        state_in.joint_q.assign(joint_q)
+        state_in.joint_qd.zero_()
+        state_out.joint_qd.zero_()
+        control.joint_f.assign(torque)
+        solver.step(state_in, state_out, control=control, contacts=None, dt=probe_dt)
+        return np.asarray(state_out.joint_qd.numpy(), dtype=np.float64) / probe_dt
+
+    inertia = np.full(num_mapped, np.inf, dtype=np.float64)
+    coupling = 1.0
+    try:
+        for corner in corners:
+            # Every corner starts from the baseline rather than the previous
+            # corner, so the scalings never compound.
+            for name in ("body_mass", "body_com", "body_inertia"):
+                getattr(model, name).assign(restore[name])
+            if not corner.identity():
+                _apply_worst_case_inertials(model, corner, bodies_per_world)
+            # The solver reads the inertials when it is built, so it has to be
+            # rebuilt per corner; mutating the model under a live solver is
+            # silently ignored. Built with the rollout's own settings so the
+            # measured inertia describes the solver that has to integrate it.
+            solver = solver_cls(model, angular_damping=0.0, update_mass_matrix_interval=1)
+            states = (model.state(), model.state(), model.control())
+            for sample in _inertia_probe_poses(model, dof0, coord0, default_q):
+                joint_q = default_q.copy()
+                joint_q[coord0] = np.asarray(sample, dtype=np.float32)
+                baseline = accelerations(solver, states, np.zeros_like(tau), joint_q)
+                # Column j is the mapped part of `H^-1 e_j`, so the assembled
+                # matrix is the mapped block of the inverse mass matrix. Torque
+                # only ever enters on mapped DOFs, which is what makes that
+                # block the object governing the coupled modes.
+                inverse_mass = np.zeros((num_mapped, num_mapped), dtype=np.float64)
+                for index in range(num_mapped):
+                    probe = tau.copy()
+                    probe[int(dof0[index])] = 1.0
+                    response = accelerations(solver, states, probe, joint_q)
+                    inverse_mass[:, index] = response[dof0] - baseline[dof0]
+                # The diagonal is (H^-1)[i, i]; non-positive means the probe
+                # told us nothing here, though another sample may still.
+                diagonal = np.diag(inverse_mass).copy()
+                if not np.all(diagonal > 0.0):
+                    continue
+                inertia = np.minimum(inertia, 1.0 / diagonal)
+                coupling = min(coupling, _coupling_derating(inverse_mass, diagonal))
+    finally:
+        for name, values in restore.items():
+            getattr(model, name).assign(values)
+    if not np.all(np.isfinite(inertia)):
+        raise SysIdEnvironmentBridgeError(
+            "Could not measure the effective inertia of identified joints "
+            f"{np.flatnonzero(~np.isfinite(inertia)).tolist()}; the Featherstone model may be degenerate "
+            "(zero mass or inertia on a driven link). Author link inertials or physxJoint:armature, "
+            f"or {_FALLBACK_HINT}."
+        )
+    return inertia, coupling
+
+
+@dataclass(frozen=True)
+class _WorstCaseInertials:
+    """Lowest inertials a candidate can reach, per body of world 0.
+
+    The slope budget is measured once, but link mass, centre of mass, and
+    inertia are themselves identifiable. A candidate lighter than the baseline
+    has less articulated inertia than the budget was sized against, so the
+    stability bound it was chosen to satisfy no longer holds. Probing these
+    values instead of the baselines keeps the budget valid across the whole
+    search space rather than only at its starting point.
+
+    Attributes:
+        mass_scale: Multiplier on each body's baseline mass.
+        inertia_scale: Multiplier on each body's baseline inertia tensor.
+        com_offset: ``(bodies, 3)`` Cartesian metres added to each baseline
+            centre of mass, matching how ``LINK_COM_OFFSET_*`` is decoded.
+    """
+
+    mass_scale: np.ndarray
+    inertia_scale: np.ndarray
+    com_offset: np.ndarray
+
+    def identity(self) -> bool:
+        """Return whether this corner leaves the baseline inertials untouched.
+
+        Returns:
+            True when nothing would be changed.
+        """
+        return (
+            bool(np.all(self.mass_scale == 1.0))
+            and bool(np.all(self.inertia_scale == 1.0))
+            and bool(np.all(self.com_offset == 0.0))
+        )
+
+
+def _candidate_inertial_corners(
+    param_entries: Sequence[SysIdParameterEntry],
+    bodies_per_world: int,
+) -> tuple[_WorstCaseInertials, ...]:
+    """Return the inertial corners the slope budget must stay valid at.
+
+    ``LINK_MASS`` and ``LINK_INERTIA_LOG_CHOLESKY`` scale the mass matrix
+    monotonically, so for those only the lower bound has to be probed.
+    ``LINK_COM_OFFSET_*`` does not: a joint's articulated inertia is a Schur
+    complement of ``H``, which is not monotone in the lever arm, and shortening
+    an offset was measured to *raise* the value on a two-link chain. The
+    optimizer adds each axis's offset to the baseline centre of mass, so every
+    identified axis is enumerated at both of its signed bounds, in every sign
+    combination across axes, and the baseline is always included because an
+    offset of zero is inside the search space. All bodies sharing an axis move
+    together; per-body sign mixes are not enumerated.
+
+    The minimum of a non-monotone function over a box need not sit at a corner,
+    so this is corner sampling rather than a proof. It is strictly tighter than
+    probing the baseline alone, which is reachable and so can never be skipped.
+
+    ``LINK_INERTIA_LOG_CHOLESKY`` has no informative lower bound: it replaces
+    the Cholesky factor outright, and its default range reaches a log-diagonal
+    of -3 with off-diagonals free, admitting inertia tensors arbitrarily close
+    to singular. The tensor is driven to zero, leaving the joint on its
+    armature; a joint with no armature then fails the probe's finiteness check,
+    which is the honest outcome.
+
+    Args:
+        param_entries: Parameters being identified this run, with link
+            indices already translated to Newton world-0 bodies.
+        bodies_per_world: Body count of a single replicated world.
+
+    Returns:
+        Inertial corners to probe, always starting with the baseline.
+    """
+    ones = np.ones(bodies_per_world, dtype=np.float64)
+    no_offset = np.zeros((bodies_per_world, 3), dtype=np.float64)
+    baseline = _WorstCaseInertials(ones.copy(), ones.copy(), no_offset.copy())
+
+    def bodies_of(entry: SysIdParameterEntry) -> slice | list[int]:
+        if entry.link_index == GLOBAL_LINK_INDEX:
+            return slice(None)
+        return [entry.link_index] if 0 <= entry.link_index < bodies_per_world else []
+
+    mass_floor = ones.copy()
+    inertia_floor = ones.copy()
+    com_low = no_offset.copy()
+    com_high = no_offset.copy()
+    com_axes: set[int] = set()
+    for entry in param_entries:
+        target = bodies_of(entry)
+        if entry.param_type == SysIdParameterType.LINK_MASS:
+            minimum, _maximum = default_bounds_for_type(entry.param_type)
+            mass_floor[target] = np.minimum(mass_floor[target], max(minimum, 0.0))
+        elif entry.param_type in _COM_OFFSET_TYPES:
+            axis = _COM_OFFSET_TYPES[entry.param_type]
+            minimum, maximum = default_bounds_for_type(entry.param_type)
+            com_low[target, axis] = np.minimum(com_low[target, axis], minimum)
+            com_high[target, axis] = np.maximum(com_high[target, axis], maximum)
+            if not isinstance(target, list) or target:
+                com_axes.add(axis)
+        elif entry.param_type == SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY:
+            inertia_floor[target] = 0.0
+
+    mass_options = [ones] if np.all(mass_floor >= 1.0) else [ones, mass_floor]
+    inertia_options = [ones] if np.all(inertia_floor >= 1.0) else [ones, inertia_floor]
+    # Both signs per axis: lengthening an offset can lower the Schur complement
+    # even though it raises the joint's own diagonal term.
+    com_options = [no_offset]
+    axes = sorted(com_axes)
+    for sides in itertools.product((com_low, com_high), repeat=len(axes)):
+        offset = no_offset.copy()
+        for axis, side in zip(axes, sides):
+            offset[:, axis] = side[:, axis]
+        com_options.append(offset)
+
+    corners = [
+        _WorstCaseInertials(mass.copy(), inertia.copy(), com.copy())
+        for mass in mass_options
+        for inertia in inertia_options
+        for com in com_options
+    ]
+    # Keep the baseline first so the common friction-only run probes exactly
+    # once and the ordering of the reported bound is stable.
+    return (baseline, *(corner for corner in corners if not _same_worst_case(corner, baseline)))
+
+
+def _same_worst_case(left: _WorstCaseInertials, right: _WorstCaseInertials) -> bool:
+    """Return whether two worst-case inertial sets would probe identically.
+
+    Args:
+        left: Previously probed worst case.
+        right: Worst case the current rollout requires.
+
+    Returns:
+        True when every scaling matches.
+    """
+    return (
+        np.array_equal(left.mass_scale, right.mass_scale)
+        and np.array_equal(left.inertia_scale, right.inertia_scale)
+        and np.array_equal(left.com_offset, right.com_offset)
+    )
+
+
+def _same_corners(
+    left: tuple[_WorstCaseInertials, ...],
+    right: tuple[_WorstCaseInertials, ...],
+) -> bool:
+    """Return whether two corner sets would probe identically.
+
+    Args:
+        left: Corners previously probed.
+        right: Corners the current rollout requires.
+
+    Returns:
+        True when both sets hold the same corners in the same order.
+    """
+    return len(left) == len(right) and all(_same_worst_case(a, b) for a, b in zip(left, right))
+
+
+def _apply_worst_case_inertials(
+    model: Any,  # noqa: ANN401
+    worst_case: _WorstCaseInertials,
+    bodies_per_world: int,
+) -> None:
+    """Scale the model's inertials to the worst case, across every world.
+
+    Args:
+        model: Finalized Newton model, modified in place.
+        worst_case: Scalings to apply.
+        bodies_per_world: Body count of a single replicated world.
+    """
+    world_count = max(int(model.body_mass.shape[0]) // max(bodies_per_world, 1), 1)
+    mass = np.asarray(model.body_mass.numpy(), dtype=np.float64)
+    com = np.asarray(model.body_com.numpy(), dtype=np.float64).reshape(-1, 3)
+    inertia = np.asarray(model.body_inertia.numpy(), dtype=np.float64).reshape(-1, 3, 3)
+
+    mass_scale = np.tile(worst_case.mass_scale, world_count)
+    inertia_scale = np.tile(worst_case.inertia_scale, world_count)
+    offset = np.tile(np.asarray(worst_case.com_offset, dtype=np.float64).reshape(-1, 3), (world_count, 1))
+
+    model.body_mass.assign((mass * mass_scale).astype(np.float32))
+    model.body_inertia.assign((inertia * inertia_scale[:, None, None]).astype(np.float32))
+    model.body_com.assign(np.ascontiguousarray(com + offset, dtype=np.float32))
+
+
+def _require_representable_friction(
+    ctx: _DiffRolloutContext,
+    damping: torch.Tensor,
+    friction: torch.Tensor,
+    dt: float,
+) -> None:
+    """Reject candidates whose drive damping leaves no room for friction.
+
+    The kernel spends the slope budget on the candidate's drive damping first
+    and gives friction whatever is left. When damping alone reaches the budget
+    there is nothing left, so ``eps`` floors at zero, ``tanh(0)`` makes the
+    friction torque identically zero, and the reported friction gradient is
+    exactly zero. The optimizer then sees a parameter with no influence on the
+    loss, leaves it at its starting value, and the run reports it as
+    identified. That is a silently wrong answer rather than a degraded one, so
+    it has to fail instead of warn -- a joint this far outside the integrator's
+    stability region cannot represent Coulomb friction at this ``sub_dt`` no
+    matter what the optimizer proposes.
+
+    Args:
+        ctx: Rollout context holding the slope budget and substep count.
+        damping: ``(rows, num_dof)`` candidate drive damping.
+        friction: ``(rows, num_dof)`` candidate friction magnitude.
+        dt: Command sample period.
+
+    Raises:
+        SysIdEnvironmentBridgeError: If any candidate would have its friction
+            deleted rather than merely softened.
+    """
+    budget = ctx.friction_slope_budget_np
+    if budget is None or not ctx.num_dof:
+        return
+    allowed = torch.as_tensor(budget, dtype=damping.dtype, device=damping.device)
+    # Only a joint that is actually meant to carry friction is affected; where
+    # friction is zero the floored scale changes nothing.
+    starved = (damping.abs() >= allowed) & (friction.abs() > 0.0)
+    if not bool(starved.any()):
+        return
+
+    per_dof = starved.any(dim=0)
+    dofs = [int(ctx.dof_map_np[index]) for index in torch.nonzero(per_dof).flatten().tolist()]
+    worst = int(torch.nonzero(per_dof).flatten()[0].item())
+    inertia = ctx.mapped_inertia_np
+    passive = float(ctx.passive_damping_np[worst]) if ctx.passive_damping_np is not None else 0.0
+    substeps = ctx.substeps
+    needed = _substeps_for_full_friction(
+        float(budget[worst]),
+        float(friction[:, worst].abs().max()),
+        float(damping[:, worst].abs().max()),
+        float(inertia[worst]) if inertia is not None else 0.0,
+        ctx.mapped_coupling,
+        dt,
+        passive,
+    )
+    raise SysIdEnvironmentBridgeError(
+        f"Differentiable Newton cannot represent joint friction on identified DOF(s) {dofs}: the "
+        f"candidate drive damping ({float(damping[:, worst].abs().max()):g}) already reaches the whole "
+        f"velocity-slope budget ({float(budget[worst]):g}, after passive joint damping {passive:g}) that "
+        f"this model and sub_dt ({dt / max(1, substeps) * 1000:.3g} ms, featherstone_substeps={substeps}) "
+        "can integrate, leaving none for friction. Its friction torque and gradient would both be zero, so the "
+        f"parameter would be reported as identified without ever affecting the loss. Raise "
+        f"featherstone_substeps to at least {needed}, author physxJoint:armature (reflected rotor "
+        f"inertia) on the robot, lower the damping upper bound, or {_FALLBACK_HINT}."
+    )
+
+
+def _substeps_for_full_friction(
+    budget: float,
+    friction: float,
+    damping: float,
+    inertia: float,
+    coupling: float,
+    dt: float,
+    passive: float = 0.0,
+) -> int:
+    """Return the substeps that would carry the requested friction scale.
+
+    Inverts the whole chain the budget is built from -- articulated inertia,
+    coupled-mode derating, and ``sub_dt`` -- rather than rescaling the current
+    ``eps``, so the answer accounts for the derating the kernel actually
+    applies. Omitting ``coupling`` here understates the count by ``1/coupling``,
+    which on a long chain is a factor of three or more.
+
+    Args:
+        budget: Current slope budget for the joint.
+        friction: Friction magnitude to make room for.
+        damping: Drive damping competing for the same budget.
+        inertia: Articulated inertia of the joint.
+        coupling: Coupled-mode derating the budget carries.
+        dt: Command sample period.
+        passive: Model ``joint_damping`` spending the same budget.
+
+    Returns:
+        Substep count, at least 1.
+    """
+    required_slope = FRICTION_INV_VELOCITY_EPS * abs(friction) + abs(damping) + abs(passive)
+    carrying_capacity = FRICTION_SLOPE_STABILITY_RATIO * max(coupling, 1e-12) * abs(inertia)
+    if carrying_capacity <= 0.0:
+        return 0
+    return max(int(math.ceil(dt * required_slope / carrying_capacity)), 1)
+
+
+def _coupling_derating(inverse_mass: np.ndarray, diagonal: np.ndarray) -> float:
+    """Return the factor that pulls the coupled modes inside the scalar bound.
+
+    Budgeting each DOF against its own articulated inertia bounds only the
+    diagonal of ``H^-1 D``, which is not what the integrator propagates: the
+    rollout evolves the coupled modes, whose growth is set by that matrix's
+    eigenvalues. Normalizing by the articulated inertia makes every diagonal
+    entry of the symmetrized matrix exactly 1, so its trace equals the DOF
+    count and its largest eigenvalue can approach that. Three or more
+    identified joints at saturating friction therefore breach the stability
+    limit of 2 while every joint is still inside its own scalar budget.
+
+    ``lambda_max(H^-1 D)`` is monotone in ``D`` (``H^-1`` is positive definite,
+    so ``A^(1/2) (D' - D) A^(1/2)`` stays positive semi-definite), which makes
+    the all-DOF-saturated corner the worst case and this one derating
+    sufficient for every candidate under it. The factor is independent of
+    ``sub_dt``, because scaling ``D`` scales the eigenvalues in proportion.
+
+    Two limits are worth being explicit about. Only the mapped block is
+    derated, while held joints add their own damping to the same ``D`` and
+    couple through the same ``H``; :func:`_cap_held_joint_gains` bounds that
+    contribution, but against armature rather than articulated inertia, and
+    only for held joints that have armature. And the articulated inertia this
+    normalizes by is a minimum over a sampled pose set, so a pose between
+    samples can leave the derating slightly optimistic. Treat the result as a
+    close bound rather than a proof, with :func:`_warn_nonfinite_rollout` as
+    the backstop that names the binding joint when it is not enough.
+
+    Args:
+        inverse_mass: Mapped block of the inverse joint-space mass matrix.
+        diagonal: Its diagonal, the reciprocal of the articulated inertia.
+
+    Returns:
+        Factor in ``(0, 1]`` to multiply the per-DOF slope budget by.
+    """
+    # The probe measures H^-1 column by column, so round-off leaves it slightly
+    # asymmetric while `eigvalsh` assumes symmetry.
+    symmetric = 0.5 * (inverse_mass + inverse_mass.T)
+    scale = np.sqrt(1.0 / diagonal)
+    worst = float(np.linalg.eigvalsh(symmetric * np.outer(scale, scale)).max())
+    # Unit diagonal puts the largest eigenvalue at or above 1; at exactly 1 the
+    # modes are uncoupled and the scalar budget already holds.
+    return 1.0 / worst if worst > 1.0 else 1.0
+
+
+def _damping_substeps_required(
+    inertia: np.ndarray,
+    damping: np.ndarray,
+    passive: np.ndarray | None,
+    coupling: float,
+    dt: float,
+) -> np.ndarray:
+    """Return, per mapped DOF, the substeps that leave friction its budget share.
+
+    Args:
+        inertia: Lowest reachable articulated inertia per mapped DOF.
+        damping: Authored drive damping per mapped DOF.
+        passive: Model ``joint_damping`` per mapped DOF, if any.
+        coupling: Coupled-mode derating the budget carries.
+        dt: Command sample period.
+
+    Returns:
+        Fractional substep count per mapped DOF; ``inf`` where the inertia is
+        not positive.
+    """
+    slope = np.abs(np.asarray(damping, dtype=np.float64))
+    if passive is not None:
+        slope = slope + np.abs(np.asarray(passive, dtype=np.float64))
+    share = min(max(FRICTION_BUDGET_SHARE, 0.0), 1.0 - 1e-6)
+    capacity = (
+        FRICTION_SLOPE_STABILITY_RATIO * max(coupling, 1e-12) * (1.0 - share) * np.asarray(inertia, dtype=np.float64)
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(capacity > 0.0, dt * slope / np.maximum(capacity, 1e-300), np.inf)
+
+
+def _integrable_substeps(
+    inertia: np.ndarray,
+    damping: np.ndarray,
+    passive: np.ndarray | None,
+    coupling: float,
+    configured: int,
+    dt: float,
+) -> int:
+    """Return the substep count a rollout at ``dt`` should integrate with.
+
+    The probe reports the smallest articulated inertia the identified mass,
+    COM, and inertia bounds can reach, and those bounds routinely reach
+    inertias at which the authored drive damping alone exceeds the explicit
+    integrator's stability region at the configured ``sub_dt``. Raising the
+    inertia the budget is sized against would admit a total slope past that
+    region, so the substep count is raised first, until the drive and passive
+    damping leave friction :data:`FRICTION_BUDGET_SHARE` of the budget at that
+    inertia. It never drops below the configured count and is capped at
+    :data:`MAX_AUTO_FEATHERSTONE_SUBSTEPS` unless the configured count is
+    already higher; :func:`_integrable_inertia` covers what the cap cannot.
+
+    Args:
+        inertia: Lowest reachable articulated inertia per mapped DOF.
+        damping: Authored drive damping per mapped DOF.
+        passive: Model ``joint_damping`` per mapped DOF, if any.
+        coupling: Coupled-mode derating the budget carries.
+        configured: ``featherstone_substeps`` from the run spec.
+        dt: Command sample period.
+
+    Returns:
+        Substep count, at least ``configured``.
+    """
+    configured = max(1, int(configured))
+    required = _damping_substeps_required(inertia, damping, passive, coupling, dt)
+    if required.size == 0:
+        return configured
+    worst = float(np.max(required))
+    needed = int(math.ceil(worst)) if math.isfinite(worst) else MAX_AUTO_FEATHERSTONE_SUBSTEPS
+    return max(configured, min(needed, MAX_AUTO_FEATHERSTONE_SUBSTEPS))
+
+
+def _integrable_inertia(
+    probed: np.ndarray,
+    damping: np.ndarray,
+    passive: np.ndarray | None,
+    coupling: float,
+    substeps: int,
+    dt: float,
+) -> np.ndarray:
+    """Floor the probed inertia where the substep count still cannot carry it.
+
+    ``LINK_INERTIA_LOG_CHOLESKY`` admits near-singular inertia tensors, so the
+    probe can report inertias at which no affordable substep count integrates
+    even the authored damping. Sizing the budget there spends it all on
+    damping and makes friction unrepresentable for every candidate, including
+    the baseline. Past :func:`_integrable_substeps`, the floor is therefore the
+    inertia at which the drive and passive damping still leave friction
+    :data:`FRICTION_BUDGET_SHARE` of the budget at this ``sub_dt``.
+
+    This is not a stability guarantee below the floor: a candidate that really
+    reaches a lower inertia can still exceed the limit once friction is added,
+    and is rejected only when its rollout or adjoint turns non-finite. Where the
+    substep count suffices the floor is at or below the probe and changes
+    nothing.
+
+    Args:
+        probed: Lowest reachable articulated inertia per mapped DOF.
+        damping: Authored drive damping per mapped DOF.
+        passive: Model ``joint_damping`` per mapped DOF, if any.
+        coupling: Coupled-mode derating the budget carries.
+        substeps: Substep count the rollout will use.
+        dt: Command sample period.
+
+    Returns:
+        Inertia per mapped DOF to build the budget from.
+    """
+    slope = np.abs(np.asarray(damping, dtype=np.float64))
+    if passive is not None:
+        slope = slope + np.abs(np.asarray(passive, dtype=np.float64))
+    share = min(max(FRICTION_BUDGET_SHARE, 0.0), 1.0 - 1e-6)
+    sub_dt = max(dt / max(1, substeps), 1e-9)
+    floor = slope * sub_dt / (FRICTION_SLOPE_STABILITY_RATIO * max(coupling, 1e-12) * (1.0 - share))
+    return np.maximum(np.asarray(probed, dtype=np.float64), floor)
+
+
+def _log_budget_sizing(
+    substeps: int,
+    configured: int,
+    probed: np.ndarray,
+    mapped: np.ndarray,
+    damping: np.ndarray,
+    passive: np.ndarray | None,
+    dt: float,
+    dof_labels: np.ndarray,
+) -> None:
+    """Report a raised substep count and any inertia the cap forced a floor on.
+
+    Args:
+        substeps: Substep count the rollout will use.
+        configured: ``featherstone_substeps`` from the run spec.
+        probed: Lowest reachable articulated inertia per mapped DOF.
+        mapped: Inertia the budget is built from.
+        damping: Authored drive damping per mapped DOF.
+        passive: Model ``joint_damping`` per mapped DOF, if any.
+        dt: Command sample period.
+        dof_labels: Model DOF index per mapped DOF, for diagnostics.
+    """
+    floored = mapped > probed
+    if substeps <= configured and not np.any(floored):
+        return
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lift = np.where(probed > 0.0, mapped / probed, np.inf)
+    worst = int(np.argmax(lift)) if np.any(floored) else int(np.argmin(probed))
+    passive_worst = float(passive[worst]) if passive is not None else 0.0
+    message = (
+        f"SysId differentiable bridge integrates with featherstone_substeps={substeps} "
+        f"(configured {configured}, sub_dt={dt / substeps * 1000:.3g} ms) so drive and passive joint damping "
+        f"leave friction {FRICTION_BUDGET_SHARE:g} of the stability budget. Binding is dof "
+        f"{int(dof_labels[worst])}: drive damping {abs(float(damping[worst])):g} plus passive {passive_worst:g} "
+        f"against the lowest effective inertia the identified parameters reach, {float(probed[worst]):g} kg m^2"
+    )
+    if substeps > configured:
+        message += ". Rollouts cost proportionally more time and taped memory"
+    if np.any(floored):
+        message += (
+            f". The {max(substeps, MAX_AUTO_FEATHERSTONE_SUBSTEPS)}-substep limit cannot carry that, so the "
+            f"budget on {int(np.count_nonzero(floored))} DOF(s) is sized at {float(mapped[worst]):g} kg m^2 instead: "
+            "a candidate whose inertia really falls below it may diverge and fail the finite-gradient check. "
+            "Set featherstone_substeps higher, or author physxJoint:armature (reflected rotor inertia) on the robot"
+        )
+    carb.log_warn(message + ".")
+
+
+def _friction_slope_budget(
+    inertia: np.ndarray,
+    coupling: float,
+    substeps: int,
+    dt: float,
+    passive: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return the velocity-proportional slope the kernel may spend per mapped DOF.
+
+    Symplectic Euler on a damping-dominated joint compounds
+    ``|1 - slope * sub_dt / inertia|`` once per substep, so the rollout is
+    stable while that ratio stays under 2. The total slope allowed by
+    :data:`FRICTION_SLOPE_STABILITY_RATIO` is shared by the model's passive
+    ``joint_damping``, which Featherstone applies outside the kernel, and the
+    drive damping plus friction linearization the kernel applies. This returns
+    what remains after the passive share.
+
+    The budget deliberately depends only on the model and the timestep, never
+    on the candidate. The kernel divides it by the candidate friction to get a
+    per-step ``eps``, which keeps that dependency on the tape and the reported
+    friction gradient consistent with the torque actually applied.
+
+    Args:
+        inertia: Effective inertia per mapped DOF.
+        coupling: Derating that keeps the coupled modes inside the same bound.
+        substeps: Symplectic-Euler substeps per command sample.
+        dt: Command sample period.
+        passive: Model ``joint_damping`` per mapped DOF, if any.
+
+    Returns:
+        Allowed kernel velocity-proportional slope per mapped DOF.
+    """
+    sub_dt = max(dt / max(1, substeps), 1e-9)
+    total = FRICTION_SLOPE_STABILITY_RATIO * coupling * np.asarray(inertia, dtype=np.float64) / sub_dt
+    if passive is None:
+        return total
+    return np.maximum(total - np.abs(np.asarray(passive, dtype=np.float64)), 0.0)
+
+
+def _warn_softened_friction_knee(
+    budget: np.ndarray,
+    inertia: np.ndarray,
+    baseline_friction: np.ndarray,
+    baseline_damping: np.ndarray,
+    peak_velocity: float,
+    coupling: float,
+    substeps: int,
+    dt: float,
+    dof_labels: np.ndarray,
+    passive: np.ndarray | None = None,
+) -> None:
+    """Warn when the stability budget softens the Coulomb knee at the baseline.
+
+    Reported against the baseline candidate, which is the model the user
+    authored; the optimizer exploring upward softens the knee further, and the
+    kernel keeps that stable on its own.
+
+    Args:
+        budget: Allowed total slope per mapped DOF.
+        inertia: Effective inertia per mapped DOF.
+        baseline_friction: Baseline friction torque magnitude per mapped DOF.
+        baseline_damping: Baseline drive damping per mapped DOF.
+        peak_velocity: Largest joint speed the trajectory commands.
+        coupling: Coupled-mode derating the budget carries.
+        substeps: Symplectic-Euler substeps per command sample.
+        dt: Command sample period.
+        dof_labels: Model DOF index per mapped DOF, for diagnostics.
+        passive: Model ``joint_damping`` per mapped DOF, already taken out of
+            ``budget``.
+    """
+    friction = np.abs(np.asarray(baseline_friction, dtype=np.float64))
+    damping = np.abs(np.asarray(baseline_damping, dtype=np.float64))
+    headroom = np.maximum(budget - damping, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        eps = np.where(friction > 0.0, headroom / np.maximum(friction, 1e-12), np.inf)
+    eps = np.minimum(eps, FRICTION_INV_VELOCITY_EPS)
+
+    softened = eps < FRICTION_INV_VELOCITY_EPS - 1e-9
+    if not np.any(softened):
+        return
+    worst = int(np.argmin(np.where(softened, eps, np.inf)))
+    knee = 1.0 / max(float(eps[worst]), 1e-12)
+    needed = _substeps_for_full_friction(
+        float(budget[worst]),
+        friction[worst],
+        damping[worst],
+        float(inertia[worst]),
+        coupling,
+        dt,
+        float(passive[worst]) if passive is not None else 0.0,
+    )
+    message = (
+        f"SysId differentiable bridge softened the smooth-friction knee on "
+        f"{int(np.count_nonzero(softened))} of {int(eps.shape[0])} identified DOF(s) to keep the taped "
+        f"reverse pass stable (sub_dt={dt / max(1, substeps) * 1000:.3g} ms, currently "
+        f"featherstone_substeps={substeps}). Worst is dof {int(dof_labels[worst])}: at the authored "
+        f"friction {friction[worst]:g} and damping {damping[worst]:g} against an effective inertia of "
+        f"{inertia[worst]:g} kg m^2, the velocity scale falls from {FRICTION_INV_VELOCITY_EPS:g} to "
+        f"{eps[worst]:g}, so friction behaves viscously below |qd| ~ {knee:.3g} rad/s"
+    )
+    if peak_velocity > 0.0:
+        message += f" against a commanded peak of {peak_velocity:.3g} rad/s"
+    message += (
+        f". Identified friction will be biased low. Raise featherstone_substeps to about {needed}, or "
+        "author physxJoint:armature (reflected rotor inertia) on the robot, to recover the Coulomb knee."
+    )
+    # A knee the trajectory never reaches means friction was refit as viscous
+    # damping, which biases the result the user will act on.
+    degraded = peak_velocity <= 0.0 or knee >= peak_velocity
+    (carb.log_warn if degraded else carb.log_info)(message)
 
 
 def _cap_held_joint_gains(ctx: _DiffRolloutContext, ke_full: np.ndarray, kd_full: np.ndarray, dt: float) -> None:
@@ -1353,64 +2417,126 @@ def _cap_held_joint_gains(ctx: _DiffRolloutContext, ke_full: np.ndarray, kd_full
             for i, dof in enumerate(held)
             if capped[i]
         ][:4]
-        _LOGGER.info(
-            "SysId differentiable bridge capped %d held-joint drive gain(s) to the explicit-integrator "
-            "stability region (sub_dt=%.3g ms): %s. Held joints are not identified; this only affects "
-            "how firmly they hold their default pose.",
-            int(np.count_nonzero(capped)),
-            sub_dt * 1000.0,
-            "; ".join(examples),
+        carb.log_info(
+            f"SysId differentiable bridge capped {int(np.count_nonzero(capped))} held-joint drive gain(s) to the "
+            f"explicit-integrator stability region (sub_dt={sub_dt * 1000.0:.3g} ms): {'; '.join(examples)}. "
+            "Held joints are not identified; this only affects how firmly they hold their default pose."
         )
 
 
-def _warn_nonfinite_rollout(ctx: _DiffRolloutContext, dt: float) -> None:
-    """Explain an exploded rollout with an explicit-integrator stability estimate.
+def _warn_nonfinite_rollout(ctx: _DiffRolloutContext, dt: float, stage: str = "states") -> None:
+    """Explain an exploded rollout or adjoint with a stability estimate.
 
     Symplectic Euler on a damping-dominated joint is stable only for
-    ``sub_dt < 2 * effective_inertia / kd``; the dominant effective inertia knob
-    users control is joint armature (reflected rotor inertia).
+    ``sub_dt < 2 * effective_inertia / kd_total``. Mapped joints are driven by
+    the bridge's own kernel, whose ``kd_total`` includes the smooth-friction
+    linearization ``friction * eps`` alongside the drive damping; held joints
+    keep their solver drives against joint armature.
 
     Args:
         ctx: Value supplied for ``ctx``.
         dt: Value supplied for ``dt``.
+        stage: Which pass produced the non-finite values, for the message.
     """
     sub_dt = dt / max(1, ctx.substeps)
     message = [
-        f"Differentiable Newton rollout produced non-finite states (sub_dt={sub_dt * 1000:.2f} ms, "
+        f"Differentiable Newton rollout produced non-finite {stage} (sub_dt={sub_dt * 1000:.2f} ms, "
         f"substeps={ctx.substeps})."
     ]
+
+    def describe(label: str, kd_total: float, inertia: float, coupling: float, extra: str = "") -> bool:
+        """Report a joint whose damping exceeds what this sub_dt can integrate.
+
+        Args:
+            label: Joint category named in the message.
+            kd_total: Total velocity-proportional slope on the joint.
+            inertia: Effective inertia resisting that slope.
+            coupling: Derating for this category's coupled modes. Identified
+                joints share a measured mass matrix; held joints are bounded
+                against their own armature, so they carry no derating.
+            extra: Parenthetical breakdown appended to the damping figure.
+
+        Returns:
+            Whether the joint was reported as the binding constraint.
+        """
+        if kd_total <= 0.0:
+            return False
+        if inertia <= 0.0:
+            message.append(
+                f"Worst {label} joint has effective damping {kd_total:g}{extra} with zero effective inertia: "
+                "the explicit integrator cannot be stabilized by substeps alone. Author physxJoint:armature "
+                "(reflected rotor inertia, e.g. 0.05-0.2 for industrial arms) on the robot's joints, "
+                "then size featherstone_substeps so sub_dt < 2*armature/damping."
+            )
+            return True
+        # The coupled modes breach the limit before any single joint does, so
+        # the same derating the budget carries applies to this threshold.
+        stable_sub_dt = 2.0 * coupling * inertia / kd_total
+        # Above this the joint's damping is already inside the stability
+        # region, so naming it would send the user after the wrong parameter.
+        if stable_sub_dt > sub_dt:
+            return False
+        message.append(
+            f"Worst {label} joint has effective damping {kd_total:g}{extra} against effective inertia "
+            f"{inertia:g}; stability needs sub_dt < {stable_sub_dt * 1000:.2f} ms "
+            f"(featherstone_substeps >= {int(math.ceil(dt / stable_sub_dt))}), or raise that joint's "
+            "armature (reflected rotor inertia) in the USD."
+        )
+        return True
+
+    explained = False
     try:
-        # Effective post-write values over ALL actuated DOFs (mapped commands plus
-        # held joints, whose gains keep Newton's USD-import conversion).
-        dofs = ctx.all_actuated_dofs_np
-        kd = ctx.model.joint_target_kd.numpy()[dofs]
-        armature = ctx.model.joint_armature.numpy()[dofs]
-        # The binding constraint is the worst per-DOF damping/inertia ratio.
-        with np.errstate(divide="ignore"):
-            ratio = np.where(armature > 0.0, kd / np.maximum(armature, 1e-12), np.inf)
-        worst = int(np.argmax(ratio)) if ratio.size else 0
-        kd_worst = float(kd[worst]) if kd.size else 0.0
-        armature_worst = float(armature[worst]) if armature.size else 0.0
-        if kd_worst > 0.0:
-            if armature_worst > 0.0:
-                stable_sub_dt = 2.0 * armature_worst / kd_worst
-                needed = int(math.ceil(dt / stable_sub_dt))
-                message.append(
-                    f"Worst joint has effective damping {kd_worst:g} against armature {armature_worst:g}; "
-                    f"stability needs sub_dt < {stable_sub_dt * 1000:.2f} ms "
-                    f"(featherstone_substeps >= {needed}), or raise that joint's armature "
-                    "(reflected rotor inertia) in the USD."
-                )
-            else:
-                message.append(
-                    f"Worst joint has effective damping {kd_worst:g} with zero armature: the explicit "
-                    "integrator cannot be stabilized by substeps alone. Author physxJoint:armature "
-                    "(reflected rotor inertia, e.g. 0.05-0.2 for industrial arms) on the robot's joints, "
-                    "then size featherstone_substeps so sub_dt < 2*armature/damping."
-                )
+        # Mapped joints: the bridge kernel supplies PD plus smooth friction, so
+        # the solver's own drive gains on these DOFs were zeroed at write time.
+        inertia = ctx.mapped_inertia_np
+        budget = ctx.friction_slope_budget_np
+        if inertia is not None and budget is not None and ctx.num_dof:
+            kd_kernel = np.abs(ctx.damping_wp.numpy().reshape(ctx.world_count, ctx.num_dof)).max(axis=0)
+            friction = np.abs(ctx.friction_wp.numpy().reshape(ctx.world_count, ctx.num_dof)).max(axis=0)
+            # Mirror the kernel's cap so the reported slope is the one that was
+            # actually applied, not the uncapped `friction * eps`.
+            with np.errstate(divide="ignore", invalid="ignore"):
+                capped = np.maximum(budget - kd_kernel, 0.0) / np.maximum(friction, _FRICTION_SLOPE_MIN_DENOM)
+            eps = np.minimum(FRICTION_INV_VELOCITY_EPS, capped)
+            passive = ctx.passive_damping_np if ctx.passive_damping_np is not None else np.zeros_like(kd_kernel)
+            kd_total = passive + kd_kernel + friction * eps
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.where(inertia > 0.0, kd_total / np.maximum(inertia, 1e-12), np.inf)
+            worst = int(np.argmax(ratio))
+            explained |= describe(
+                "identified",
+                float(kd_total[worst]),
+                float(inertia[worst]),
+                max(ctx.mapped_coupling, 1e-12),
+                f" (passive {passive[worst]:g} plus drive {kd_kernel[worst]:g} plus friction "
+                f"{friction[worst]:g} * eps {eps[worst]:g})",
+            )
     except Exception:  # diagnostics must never mask the original problem
-        pass
-    _LOGGER.warning("SysId: " + " ".join(message))
+        carb.log_verbose(f"SysId: identified-joint stability estimate failed.\n{traceback.format_exc()}")
+
+    try:
+        # Held joints keep Newton's USD-import drive conversion.
+        dofs = ctx.held_dofs_np
+        if dofs.size:
+            kd = ctx.model.joint_target_kd.numpy()[dofs]
+            armature = ctx.model.joint_armature.numpy()[dofs]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.where(armature > 0.0, kd / np.maximum(armature, 1e-12), np.inf)
+            worst = int(np.argmax(ratio))
+            explained |= describe("held", float(kd[worst]), float(armature[worst]), 1.0)
+    except Exception:  # diagnostics must never mask the original problem
+        carb.log_verbose(f"SysId: held-joint stability estimate failed.\n{traceback.format_exc()}")
+
+    if not explained:
+        # Every damping term is inside its stability limit, so the divergence
+        # came from a term this estimate does not cover -- most often drive
+        # stiffness against a command rate too coarse for it.
+        message.append(
+            "Damping on identified and held joints is within its stability limit at this sub_dt, so "
+            "suspect drive stiffness or the command sample rate: raise featherstone_substeps, lower the "
+            f"identified stiffness bounds, or {_FALLBACK_HINT}."
+        )
+    carb.log_warn("SysId: " + " ".join(message))
 
 
 def _require_finite_array(values: np.ndarray, description: str) -> np.ndarray:
@@ -1524,6 +2650,7 @@ def _record_rollout_launches(
                 ctx.damping_wp,
                 ctx.friction_wp,
                 FRICTION_INV_VELOCITY_EPS,
+                ctx.friction_slope_budget_wp,
                 ctx.gravity_ff_wp,
                 (k // ctx.substeps) if ctx.gravity_ff_active else 0,
                 ctx.effort_limit_wp,
@@ -1564,6 +2691,7 @@ def _record_rollout_launches(
             ctx.damping_wp,
             ctx.friction_wp,
             FRICTION_INV_VELOCITY_EPS,
+            ctx.friction_slope_budget_wp,
             ctx.gravity_ff_wp,
             (num_steps - 1) if ctx.gravity_ff_active else 0,
             ctx.effort_limit_wp,
@@ -1632,11 +2760,10 @@ def _capture_rollout_graphs(
         wp.synchronize_device(device)
     except Exception as exc:  # noqa: BLE001 - any capture failure must fall back
         ctx.capture_failed = True
-        _log_capture_status(
+        carb.log_warn(
             f"SysId: CUDA graph capture failed for the differentiable rollout "
             f"(steps={num_steps}, substeps={ctx.substeps}, worlds={ctx.world_count}): {exc}. "
-            "Falling back to uncaptured rollouts for this model.",
-            warn=True,
+            "Falling back to uncaptured rollouts for this model."
         )
         return None
     # Graphs hold one node per captured launch; bound the per-model cache so
@@ -1644,22 +2771,12 @@ def _capture_rollout_graphs(
     while len(ctx.capture_cache) >= 4:
         ctx.capture_cache.pop(next(iter(ctx.capture_cache)))
     ctx.capture_cache[capture_key] = record
-    _log_capture_status(
+    carb.log_info(
         f"SysId: captured differentiable rollout into CUDA graphs in {time.perf_counter() - start:.1f} s "
         f"(steps={num_steps}, substeps={ctx.substeps}, worlds={ctx.world_count}, "
         f"launches={len(tape.launches)})."
     )
     return record
-
-
-def _log_capture_status(message: str, warn: bool = False) -> None:
-    """Surface graph-capture activation/fallback through the package logger.
-
-    Args:
-        message: Value supplied for ``message``.
-        warn: Value supplied for ``warn``.
-    """
-    (_LOGGER.warning if warn else _LOGGER.info)(message)
 
 
 class _NewtonDiffRollout(torch.autograd.Function):
@@ -1764,6 +2881,7 @@ class _NewtonDiffRollout(torch.autograd.Function):
         capture_key = (
             num_steps,
             float(dt),
+            ctx.substeps,
             bool(ctx.gravity_ff_active),
             id(ctx.gravity_ff_wp),
             id(ctx.target_pos_stage),
@@ -1778,14 +2896,13 @@ class _NewtonDiffRollout(torch.autograd.Function):
             if estimated_launches > budget:
                 if not ctx.capture_budget_logged:
                     ctx.capture_budget_logged = True
-                    _log_capture_status(
+                    carb.log_warn(
                         f"SysId: skipping CUDA graph capture (~{estimated_launches} launches per rollout "
                         f"exceeds the {budget} budget; very large graphs can fail driver instantiation). "
                         "Rollouts stay uncaptured. Shorter multiple-shooting chunks or fewer "
                         "featherstone_substeps re-enable capture; ISAACSIM_SYSID_CAPTURE_MAX_LAUNCHES "
                         "overrides the budget on "
-                        "larger GPUs.",
-                        warn=True,
+                        "larger GPUs."
                     )
             else:
                 record = _capture_rollout_graphs(bridge, ctx, num_steps, sub_dt, capture_key)
@@ -1805,6 +2922,7 @@ class _NewtonDiffRollout(torch.autograd.Function):
         ctx_ag.rollout_ctx = ctx
         ctx_ag.bridge = bridge
         ctx_ag.num_steps = num_steps
+        ctx_ag.dt = float(dt)
         ctx_ag.out_device = ke.device
         ctx_ag.out_dtype = ke.dtype
 
@@ -1822,7 +2940,7 @@ class _NewtonDiffRollout(torch.autograd.Function):
                 record.replay_logged = True
                 plain_s = ctx.plain_forward_s.get(capture_key)
                 before = f"{plain_s:.2f} s" if plain_s is not None else "n/a"
-                _log_capture_status(
+                carb.log_info(
                     f"SysId: CUDA graph replay active (steps={num_steps}, substeps={ctx.substeps}, "
                     f"worlds={world_count}): forward rollout {before} -> {forward_elapsed:.2f} s."
                 )
@@ -1893,10 +3011,13 @@ class _NewtonDiffRollout(torch.autograd.Function):
             tape.backward()
 
         def read_grad(arr, picker) -> torch.Tensor:  # noqa: ANN001
-            values = _require_finite_array(
-                picker(np.asarray(arr.grad.numpy(), dtype=np.float32)),
-                "backward parameter gradient",
-            )
+            values = picker(np.asarray(arr.grad.numpy(), dtype=np.float32))
+            # A finite forward rollout can still carry an unstable linearization,
+            # so the adjoint is where that mode surfaces. Give it the same
+            # stability guidance the forward check emits before failing closed.
+            if not np.all(np.isfinite(values)):
+                _warn_nonfinite_rollout(ctx, float(ctx_ag.dt), stage="parameter gradients")
+            values = _require_finite_array(values, "backward parameter gradient")
             tensor = torch.as_tensor(values, device=ctx_ag.out_device, dtype=ctx_ag.out_dtype).clone()
             return tensor
 
@@ -1920,7 +3041,7 @@ class _NewtonDiffRollout(torch.autograd.Function):
             if plain_s is not None:
                 before_total = plain_s + ctx.plain_forward_s.get(ctx_ag.capture_key, 0.0)
                 ctx.plain_backward_s.pop(ctx_ag.capture_key, None)
-                _log_capture_status(
+                carb.log_info(
                     f"SysId: CUDA graph replay backward {plain_s:.2f} s -> {backward_elapsed:.2f} s "
                     f"(uncaptured forward+backward was {before_total:.2f} s per iteration)."
                 )
@@ -1947,7 +3068,9 @@ class _NewtonDiffRollout(torch.autograd.Function):
 
 
 __all__ = [
+    "FRICTION_BUDGET_SHARE",
     "FRICTION_INV_VELOCITY_EPS",
+    "FRICTION_SLOPE_STABILITY_RATIO",
     "NewtonDifferentiableSysIdBridge",
     "newton_differentiable_modules_available",
 ]

@@ -24,6 +24,7 @@
 #include <ovphysx/ovphysx.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -40,7 +41,7 @@ namespace ovphysx
 using namespace isaacsim::physics::tensors;
 
 // ----------------------------------------------------------------------------
-// TensorDescription -> DLTensor
+// Binding specification helpers
 // ----------------------------------------------------------------------------
 
 // A failed binding-specification query leaves a zero-initialized specification (ndim 0, dtype {0,0,0}) that would
@@ -63,46 +64,48 @@ static std::vector<int64_t> checkedTensorSpecificationShape(const ovphysx_tensor
     }
 
     std::vector<int64_t> shape(specification.shape, specification.shape + specification.ndim);
-    checkedElementCount(shape, label);
+    // Shape::size() rejects a negative dimension and a product that overflows size_t. Called for that
+    // check alone, so the engine's numbers fail here rather than at the first allocation sized from them.
+    static_cast<void>(array::Shape(shape).size());
     return shape;
 }
 
 // ----------------------------------------------------------------------------
-// TensorSpecification from ovphysx binding
+// ArrayTensorSpecification from ovphysx binding
 // ----------------------------------------------------------------------------
 
-TensorSpecification getTensorSpecificationFromOvphysx(ovphysx_handle_t handle,
-                                                      ovphysx_tensor_binding_handle_t binding,
-                                                      bool supportsIndexedRead,
-                                                      bool supportsIndexedWrite)
+ArrayTensorSpecification getTensorSpecificationFromOvphysx(ovphysx_handle_t handle,
+                                                           ovphysx_tensor_binding_handle_t binding,
+                                                           bool supportsIndexedRead,
+                                                           bool supportsIndexedWrite)
 {
     ovphysx_tensor_spec_t ovSpecification{};
     checkSpecificationQueryStatus(
         ovphysx_get_tensor_binding_spec(handle, binding, &ovSpecification), "binding specification");
 
-    TensorSpecification specification;
+    ArrayTensorSpecification specification;
     specification.supports = true;
     specification.supportsIndexedRead = supportsIndexedRead;
     specification.supportsIndexedWrite = supportsIndexedWrite;
 
-    // Map DLPack dtype back to umbrella DType.
+    // Map DLPack dtype back to the array Dtype the specification carries.
     if (ovSpecification.dtype.code == static_cast<uint8_t>(kDLFloat) && ovSpecification.dtype.bits == 32)
     {
-        specification.dtype = DType::eFloat32;
+        specification.dtype = array::Dtype::Float32();
     }
     else if (ovSpecification.dtype.code == static_cast<uint8_t>(kDLFloat) && ovSpecification.dtype.bits == 64)
     {
-        specification.dtype = DType::eFloat64;
+        specification.dtype = array::Dtype::Float64();
     }
     else if (ovSpecification.dtype.code == static_cast<uint8_t>(kDLInt) && ovSpecification.dtype.bits == 32)
     {
-        specification.dtype = DType::eInt32;
+        specification.dtype = array::Dtype::Int32();
     }
     else if (ovSpecification.dtype.code == static_cast<uint8_t>(kDLUInt) && ovSpecification.dtype.bits == 8)
     {
         // uint8, NOT eBool: eBool serializes to DLPack kDLBool(6,8), which warp's
         // from_dlpack rejects ("Unknown DLPack datatype (6,8)"). uint8 round-trips.
-        specification.dtype = DType::eUInt8;
+        specification.dtype = array::Dtype::UInt8();
     }
     else
     {
@@ -112,7 +115,16 @@ TensorSpecification getTensorSpecificationFromOvphysx(ovphysx_handle_t handle,
     }
 
     specification.shapeHint = checkedTensorSpecificationShape(ovSpecification, "binding specification");
-    specification.deviceKind = DeviceKind::eEngineDefault;
+    DLDevice nativeDevice{};
+    const ovphysx_result_t deviceResult = ovphysx_get_tensor_binding_native_device(handle, binding, &nativeDevice);
+    if (deviceResult.status != OVPHYSX_API_SUCCESS)
+    {
+        throw std::runtime_error("binding specification: ovphysx_get_tensor_binding_native_device failed");
+    }
+    const bool hostAccessible = nativeDevice.device_type == kDLCPU || nativeDevice.device_type == kDLCUDAHost;
+    specification.requiresHostData = hostAccessible;
+    // `device` stays unset because ovphysx chooses the binding's placement. `requiresHostData`
+    // still tells the frontend when a GPU simulation must stage this particular binding.
     return specification;
 }
 
@@ -135,6 +147,28 @@ OvPhysxEntityViewBase::~OvPhysxEntityViewBase()
 
 namespace
 {
+
+// Acquires write access to a view-lifetime staging buffer, replacing it when the previous contents
+// are still retained by an external consumer. A published Array keeps scoped read access for as long
+// as its holder lives -- a warp array derived from an exported DLPack tensor holds one until Python
+// drops it -- and only the calling thread can drop that reference, so waiting here could never
+// succeed. Re-staging also keeps the values that consumer already received valid, instead of
+// overwriting the buffer out from under it.
+array::ArrayWriteAccess acquireStagingWrite(array::Array& staging)
+{
+    if (std::optional<array::ArrayWriteAccess> access = array::tryAcquireWrite(staging))
+    {
+        return std::move(*access);
+    }
+    // Read the layout out before the assignment, so nothing depends on references into the buffer
+    // being replaced. The replacement matches how the original was allocated, zero-filled included.
+    const array::Shape shape = staging.shape();
+    const array::Dtype dtype = staging.dtype();
+    const array::Device device = staging.device();
+    staging = array::zeros(shape, dtype, device);
+    // A buffer allocated right here cannot be contended, so this cannot block.
+    return array::acquireWrite(staging);
+}
 
 bool isWriteOnlyType(ovphysx_tensor_type_t tensorType)
 {
@@ -201,30 +235,6 @@ bool isReadOnlyType(ovphysx_tensor_type_t tensorType)
 }
 
 } // namespace
-
-// Helper: compute the internal-read buffer layout {shape, total byte size} for an
-// ovphysx tensor specification, WITHOUT allocating. The buffer itself is allocated lazily
-// by the GET implementation on the first call that gets no caller-supplied `out`, so an
-// all-external consumer (e.g. the GPU lane, which always passes an `out`) never
-// allocates it. Byte size honors the specification dtype (float32 default).
-// Bytes per element of a DLPack dtype. Single source of truth: the read buffer's size and the
-// indexed gather's row width both come from here, so they cannot disagree about element width.
-static size_t getElementByteWidth(const DLDataType& dataType, const char* label)
-{
-    if (dataType.bits == 0 || dataType.bits % 8 != 0)
-    {
-        throw std::runtime_error(std::string(label) + ": unsupported tensor element bit width");
-    }
-    return static_cast<size_t>(dataType.bits) / 8u;
-}
-
-static std::pair<std::vector<int64_t>, size_t> outputBufferLayout(const ovphysx_tensor_spec_t& specification,
-                                                                  const char* label)
-{
-    std::vector<int64_t> shape = checkedTensorSpecificationShape(specification, label);
-    const size_t elementCount = checkedElementCount(shape, label);
-    return { std::move(shape), checkedSizeProduct(elementCount, getElementByteWidth(specification.dtype, label), label) };
-}
 
 // Point a binding descriptor at either an explicit resolved prim-path list (multi-pattern
 // views that matched something) or a single pattern. Explicit-path mode is used only
@@ -345,6 +355,70 @@ private:
     ovphysx_sdf_view_handle_t m_view;
 };
 
+// Compare paths in the order users expect numbered environments to appear:
+// env2 precedes env10. ovphysx 0.6.3 no longer guarantees the traversal order
+// that the tensor frontend historically exposed, so normalize each pattern's
+// matches before passing an explicit path list back to the SDK.
+static bool naturalPathLess(const std::string& left, const std::string& right)
+{
+    size_t leftIndex = 0;
+    size_t rightIndex = 0;
+    while (leftIndex < left.size() && rightIndex < right.size())
+    {
+        const unsigned char leftCharacter = static_cast<unsigned char>(left[leftIndex]);
+        const unsigned char rightCharacter = static_cast<unsigned char>(right[rightIndex]);
+        if (std::isdigit(leftCharacter) && std::isdigit(rightCharacter))
+        {
+            const size_t leftRunBegin = leftIndex;
+            const size_t rightRunBegin = rightIndex;
+            while (leftIndex < left.size() && std::isdigit(static_cast<unsigned char>(left[leftIndex])))
+            {
+                ++leftIndex;
+            }
+            while (rightIndex < right.size() && std::isdigit(static_cast<unsigned char>(right[rightIndex])))
+            {
+                ++rightIndex;
+            }
+
+            size_t leftSignificant = leftRunBegin;
+            size_t rightSignificant = rightRunBegin;
+            while (leftSignificant < leftIndex && left[leftSignificant] == '0')
+            {
+                ++leftSignificant;
+            }
+            while (rightSignificant < rightIndex && right[rightSignificant] == '0')
+            {
+                ++rightSignificant;
+            }
+            const size_t leftDigits = leftIndex - leftSignificant;
+            const size_t rightDigits = rightIndex - rightSignificant;
+            if (leftDigits != rightDigits)
+            {
+                return leftDigits < rightDigits;
+            }
+            const int digitComparison = left.compare(leftSignificant, leftDigits, right, rightSignificant, rightDigits);
+            if (digitComparison != 0)
+            {
+                return digitComparison < 0;
+            }
+            const size_t leftRunLength = leftIndex - leftRunBegin;
+            const size_t rightRunLength = rightIndex - rightRunBegin;
+            if (leftRunLength != rightRunLength)
+            {
+                return leftRunLength < rightRunLength;
+            }
+            continue;
+        }
+        if (leftCharacter != rightCharacter)
+        {
+            return leftCharacter < rightCharacter;
+        }
+        ++leftIndex;
+        ++rightIndex;
+    }
+    return left.size() < right.size();
+}
+
 // Resolve a pattern list to explicit prim paths via ovphysx itself (one
 // throwaway binding per pattern). Each element may be a glob or an explicit
 // path; matches are concatenated in list order with first-wins de-duplication.
@@ -378,9 +452,15 @@ static std::vector<std::string> resolvePatterns(ovphysx_handle_t handle,
         std::vector<ovphysx_string_t> pathBuffer(pathCapacity);
         uint32_t count = 0;
         ovphysx_tensor_binding_get_prim_paths(handle, bindingHandle, pathBuffer.data(), pathCapacity, &count);
+        std::vector<std::string> patternPaths;
+        patternPaths.reserve(count);
         for (uint32_t i = 0; i < count; ++i)
         {
-            std::string path(pathBuffer[i].ptr, pathBuffer[i].length);
+            patternPaths.emplace_back(pathBuffer[i].ptr, pathBuffer[i].length);
+        }
+        std::sort(patternPaths.begin(), patternPaths.end(), naturalPathLess);
+        for (std::string& path : patternPaths)
+        {
             if (seen.insert(path).second)
             {
                 paths.push_back(std::move(path));
@@ -413,17 +493,24 @@ std::vector<std::string> OvPhysxEntityViewBase::getResolvedPrimPaths() const
     return result;
 }
 
-int resolveOvPhysxDeviceOrdinal(const isaacsim::physics::tensors::EntityView& view)
+array::Device resolveOvPhysxDevice(const isaacsim::physics::tensors::EntityView& view)
 {
-    // An ordinal assigned to this view wins; `EntityView` stores `-1` until someone assigns one, which is
+    // A device assigned to this view wins; `EntityView` holds the CPU until someone assigns one, which is
     // also the value for host memory, so an unassigned view simply follows the backend declaration.
-    const int assigned = view.isaacsim::physics::tensors::EntityView::getDeviceOrdinal();
-    return assigned >= 0 ? assigned : getTensorDeviceOrdinal();
+    // Read the stored ordinal directly: `getDevice()` dispatches back to this resolver.
+    const int assignedOrdinal = view.isaacsim::physics::tensors::EntityView::getDeviceOrdinal();
+    if (assignedOrdinal >= 0)
+    {
+        return array::Device::Cuda(assignedOrdinal);
+    }
+    // The backend still reports a bare ordinal; `-1` there means host memory.
+    const int backendOrdinal = getTensorDeviceOrdinal();
+    return backendOrdinal >= 0 ? array::Device::Cuda(backendOrdinal) : array::Device::Cpu();
 }
 
 int OvPhysxEntityViewBase::getDeviceOrdinal() const noexcept
 {
-    return resolveOvPhysxDeviceOrdinal(*this);
+    return resolveOvPhysxDevice(*this).ordinal();
 }
 
 void OvPhysxEntityViewBase::_setEntityCountFromBindings()
@@ -501,106 +588,109 @@ void OvPhysxEntityViewBase::_initializeBindings(
 
         if (!writeOnly) // register Get implementation for non-write-only tensors
         {
-            TensorSpecification getSpecification = getTensorSpecificationFromOvphysx(
+            ArrayTensorSpecification getSpecification = getTensorSpecificationFromOvphysx(
                 m_handle, bindingHandle, /*indexedRead=*/false, /*indexedWrite=*/false);
             getSpecification.supportsIndexedRead = true;
 
-            // Fetch the binding specification once and reuse it for both the output buffer
-            // sizing and the DLPack dtype captured by the lambda.
-            ovphysx_tensor_spec_t ovSpecification{};
-            checkSpecificationQueryStatus(
-                ovphysx_get_tensor_binding_spec(m_handle, bindingHandle, &ovSpecification), "get specification");
-
-            // Output-buffer layout (shape + byte size + per-element width). The
-            // internal full-read buffer `buffer` is allocated lazily on first use, so an
-            // all-external consumer (the GPU lane always passes an `out`) never
-            // allocates it. The lambda captures it so a non-indexed result stays valid
-            // for the view's lifetime (overwritten each getData, single-writer); an
-            // indexed result instead gets fresh per-call storage owned by the result.
-            auto outputLayout = outputBufferLayout(ovSpecification, implementationName.c_str());
-            std::vector<int64_t> shape = std::move(outputLayout.first);
-            const size_t byteSize = outputLayout.second;
-            const size_t elementBytes = getElementByteWidth(ovSpecification.dtype, implementationName.c_str());
+            // The specification already carries the binding's shape and dtype, so the read buffers are
+            // sized from it rather than from a second query of the same binding.
+            const array::Shape fullShape(getSpecification.shapeHint);
+            const array::Dtype bindingDataType = getSpecification.dtype;
 
             auto handle = m_handle;
-            // Capture the DLPack dtype so the lambda doesn't need to re-query the specification.
-            DLDataType dlDataType = ovSpecification.dtype;
 
             // uint8 tensors need conversion to float32 because warp's from_dlpack()
             // doesn't handle kDLUInt:8.
-            const bool isUint8 = (dlDataType.code == static_cast<uint8_t>(kDLUInt) && dlDataType.bits == 8);
+            const bool isUint8 = bindingDataType == array::Dtype::UInt8();
             const bool isFlag = isFlagType(tensorType);
-            const size_t elementCount = checkedElementCount(shape, implementationName.c_str());
-            auto float32Buffer = isUint8 ? std::make_shared<std::vector<float>>(elementCount, 0.0f) :
-                                           std::shared_ptr<std::vector<float>>{};
-            const DType outputDataType = isUint8 ? DType::eFloat32 : getSpecification.dtype;
-            // Match the registered specification to context the implementation actually returns.
-            getSpecification.dtype = outputDataType;
+            // Converted result buffer for a uint8 binding, shared by the full read and the indexed
+            // gather so both source from the same conversion.
+            auto float32Staging =
+                isUint8 ? std::optional<array::Array>(array::zeros(fullShape, array::Dtype::Float32())) : std::nullopt;
+            // Match the registered specification to what the implementation actually returns; the lambda below captures
+            // it as the result dtype.
+            getSpecification.dtype = isUint8 ? array::Dtype::Float32() : getSpecification.dtype;
 
-            registerImplementation(
+            registerArrayImplementation(
                 implementationName, ImplementationKind::eGet,
-                GetImplementationFunction{
-                    [handle, bindingHandle, buffer = std::shared_ptr<std::vector<uint8_t>>(), shape, byteSize,
-                     elementBytes, dlDataType, isUint8, isFlag, float32Buffer, managerDataType = getSpecification.dtype,
-                     implementationName](
-                        const TensorDescription& indices, const TensorDescription& output) mutable -> TensorDescription
+                GetArrayImplementationFunction{
+                    [handle, bindingHandle, staging = std::optional<array::Array>{}, fullShape, bindingDataType,
+                     isUint8, isFlag, float32Staging, resultDataType = getSpecification.dtype,
+                     implementationName](const std::optional<array::Array>& indices,
+                                         const std::optional<array::Array>& output) mutable -> array::Array
                     {
-                        // Distinguish "no selection" (None -> empty shape, full read) from an
-                        // explicitly supplied selection (ndim >= 1; K may be 0 -> 0 rows). A
-                        // zero-length index array has null data, so isEmpty() would wrongly fold
-                        // it into the full-read case.
-                        const bool indexed = !indices.shape.empty();
+                        // A supplied selection is an indexed read even when it holds no rows: the manager maps
+                        // "no selection" to std::nullopt, so K == 0 stays distinguishable from a full read.
+                        const bool indexed = indices.has_value();
                         // Read straight into a caller-supplied `out` (honoring its device -- a GPU
                         // `out` triggers a DirectGPU read) only for a plain full, non-bool read.
                         // An indexed read gathers from a staged buffer, and a bool binding needs
                         // CPU conversion, so both stage through the lazily-allocated internal buffer.
-                        const bool hasOutput = !indexed && !isUint8 && !output.isEmpty() && output.data;
-                        const bool outputOnGpu = hasOutput && output.device == DeviceKind::eGpu;
-                        void* readInto;
+                        const bool hasOutput = !indexed && !isUint8 && output.has_value() && output->data();
                         if (hasOutput)
                         {
-                            requireMatchingOutput(output, shape, managerDataType, implementationName.c_str());
-                            readInto = output.data;
+                            requireMatchingOutput(*output, fullShape, resultDataType, implementationName.c_str());
+                        }
+                        else if (!staging)
+                        {
+                            // Allocated lazily on the first read that gets no caller-supplied `out`, so an
+                            // all-external consumer (e.g. the GPU lane, which always passes an `out`) never
+                            // allocates it. It is captured, so a non-indexed result stays valid for the view's
+                            // lifetime (overwritten each getArrayData, single-writer); an indexed result instead
+                            // gets fresh per-call storage owned by the result.
+                            staging = array::zeros(fullShape, bindingDataType);
+                        }
+
+                        // The engine reads under the binding's own shape. An `out` is validated by element
+                        // count, so it may legitimately carry a different one (masses [N] against an [N, 1]
+                        // buffer); reshaping shares its storage rather than copying, so the engine still
+                        // writes into the caller's memory.
+                        array::ArrayWriteAccess readTargetAccess;
+                        if (hasOutput)
+                        {
+                            array::Array callerTarget = output->reshape(fullShape);
+                            // A caller-supplied buffer cannot be swapped for a fresh one without
+                            // silently writing somewhere the caller is not looking, so report the
+                            // conflict rather than re-staging it.
+                            std::optional<array::ArrayWriteAccess> access = array::tryAcquireWrite(callerTarget);
+                            if (!access)
+                            {
+                                throw std::runtime_error(implementationName +
+                                                         ": the supplied out array is still retained by another consumer");
+                            }
+                            readTargetAccess = std::move(*access);
                         }
                         else
                         {
-                            if (!buffer)
-                            {
-                                buffer = std::make_shared<std::vector<uint8_t>>(byteSize > 0 ? byteSize : 1, 0u);
-                            }
-                            readInto = buffer->data();
+                            readTargetAccess = acquireStagingWrite(*staging);
                         }
-
-                        DLTensor destination{};
-                        destination.data = readInto;
-                        destination.device =
-                            outputOnGpu ? DLDevice{ kDLCUDA, output.deviceOrdinal } : DLDevice{ kDLCPU, 0 };
-                        destination.dtype = dlDataType;
-                        destination.ndim = static_cast<int32_t>(shape.size());
-                        destination.shape = const_cast<int64_t*>(shape.data());
-                        destination.strides = nullptr;
-                        destination.byte_offset = 0;
+                        // Re-read after acquisition: acquireStagingWrite() may have replaced the buffer.
+                        array::Array readTarget = hasOutput ? output->reshape(fullShape) : *staging;
+                        DLTensor destination = convertToDLTensor(readTarget, readTargetAccess);
                         const ovphysx_result_t readResult =
                             ovphysx_read_tensor_binding(handle, bindingHandle, &destination);
                         if (readResult.status != OVPHYSX_API_SUCCESS)
                         {
                             throw std::runtime_error(implementationName + ": ovphysx_read_tensor_binding failed");
                         }
+                        readTargetAccess.release();
 
                         // uint8 bindings are read as bytes and converted to float32 once (warp's
                         // from_dlpack can't consume kDLUInt:8); both the full read and the indexed
-                        // gather below then source from the converted buffer.
+                        // gather below then source from the converted buffer. Both buffers are sized
+                        // from `fullShape`, so a single element count covers them.
                         if (isUint8)
                         {
-                            const uint8_t* sourceBytes = static_cast<const uint8_t*>(buffer->data());
-                            float* destinationValues = float32Buffer->data();
-                            // bytes == elems for a uint8 binding, but clamp to the smaller of the
-                            // two buffers so a specification/byteSize mismatch can never OOB-read `buffer`.
-                            const size_t elementCountToCopy =
-                                float32Buffer->size() < buffer->size() ? float32Buffer->size() : buffer->size();
+                            array::ArrayReadAccess sourceAccess = array::acquireRead(*staging);
+                            // The converted buffer is what a uint8 binding publishes, so a consumer
+                            // can be holding it just like `staging` above.
+                            array::ArrayWriteAccess destinationAccess = acquireStagingWrite(*float32Staging);
+                            const uint8_t* sourceBytes = static_cast<const uint8_t*>(sourceAccess.data());
+                            float* destinationValues = static_cast<float*>(destinationAccess.data());
+                            const size_t elementCount = fullShape.size();
                             // A flag binding promises only "nonzero", so normalize it and keep
                             // handing consumers something they can compare against 1.
-                            for (size_t i = 0; i < elementCountToCopy; ++i)
+                            for (size_t i = 0; i < elementCount; ++i)
                             {
                                 destinationValues[i] =
                                     isFlag ? (sourceBytes[i] ? 1.0f : 0.0f) : static_cast<float>(sourceBytes[i]);
@@ -609,132 +699,106 @@ void OvPhysxEntityViewBase::_initializeBindings(
 
                         if (!indexed)
                         {
-                            // Full-size result (no indices -> full-size).
-                            TensorDescription result;
-                            result.data = isUint8 ? static_cast<void*>(float32Buffer->data()) : readInto;
-                            result.dtype = managerDataType;
-                            result.shape = shape;
-                            result.device = outputOnGpu ? DeviceKind::eGpu : DeviceKind::eCpu;
-                            result.deviceOrdinal = outputOnGpu ? output.deviceOrdinal : -1;
-                            return result;
+                            // Full-size result (no indices -> full-size). The result shares its storage's
+                            // ownership: the view-lifetime buffers are genuinely shared, so a result over them
+                            // cannot dangle, while a caller-supplied `out` propagates whatever ownership the
+                            // caller gave it. Either way the storage is reused by the next read, so the values
+                            // are valid only until then; callers that need to retain them must copy.
+                            return isUint8 ? *float32Staging : readTarget;
                         }
-                        else
+
+                        // Indexed gather. A bool binding gathers from the float32-converted buffer
+                        // above, so the index-size result carries float32 like the full read.
+                        // The gather dereferences the index values on the host and
+                        // copies rows out of the full read, so the indices must be
+                        // CPU-resident int32 -- the same convention the SET impls
+                        // enforce. Reject a GPU pointer or a wider dtype up front
+                        // rather than misread it.
+                        if (!indices->device().isCpu())
                         {
-                            // Indexed gather. A bool binding gathers from the float32-converted buffer
-                            // above, so the index-size result carries float32 like the full read.
-                            // The gather dereferences the index values on the host and
-                            // copies rows out of the full read, so the indices must be
-                            // CPU-resident int32 -- the same convention the SET impls
-                            // enforce. Reject a GPU pointer or a wider dtype up front
-                            // rather than misread it.
-                            if (indices.device == DeviceKind::eGpu)
-                            {
-                                throw std::runtime_error(implementationName +
-                                                         ": indexed get requires CPU indices, received GPU indices");
-                            }
-                            requireInt32Indices(indices, implementationName.c_str());
-
-                            // Indexed: gather requested rows -> index-size. The
-                            // read above went into `buffer`; copy rows into the caller's CPU
-                            // `out` if given, else a fresh result-owned buffer.
-                            const int64_t selectedRowCount = indices.shape.empty() ? 0 : indices.shape[0];
-                            const int64_t availableRowCount = shape.empty() ? 0 : shape[0];
-                            const std::vector<int64_t> rowShape(
-                                shape.begin() + std::min<size_t>(1, shape.size()), shape.end());
-                            const size_t rowElementCount = checkedElementCount(rowShape, implementationName.c_str());
-                            // A bool result is float32 (converted above), so its rows are wider than
-                            // the uint8 read; size by the result element width.
-                            const size_t rowBytes = checkedSizeProduct(
-                                rowElementCount, isUint8 ? sizeof(float) : elementBytes, implementationName.c_str());
-                            const size_t selectedByteCount =
-                                checkedSizeProduct(checkedElementCount({ selectedRowCount }, implementationName.c_str()),
-                                                   rowBytes, implementationName.c_str());
-
-                            // Index-size result shape [K, *shape[1:]].
-                            std::vector<int64_t> indexedShape = shape;
-                            if (!indexedShape.empty())
-                            {
-                                indexedShape[0] = selectedRowCount;
-                            }
-
-                            uint8_t* resultData;
-                            std::shared_ptr<std::vector<uint8_t>> owned;
-                            // A supplied `out` has an explicit shape (K rows, K may be 0);
-                            // isEmpty() folds a null-data 0-row buffer into the no-out case, so
-                            // key on the shape -- like the `indexed` flag above -- to recognize a
-                            // supplied out even when it carries no storage.
-                            const bool hasIndexedOutput = !output.shape.empty();
-                            if (hasIndexedOutput)
-                            {
-                                // The gather is host-side (memcpy from the CPU `buffer`), so it can
-                                // only fill a CPU out. Reject a wrong-device out loudly rather than
-                                // silently returning a different CPU buffer -- this catches a
-                                // zero-row GPU out too, which isEmpty() would misread as absent.
-                                if (output.device != DeviceKind::eCpu)
-                                {
-                                    throw std::runtime_error(implementationName +
-                                                             ": indexed get requires a CPU out buffer");
-                                }
-                                // Validate the caller buffer against the index-size result
-                                // (K rows) before writing, mirroring the non-indexed path --
-                                // a wrong-K or wrong-dtype `out` would otherwise overflow.
-                                requireMatchingOutput(output, indexedShape, managerDataType, implementationName.c_str());
-                            }
-                            if (hasIndexedOutput && output.data)
-                            {
-                                // Gather into the caller's buffer when it has storage (K > 0).
-                                resultData = static_cast<uint8_t*>(output.data);
-                            }
-                            else
-                            {
-                                // No out, or a validated zero-row out whose null data can't back a
-                                // result. Per-call owned storage handed to the result (freed when
-                                // the caller drops the array), NOT a reused view-lifetime buffer --
-                                // so a later larger-K read can't realloc it out from under an
-                                // earlier result. Sized for K rows (K may exceed N with duplicate
-                                // indices); at least 1 byte so a K=0 selection still yields a
-                                // non-null 0-row result.
-                                owned = std::make_shared<std::vector<uint8_t>>(std::max<size_t>(1, selectedByteCount));
-                                resultData = owned->data();
-                            }
-                            // Out-of-range indices are dropped rather than rejected -- rejecting them
-                            // would require reading the index values back from the device. Seed the K
-                            // rows with the all-bits-set marker so a dropped row cannot be mistaken
-                            // for data: NaN for float, -1 for signed, max for unsigned. The GPU
-                            // gather seeds the same pattern via invalid_fill_value().
-                            if (selectedRowCount > 0)
-                            {
-                                std::memset(resultData, 0xFF, selectedByteCount);
-                            }
-                            const int32_t* indexData = static_cast<const int32_t*>(indices.data);
-                            const uint8_t* source =
-                                isUint8 ? reinterpret_cast<const uint8_t*>(float32Buffer->data()) : buffer->data();
-                            for (int64_t j = 0; j < selectedRowCount; ++j)
-                            {
-                                const int64_t bodyIndex = indexData[j];
-                                if (bodyIndex < 0 || bodyIndex >= availableRowCount)
-                                {
-                                    continue; // drop out-of-range -> leaves the seeded marker row
-                                }
-                                std::memcpy(resultData + static_cast<size_t>(j) * rowBytes,
-                                            source + static_cast<size_t>(bodyIndex) * rowBytes, rowBytes);
-                            }
-
-                            TensorDescription result;
-                            result.data = resultData;
-                            result.dtype = managerDataType;
-                            result.shape = indexedShape;
-                            result.device = DeviceKind::eCpu;
-                            result.keepAlive = owned; // empty for the external-out path (caller owns `out`)
-                            return result;
+                            throw std::runtime_error(implementationName +
+                                                     ": indexed get requires CPU indices, received GPU indices");
                         }
+                        requireInt32Indices(*indices, implementationName.c_str());
+
+                        // Indexed: gather requested rows -> index-size. The
+                        // read above went into the staging buffer; copy rows into the caller's CPU
+                        // `out` if given, else a fresh result-owned buffer.
+                        const std::vector<int64_t> dimensions = fullShape.shape();
+                        const int64_t selectedRowCount = static_cast<int64_t>(indices->size());
+                        const int64_t availableRowCount = dimensions.empty() ? 0 : dimensions.front();
+                        // A bool result is float32 (converted above), so its rows are wider than the uint8
+                        // read; the result dtype carries that width.
+                        const array::Shape rowShape(std::vector<int64_t>(
+                            dimensions.begin() + std::min<size_t>(1, dimensions.size()), dimensions.end()));
+                        const size_t rowBytes = rowShape.size() * resultDataType.size();
+
+                        // Index-size result shape [K, *shape[1:]].
+                        std::vector<int64_t> indexedDimensions = dimensions;
+                        if (!indexedDimensions.empty())
+                        {
+                            indexedDimensions.front() = selectedRowCount;
+                        }
+                        const array::Shape indexedShape(indexedDimensions);
+
+                        if (output.has_value())
+                        {
+                            // The gather is host-side (memcpy from the CPU staging buffer), so it can
+                            // only fill a CPU out. Reject a wrong-device out loudly rather than
+                            // silently returning a different CPU buffer.
+                            if (!output->device().isCpu())
+                            {
+                                throw std::runtime_error(implementationName + ": indexed get requires a CPU out buffer");
+                            }
+                            // Validate the caller buffer against the index-size result
+                            // (K rows) before writing, mirroring the non-indexed path --
+                            // a wrong-K or wrong-dtype `out` would otherwise overflow.
+                            requireMatchingOutput(*output, indexedShape, resultDataType, implementationName.c_str());
+                        }
+                        // Gather into the caller's buffer when it has storage (K > 0); its ownership rides
+                        // along with the reshaped view, so the caller stays responsible for it. Otherwise --
+                        // no out, or a validated zero-row out whose null data can't back a result -- allocate
+                        // per-call storage owned by the result, NOT a reused view-lifetime buffer, so a later
+                        // larger-K read can't realloc it out from under an earlier result. K may exceed N with
+                        // duplicate indices, and a zero-element allocation still yields a non-null pointer.
+                        array::Array result = output.has_value() && output->data() ?
+                                                  output->reshape(indexedShape) :
+                                                  array::empty(indexedShape, resultDataType);
+                        array::ArrayReadAccess indexAccess = array::acquireRead(*indices);
+                        array::ArrayReadAccess sourceAccess =
+                            isUint8 ? array::acquireRead(*float32Staging) : array::acquireRead(*staging);
+                        array::ArrayWriteAccess resultAccess = array::acquireWrite(result);
+                        // Out-of-range indices are dropped rather than rejected -- rejecting them
+                        // would require reading the index values back from the device. Seed the K
+                        // rows with the all-bits-set marker so a dropped row cannot be mistaken
+                        // for data: NaN for float, -1 for signed, max for unsigned. The GPU
+                        // gather seeds the same pattern via invalid_fill_value().
+                        if (selectedRowCount > 0)
+                        {
+                            std::memset(resultAccess.data(), 0xFF, result.nbytes());
+                        }
+                        const int32_t* indexData = static_cast<const int32_t*>(indexAccess.data());
+                        const std::byte* source = static_cast<const std::byte*>(sourceAccess.data());
+                        std::byte* resultData = static_cast<std::byte*>(resultAccess.data());
+                        for (int64_t j = 0; j < selectedRowCount; ++j)
+                        {
+                            const int64_t bodyIndex = indexData[j];
+                            if (bodyIndex < 0 || bodyIndex >= availableRowCount)
+                            {
+                                continue; // drop out-of-range -> leaves the seeded marker row
+                            }
+                            std::memcpy(resultData + static_cast<size_t>(j) * rowBytes,
+                                        source + static_cast<size_t>(bodyIndex) * rowBytes, rowBytes);
+                        }
+
+                        return result;
                     } },
                 getSpecification);
         }
 
         if (!readOnly) // register Set implementation for non-read-only tensors
         {
-            TensorSpecification setSpecification =
+            ArrayTensorSpecification setSpecification =
                 getTensorSpecificationFromOvphysx(m_handle, bindingHandle, /*indexedRead=*/false, /*indexedWrite=*/true);
             setSpecification.supportsIndexedWrite = true;
             auto handle = m_handle;
@@ -746,29 +810,30 @@ void OvPhysxEntityViewBase::_initializeBindings(
                 bindingSpecification.ndim >= 1 ? static_cast<int64_t>(bindingSpecification.shape[0]) : 0;
             const bool isBooleanBinding = bindingSpecification.dtype.code == static_cast<uint8_t>(kDLUInt) &&
                                           bindingSpecification.dtype.bits == 8;
-            registerImplementation(
+            registerArrayImplementation(
                 implementationName, ImplementationKind::eSet,
-                SetImplementationFunction{
+                SetArrayImplementationFunction{
                     [handle, bindingHandle, bindingDimensionCount, bindingRowCount, isBooleanBinding,
-                     implementationName](const TensorDescription& data, const TensorDescription& indices)
+                     implementationName](const array::Array& data, const std::optional<array::Array>& indices)
                     {
-                        DLTensor source = convertToDLTensor(data);
+                        // ovphysx reads the source as a dense block and the boolean conversion below walks it
+                        // element by element, so compact a strided or broadcast input first. This is a view
+                        // when the input is already contiguous, and it must outlive `source`, which borrows
+                        // its shape and stride storage.
+                        const array::Array contiguousData = data.contiguous();
+                        array::ArrayReadAccess sourceAccess = array::acquireRead(contiguousData);
+                        DLTensor source = convertToDLTensor(contiguousData, sourceAccess);
                         std::vector<uint8_t> convertedBooleanData;
-                        if (isBooleanBinding && data.dtype == DType::eFloat32)
+                        if (isBooleanBinding && contiguousData.dtype() == array::Dtype::Float32())
                         {
-                            if (data.device == DeviceKind::eGpu)
+                            if (!contiguousData.device().isCpu())
                             {
                                 throw std::runtime_error(implementationName +
                                                          ": float32 boolean data must be CPU-resident");
                             }
-                            if (!isContiguousRowMajor(data))
-                            {
-                                throw std::runtime_error(implementationName +
-                                                         ": float32 boolean data must be C-contiguous");
-                            }
-                            const size_t elementCount = checkedElementCount(data.shape, implementationName.c_str());
+                            const size_t elementCount = contiguousData.size();
                             convertedBooleanData.resize(elementCount);
-                            const float* sourceValues = static_cast<const float*>(data.data);
+                            const float* sourceValues = static_cast<const float*>(sourceAccess.data());
                             for (size_t i = 0; i < elementCount; ++i)
                             {
                                 convertedBooleanData[i] = sourceValues[i] != 0.0f;
@@ -778,7 +843,8 @@ void OvPhysxEntityViewBase::_initializeBindings(
                             source.dtype = { static_cast<uint8_t>(kDLUInt), 8, 1 };
                             source.strides = nullptr;
                         }
-                        else if (isBooleanBinding && data.dtype != DType::eUInt8 && data.dtype != DType::eBool)
+                        else if (isBooleanBinding && contiguousData.dtype() != array::Dtype::UInt8() &&
+                                 contiguousData.dtype() != array::Dtype::Bool())
                         {
                             throw std::runtime_error(implementationName +
                                                      ": boolean data must be uint8, bool, or float32");
@@ -791,7 +857,9 @@ void OvPhysxEntityViewBase::_initializeBindings(
                         {
                             source.ndim -= 1;
                         }
-                        if (indices.isEmpty())
+                        // An omitted selection writes every entity. A supplied but zero-length one does the same
+                        // here, preserving the contract this implementation was written against.
+                        if (!indices.has_value() || indices->size() == 0)
                         {
                             const ovphysx_result_t writeResult =
                                 ovphysx_write_tensor_binding(handle, bindingHandle, &source, nullptr);
@@ -803,19 +871,20 @@ void OvPhysxEntityViewBase::_initializeBindings(
                         }
                         // ovphysx requires int32[K] indices (the umbrella convention);
                         // reject other dtypes loudly rather than let ovphysx misread them.
-                        requireInt32Indices(indices, implementationName.c_str());
+                        requireInt32Indices(*indices, implementationName.c_str());
                         // Indexed writes take the FULL [N, ...] source; ovphysx scatters rows by
                         // index into the full set. A compact [K, ...] source (K == index count)
                         // is not supported here yet -- reject clearly rather than let ovphysx
                         // misread the row count. Compact-to-full adaptation is a follow-up.
-                        const int64_t sourceRowCount = data.shape.empty() ? 0 : data.shape[0];
+                        const int64_t sourceRowCount = contiguousData.ndim() == 0 ? 0 : contiguousData.shape()[0];
                         if (bindingRowCount > 0 && sourceRowCount != bindingRowCount)
                         {
                             throw std::runtime_error(implementationName +
                                                      ": indexed write needs full [N, ...] rows "
                                                      "plus indices; compact [K, ...] unsupported");
                         }
-                        DLTensor indexTensor = convertToDLTensor(indices);
+                        array::ArrayReadAccess indexAccess = array::acquireRead(*indices);
+                        DLTensor indexTensor = convertToDLTensor(*indices, indexAccess);
                         const ovphysx_result_t writeResult =
                             ovphysx_write_tensor_binding(handle, bindingHandle, &source, &indexTensor);
                         if (writeResult.status != OVPHYSX_API_SUCCESS)
@@ -972,13 +1041,14 @@ static bool queryArticulationNamesAndPaths(ovphysx_handle_t handle,
 }
 
 OvPhysxArticulationEntityView::OvPhysxArticulationEntityView(ovphysx_handle_t handle, const std::string& pattern)
-    : OvPhysxArticulationEntityView(handle, pattern, std::nullopt)
+    : OvPhysxArticulationEntityView(handle, { pattern }, pattern, std::nullopt)
 {
 }
 
 OvPhysxArticulationEntityView::OvPhysxArticulationEntityView(ovphysx_handle_t handle,
                                                              const std::vector<std::string>& patterns)
     : OvPhysxArticulationEntityView(handle,
+                                    patterns,
                                     // Representative fallback pattern for the all-miss case (every pattern
                                     // matched nothing -> pattern mode with a non-matching pattern yields a
                                     // valid 0-prim binding). Ignored when the resolved list is non-empty.
@@ -988,9 +1058,10 @@ OvPhysxArticulationEntityView::OvPhysxArticulationEntityView(ovphysx_handle_t ha
 }
 
 OvPhysxArticulationEntityView::OvPhysxArticulationEntityView(ovphysx_handle_t handle,
+                                                             std::vector<std::string> constructionPaths,
                                                              std::string pattern,
                                                              std::optional<std::vector<std::string>> resolvedPaths)
-    : OvPhysxEntityViewBase(handle, resolvedPaths ? *resolvedPaths : std::vector<std::string>{ pattern }),
+    : OvPhysxEntityViewBase(handle, constructionPaths),
       m_pattern(std::move(pattern)),
       m_resolvedPaths(std::move(resolvedPaths))
 {
@@ -1056,22 +1127,24 @@ static std::vector<std::string> getRigidBodyPrimPaths(ovphysx_handle_t handle,
                                                       const std::optional<std::vector<std::string>>& resolvedPaths);
 
 OvPhysxRigidBodyEntityView::OvPhysxRigidBodyEntityView(ovphysx_handle_t handle, const std::string& pattern)
-    : OvPhysxRigidBodyEntityView(handle, pattern, std::nullopt)
+    : OvPhysxRigidBodyEntityView(handle, { pattern }, pattern, std::nullopt)
 {
 }
 
 OvPhysxRigidBodyEntityView::OvPhysxRigidBodyEntityView(ovphysx_handle_t handle, const std::vector<std::string>& patterns)
     // Representative fallback pattern for the all-miss case (see the articulation ctor).
     : OvPhysxRigidBodyEntityView(handle,
+                                 patterns,
                                  patterns.empty() ? std::string() : patterns.front(),
                                  resolvePatterns(handle, patterns, OVPHYSX_TENSOR_RIGID_BODY_POSE_F32))
 {
 }
 
 OvPhysxRigidBodyEntityView::OvPhysxRigidBodyEntityView(ovphysx_handle_t handle,
+                                                       std::vector<std::string> constructionPaths,
                                                        std::string pattern,
                                                        std::optional<std::vector<std::string>> resolvedPaths)
-    : OvPhysxEntityViewBase(handle, resolvedPaths ? *resolvedPaths : std::vector<std::string>{ pattern }),
+    : OvPhysxEntityViewBase(handle, constructionPaths),
       m_pattern(std::move(pattern)),
       m_resolvedPaths(std::move(resolvedPaths))
 {
@@ -1110,62 +1183,75 @@ OvPhysxRigidBodyEntityView::OvPhysxRigidBodyEntityView(ovphysx_handle_t handle,
         auto poseBindingIterator = m_bindings.find("transforms");
         if (poseBindingIterator != m_bindings.end())
         {
-            TensorSpecification wakeUpSpecification;
+            ArrayTensorSpecification wakeUpSpecification;
             wakeUpSpecification.supports = true;
             wakeUpSpecification.supportsIndexedWrite = true;
-            registerImplementation(
+            registerArrayImplementation(
                 "wake-up", ImplementationKind::eSet,
-                SetImplementationFunction{
+                SetArrayImplementationFunction{
                     [handle = m_handle, poseBindingHandle = poseBindingIterator->second](
-                        const TensorDescription& data, const TensorDescription& indices)
+                        const array::Array& data, const std::optional<array::Array>& indices)
                     {
-                        const TensorDescription& indexSelection = !indices.isEmpty() ? indices : data;
-                        if (indexSelection.isEmpty())
+                        // Callers put the selection in either slot: `indices` when it actually carries
+                        // rows, otherwise `data` (rigid_body.py calls set_data("wake-up", all_indices)
+                        // with no indices). An empty `indices` must fall through to `data` rather than
+                        // win, or a selection passed in the data slot would be silently ignored.
+                        const array::Array& indexSelection =
+                            (indices.has_value() && indices->size() > 0) ? *indices : data;
+                        // A zero-length selection means "every entity", which is how the Python wrapper
+                        // spells an unfiltered wake-up (set_data("wake-up", wp.zeros(0, dtype=int32))).
+                        if (indexSelection.size() == 0)
                         {
                             checkOvphysxResult(
                                 ovphysx_rigid_body_view_wake_up(handle, poseBindingHandle, nullptr), "wake-up");
                             return;
                         }
-                        // ovphysx_rigid_body_view_wake_up has no GPU implementation; refuse a device index buffer
-                        // loudly rather than dereference it on the host. This specification leaves requiresHostData
-                        // false, so a GPU buffer arrives as-is.
-                        if (indexSelection.device == DeviceKind::eGpu)
+                        // ovphysx_rigid_body_view_wake_up has no GPU implementation; refuse a
+                        // device index buffer loudly rather than dereference it on the host (this
+                        // specification leaves requiresHostData false, so a GPU buffer arrives as-is).
+                        if (!indexSelection.device().isCpu())
                         {
                             throw std::runtime_error(
-                                "wake-up: GPU index buffer not supported -- ovphysx_rigid_body_view_wake_up is "
-                                "CPU-only; pass a CPU index array");
+                                "wake-up: GPU index buffer not supported -- ovphysx_rigid_body_view_wake_up "
+                                "is CPU-only; pass a CPU index array");
                         }
-                        // ovphysx interprets the index buffer as int32; forwarding an int64 buffer as-is would
-                        // misread its bytes (int64 1 -> int32 [1,0]), so reject non-int32 loudly like every other set
-                        // path.
+                        // ovphysx interprets the index buffer as int32; forwarding an int64
+                        // buffer as-is would misread its bytes (int64 1 -> int32 [1,0]), so
+                        // reject non-int32 loudly like every other set path.
                         requireInt32Indices(indexSelection, "wake-up");
-                        DLTensor indexTensor = convertToDLTensor(indexSelection);
+                        array::ArrayReadAccess indexAccess = array::acquireRead(indexSelection);
+                        DLTensor indexTensor = convertToDLTensor(indexSelection, indexAccess);
                         checkOvphysxResult(
                             ovphysx_rigid_body_view_wake_up(handle, poseBindingHandle, &indexTensor), "wake-up");
                     } },
                 wakeUpSpecification);
-            registerImplementation(
+            registerArrayImplementation(
                 "put-to-sleep", ImplementationKind::eSet,
-                SetImplementationFunction{
+                SetArrayImplementationFunction{
                     [handle = m_handle, poseBindingHandle = poseBindingIterator->second](
-                        const TensorDescription& /*data*/, const TensorDescription& indices)
+                        const array::Array& /*data*/, const std::optional<array::Array>& indices)
                     {
-                        if (indices.isEmpty())
+                        // An omitted selection means "every entity". A supplied but zero-length
+                        // one means the same here, preserving the descriptor contract this implementation
+                        // was written against.
+                        if (!indices.has_value() || indices->size() == 0)
                         {
                             checkOvphysxResult(
                                 ovphysx_rigid_body_view_sleep(handle, poseBindingHandle, nullptr), "put-to-sleep");
                             return;
                         }
-                        // ovphysx_rigid_body_view_sleep is CPU-only and reads the buffer as int32 -- the same contract
-                        // wake-up enforces above.
-                        if (indices.device == DeviceKind::eGpu)
+                        // ovphysx_rigid_body_view_sleep is CPU-only and reads the buffer as
+                        // int32 -- the same contract wake-up enforces above.
+                        if (!indices->device().isCpu())
                         {
                             throw std::runtime_error(
-                                "put-to-sleep: GPU index buffer not supported -- ovphysx_rigid_body_view_sleep is "
-                                "CPU-only; pass a CPU index array");
+                                "put-to-sleep: GPU index buffer not supported -- "
+                                "ovphysx_rigid_body_view_sleep is CPU-only; pass a CPU "
+                                "index array");
                         }
-                        requireInt32Indices(indices, "put-to-sleep");
-                        DLTensor indexTensor = convertToDLTensor(indices);
+                        requireInt32Indices(*indices, "put-to-sleep");
+                        array::ArrayReadAccess indexAccess = array::acquireRead(*indices);
+                        DLTensor indexTensor = convertToDLTensor(*indices, indexAccess);
                         checkOvphysxResult(
                             ovphysx_rigid_body_view_sleep(handle, poseBindingHandle, &indexTensor), "put-to-sleep");
                     } },
@@ -1225,7 +1311,7 @@ static const std::vector<std::pair<std::string, ovphysx_tensor_type_t>> g_kVolum
 
 OvPhysxVolumeDeformableBodyEntityView::OvPhysxVolumeDeformableBodyEntityView(ovphysx_handle_t handle,
                                                                              const std::string& pattern)
-    : OvPhysxVolumeDeformableBodyEntityView(handle, pattern, std::nullopt)
+    : OvPhysxVolumeDeformableBodyEntityView(handle, { pattern }, pattern, std::nullopt)
 {
 }
 
@@ -1234,14 +1320,18 @@ OvPhysxVolumeDeformableBodyEntityView::OvPhysxVolumeDeformableBodyEntityView(ovp
     // Resolve the list in caller order; a representative pattern backs the all-miss case.
     : OvPhysxVolumeDeformableBodyEntityView(
           handle,
+          patterns,
           patterns.empty() ? std::string() : patterns.front(),
           resolvePatterns(handle, patterns, g_kVolumeDeformableBodyImplementations.front().second))
 {
 }
 
 OvPhysxVolumeDeformableBodyEntityView::OvPhysxVolumeDeformableBodyEntityView(
-    ovphysx_handle_t handle, std::string pattern, std::optional<std::vector<std::string>> resolvedPaths)
-    : OvPhysxEntityViewBase(handle, resolvedPaths ? *resolvedPaths : std::vector<std::string>{ pattern })
+    ovphysx_handle_t handle,
+    std::vector<std::string> constructionPaths,
+    std::string pattern,
+    std::optional<std::vector<std::string>> resolvedPaths)
+    : OvPhysxEntityViewBase(handle, constructionPaths)
 {
     _initializeBindings(g_kVolumeDeformableBodyImplementations, pattern, resolvedPaths);
     _setEntityCountFromBindings();
@@ -1262,7 +1352,7 @@ static const std::vector<std::pair<std::string, ovphysx_tensor_type_t>> g_kSurfa
 
 OvPhysxSurfaceDeformableBodyEntityView::OvPhysxSurfaceDeformableBodyEntityView(ovphysx_handle_t handle,
                                                                                const std::string& pattern)
-    : OvPhysxSurfaceDeformableBodyEntityView(handle, pattern, std::nullopt)
+    : OvPhysxSurfaceDeformableBodyEntityView(handle, { pattern }, pattern, std::nullopt)
 {
 }
 
@@ -1271,14 +1361,18 @@ OvPhysxSurfaceDeformableBodyEntityView::OvPhysxSurfaceDeformableBodyEntityView(o
     // Resolve the list in caller order; a representative pattern backs the all-miss case.
     : OvPhysxSurfaceDeformableBodyEntityView(
           handle,
+          patterns,
           patterns.empty() ? std::string() : patterns.front(),
           resolvePatterns(handle, patterns, g_kSurfaceDeformableBodyImplementations.front().second))
 {
 }
 
 OvPhysxSurfaceDeformableBodyEntityView::OvPhysxSurfaceDeformableBodyEntityView(
-    ovphysx_handle_t handle, std::string pattern, std::optional<std::vector<std::string>> resolvedPaths)
-    : OvPhysxEntityViewBase(handle, resolvedPaths ? *resolvedPaths : std::vector<std::string>{ pattern })
+    ovphysx_handle_t handle,
+    std::vector<std::string> constructionPaths,
+    std::string pattern,
+    std::optional<std::vector<std::string>> resolvedPaths)
+    : OvPhysxEntityViewBase(handle, constructionPaths)
 {
     _initializeBindings(g_kSurfaceDeformableBodyImplementations, pattern, resolvedPaths);
     _setEntityCountFromBindings();
@@ -1300,7 +1394,7 @@ static const std::vector<std::pair<std::string, ovphysx_tensor_type_t>> g_kDefor
 
 OvPhysxDeformableMaterialEntityView::OvPhysxDeformableMaterialEntityView(ovphysx_handle_t handle,
                                                                          const std::string& pattern)
-    : OvPhysxDeformableMaterialEntityView(handle, pattern, std::nullopt)
+    : OvPhysxDeformableMaterialEntityView(handle, { pattern }, pattern, std::nullopt)
 {
 }
 
@@ -1309,14 +1403,17 @@ OvPhysxDeformableMaterialEntityView::OvPhysxDeformableMaterialEntityView(ovphysx
     // Resolve the list in caller order; a representative pattern backs the all-miss case.
     : OvPhysxDeformableMaterialEntityView(
           handle,
+          patterns,
           patterns.empty() ? std::string() : patterns.front(),
           resolvePatterns(handle, patterns, g_kDeformableMaterialImplementations.front().second))
 {
 }
 
-OvPhysxDeformableMaterialEntityView::OvPhysxDeformableMaterialEntityView(
-    ovphysx_handle_t handle, std::string pattern, std::optional<std::vector<std::string>> resolvedPaths)
-    : OvPhysxEntityViewBase(handle, resolvedPaths ? *resolvedPaths : std::vector<std::string>{ pattern })
+OvPhysxDeformableMaterialEntityView::OvPhysxDeformableMaterialEntityView(ovphysx_handle_t handle,
+                                                                         std::vector<std::string> constructionPaths,
+                                                                         std::string pattern,
+                                                                         std::optional<std::vector<std::string>> resolvedPaths)
+    : OvPhysxEntityViewBase(handle, constructionPaths)
 {
     _initializeBindings(g_kDeformableMaterialImplementations, pattern, resolvedPaths);
     _setEntityCountFromBindings();
@@ -1365,23 +1462,18 @@ OvPhysxSdfShapeEntityView::OvPhysxSdfShapeEntityView(ovphysx_handle_t handle,
 
     std::vector<int64_t> outputShape = { shapeCount, queryPointCount, 4 };
 
-    TensorSpecification specification;
+    ArrayTensorSpecification specification;
     specification.supports = true;
-    specification.dtype = DType::eFloat32;
+    specification.dtype = array::Dtype::Float32();
     specification.shapeHint = outputShape;
     specification.supportsIndexedRead = true; // query points are passed via the indices slot
     specification.supportsIndexedWrite = false;
 
-    registerImplementation(
+    registerArrayImplementation(
         "distances-and-gradients", ImplementationKind::eGet,
-        GetImplementationFunction{
-            [this](const TensorDescription& queryPoints, const TensorDescription& output) -> TensorDescription
+        GetArrayImplementationFunction{
+            [this](const std::optional<array::Array>& queryPoints, const std::optional<array::Array>& output) -> array::Array
             {
-                if (queryPoints.isEmpty())
-                {
-                    return {};
-                }
-
                 // SDF evaluation is GPU-only: ovphysx_evaluate_sdf requires BOTH the query
                 // and the output on the GPU (getSdfAndGradients checks each slot's device).
                 // The C++ backend has no device allocator, so there is no host-staging path
@@ -1389,69 +1481,90 @@ OvPhysxSdfShapeEntityView::OvPhysxSdfShapeEntityView(ovphysx_handle_t handle,
                 // preallocated GPU `out`. Refuse a CPU/absent out (or a CPU query) loudly
                 // rather than let the engine fail with an opaque "SDF evaluation failed".
                 const char* context = "distances-and-gradients";
-                if (queryPoints.device != DeviceKind::eGpu)
+                if (!queryPoints.has_value())
+                {
+                    throw std::runtime_error(std::string(context) +
+                                             ": query points are required; pass them through the indices slot");
+                }
+                if (!queryPoints->device().isCuda())
                 {
                     throw std::runtime_error(std::string(context) +
                                              ": SDF evaluation is GPU-only; query points must be on the GPU");
                 }
                 // Validate the query against its fixed [N, maxQ, 3] contract, symmetric to
                 // requireMatchingOutput below: the engine reads the buffer as a flat, contiguous
-                // PxVec3[N * maxQ] (ignoring dtype/shape/strides), so a wrong dtype, a wrong
-                // element count, or a strided query is silently misread -- reject it here with
-                // a clear message instead of the opaque "SDF evaluation failed".
-                if (queryPoints.dtype != DType::eFloat32)
+                // PxVec3[N * maxQ] (ignoring dtype/shape), so a wrong dtype or a wrong element count
+                // is silently misread -- reject it here with a clear message instead of the opaque
+                // "SDF evaluation failed".
+                if (queryPoints->dtype() != array::Dtype::Float32())
                 {
                     throw std::runtime_error(std::string(context) + ": query points must be float32");
                 }
                 // The query states how many points per shape the caller intends to submit, so adopt that
                 // extent before validating against it. Only its own axis is caller-chosen: N is the number of
                 // shapes the view resolved and stays fixed.
-                if (queryPoints.shape.size() == 3 && queryPoints.shape[0] == m_shapeCount)
+                // Asking for zero points is a coherent request whose answer is a zero-row result: there is
+                // nothing to evaluate. It holds no data, so it aliases the query's own buffer rather than
+                // allocating -- the pointer is never read for an empty array.
+                //
+                // This must precede the null-storage guard below: an empty Array legitimately carries a null
+                // data pointer (a DLPack import only rejects null for a non-empty tensor), so checking
+                // storage first would reject every zero-point query instead of answering it.
+                if (queryPoints->size() == 0)
                 {
-                    _ensureQueryPointCapacity(static_cast<int32_t>(queryPoints.shape[1]));
+                    return queryPoints->reshape(
+                        array::Shape(std::vector<int64_t>{ static_cast<int64_t>(m_shapeCount), 0, 4 }));
                 }
-                const std::vector<int64_t> outputShape = { m_shapeCount, m_maximumQueryPointCount, 4 };
-                const size_t queryCount = checkedElementCount(queryPoints.shape, context);
-                const size_t expectedQueryCount = checkedElementCount({ outputShape[0], outputShape[1], 3 }, context);
-                if (queryCount != expectedQueryCount)
+                // A non-empty query must actually carry storage; a zero-size array is the only legitimate
+                // source of a null data pointer and it returned above.
+                if (!queryPoints->data())
                 {
-                    throw std::runtime_error(std::string(context) + ": query points must be [N, maxQ, 3]");
+                    throw std::runtime_error(std::string(context) + ": query points have no storage");
                 }
-                if (!isContiguousRowMajor(queryPoints))
+                // Rejected rather than compacted: silently copying would hide a per-call device allocation
+                // behind what reads as a zero-copy submission.
+                if (!queryPoints->isContiguous())
                 {
                     throw std::runtime_error(std::string(context) + ": query points must be C-contiguous");
                 }
-                if (output.isEmpty())
+                if (queryPoints->ndim() == 3 && queryPoints->shape()[0] == m_shapeCount)
+                {
+                    _ensureQueryPointCapacity(static_cast<int32_t>(queryPoints->shape()[1]));
+                }
+                const array::Shape outputShape(std::vector<int64_t>{ m_shapeCount, m_maximumQueryPointCount, 4 });
+                const size_t expectedQueryCount =
+                    array::Shape(std::vector<int64_t>{ outputShape[0], outputShape[1], 3 }).size();
+                if (queryPoints->size() != expectedQueryCount)
+                {
+                    throw std::runtime_error(std::string(context) + ": query points must be [N, maxQ, 3]");
+                }
+                if (!output.has_value() || !output->data())
                 {
                     throw std::runtime_error(std::string(context) +
                                              ": SDF evaluation is GPU-only; provide a preallocated GPU out buffer");
                 }
-                if (output.device != DeviceKind::eGpu)
+                if (!output->device().isCuda())
                 {
                     throw std::runtime_error(std::string(context) +
                                              ": SDF evaluation is GPU-only; out buffer must be on the GPU");
                 }
-                requireMatchingOutput(output, outputShape, DType::eFloat32, context);
+                requireMatchingOutput(*output, outputShape, array::Dtype::Float32(), context);
 
-                DLTensor queryTensor = convertToDLTensor(queryPoints);
+                array::ArrayReadAccess queryAccess = array::acquireRead(*queryPoints);
+                DLTensor queryTensor = convertToDLTensor(*queryPoints, queryAccess);
 
-                DLTensor outputTensor{};
-                outputTensor.data = output.data;
-                outputTensor.device = { kDLCUDA, output.deviceOrdinal };
-                outputTensor.dtype = { static_cast<uint8_t>(kDLFloat), 32, 1 };
-                outputTensor.ndim = 3;
-                outputTensor.shape = const_cast<int64_t*>(outputShape.data());
-                outputTensor.strides = nullptr;
+                // The engine writes the result into the caller's buffer, viewed under the [N, maxQ, 4]
+                // contract; the reshape shares that buffer rather than copying it, and the array is not
+                // rebound.
+                array::Array result = output->reshape(outputShape);
+                array::ArrayWriteAccess outputAccess = array::acquireWrite(result);
+                DLTensor outputTensor = convertToDLTensor(result, outputAccess);
 
                 checkOvphysxResult(
                     ovphysx_evaluate_sdf(m_handle, m_sdfHandle, &queryTensor, &outputTensor), "ovphysx_evaluate_sdf");
+                outputAccess.release();
 
-                TensorDescription result;
-                result.data = output.data;
-                result.dtype = DType::eFloat32;
-                result.shape = outputShape;
-                result.device = DeviceKind::eGpu;
-                result.deviceOrdinal = output.deviceOrdinal;
+                // The result lives in the caller's buffer and carries whatever ownership the caller gave it.
                 return result;
             } },
         specification);
@@ -1486,7 +1599,7 @@ void OvPhysxSdfShapeEntityView::_ensureQueryPointCapacity(int32_t requestedQuery
 
 int OvPhysxSdfShapeEntityView::getDeviceOrdinal() const noexcept
 {
-    return resolveOvPhysxDeviceOrdinal(*this);
+    return resolveOvPhysxDevice(*this).ordinal();
 }
 
 OvPhysxSdfShapeEntityView::~OvPhysxSdfShapeEntityView()
@@ -1506,60 +1619,89 @@ std::shared_ptr<isaacsim::physics::tensors::EntityView> makeUnsupportedView(cons
                                                                             const std::string& category)
 {
     auto view = std::make_shared<EntityView>(std::vector<std::string>{ pattern });
-    TensorSpecification specification;
+    ArrayTensorSpecification specification;
     specification.supports = false;
     std::string placeholderImplementation = category + "-data";
-    view->registerImplementation(placeholderImplementation, ImplementationKind::eGet,
-                                 GetImplementationFunction{ [](const TensorDescription& /*indices*/,
-                                                               const TensorDescription& output) { return output; } },
-                                 specification);
+    view->registerArrayImplementation(
+        placeholderImplementation, ImplementationKind::eGet,
+        GetArrayImplementationFunction{
+            [](const std::optional<array::Array>&, const std::optional<array::Array>&) -> array::Array
+            {
+                // Unreachable: the specification reports supports=false, so getArrayData rejects the
+                // call before it reaches this callback.
+                throw std::logic_error("unsupported entity view: this category has no tensor implementation");
+            } },
+        specification);
     return view;
 }
 
-// One resolved output of a contact multi-get read: the buffer the engine writes into and the device
-// it lives on. Shared by net/raw/contact/friction multi-gets so out-handling is identical everywhere.
-struct OutputSlot
+// Resolve a multi-get output slot into the array the engine writes through and hands back: when the
+// framework supplied a caller `out[i]` (a GPU buffer on the DirectGPU lane, where ovphysx requires a
+// device-matching destination), validate it against its per-output contract (dtype, element count, and a
+// contiguous writeable layout -- same guard as the single-buffer path; a valid device ordinal comes free
+// with Array) and view it under `shape`; otherwise fall back to the persistent host buffer. Shared by
+// net/raw/contact/friction multi-gets so out-handling is identical everywhere.
+//
+// On the host-buffer path the result keeps the ContactBuffers struct alive but NOT the address, because
+// the buffers are vector members that _ensureContactCapacity() resizes -- a reallocation frees the block
+// a previously returned array still points at. Retaining a result across a read that grows the buffers is
+// therefore a use-after-free, not merely a stale read; copy to retain across calls.
+static array::Array resolveOutputSlot(const std::optional<std::vector<array::Array>>& output,
+                                      size_t outputIndex,
+                                      const std::shared_ptr<void>& hostOwner,
+                                      void* hostBuffer,
+                                      const array::Shape& shape,
+                                      array::Dtype dtype,
+                                      const char* label)
 {
-    void* data;
-    bool gpu;
-    int32_t ordinal;
-};
-
-// Resolve a multi-get output slot: when the framework supplied a caller `out[i]` (a GPU buffer on the
-// DirectGPU lane, where ovphysx requires a device-matching destination), validate it against its per-output
-// contract (dtype / count / contiguity / ordinal -- same guard as the single-buffer path) and use it;
-// otherwise fall back to the persistent host buffer.
-static OutputSlot resolveOutputSlot(const std::vector<TensorDescription>& output,
-                                    size_t outputIndex,
-                                    void* hostBuffer,
-                                    const std::vector<int64_t>& shape,
-                                    DType dtype,
-                                    const char* label)
-{
-    if (output.size() > outputIndex && output[outputIndex].data)
+    if (output.has_value() && output->size() > outputIndex && (*output)[outputIndex].data())
     {
-        requireMatchingOutput(output[outputIndex], shape, dtype, label);
-        const bool gpu = output[outputIndex].device == DeviceKind::eGpu;
-        return { output[outputIndex].data, gpu, gpu ? output[outputIndex].deviceOrdinal : -1 };
+        const array::Array& slot = (*output)[outputIndex];
+        requireMatchingOutput(slot, shape, dtype, label);
+        // The engine writes through a caller-supplied slot, viewed under this output's own shape; the
+        // reshape shares the caller's storage rather than copying, and the array is never rebound.
+        return slot.reshape(shape);
     }
-    return { hostBuffer, false, -1 };
+    return array::Array::fromBuffer(shareBytes(hostOwner, hostBuffer), shape.size() * dtype.size(), shape, dtype);
+}
+
+static std::vector<array::ArrayWriteAccess> acquireOutputWrites(std::vector<array::Array>& slots, const char* label)
+{
+    std::unordered_set<const void*> allocations;
+    std::vector<array::ArrayWriteAccess> accesses;
+    accesses.reserve(slots.size());
+    for (array::Array& slot : slots)
+    {
+        const void* allocation = slot.buffer().get();
+        if (allocation && !allocations.insert(allocation).second)
+        {
+            throw std::runtime_error(std::string(label) + ": output buffers must not alias");
+        }
+        accesses.push_back(array::acquireWrite(slot));
+    }
+    return accesses;
 }
 
 // The caller states the contact-record capacity through the first axis of the payload outputs, which are the
 // outputs holding one row per contact record. Returns 0 when the caller supplied no `out` or the payload
 // outputs disagree with each other; the per-slot validation in resolveOutputSlot then reports the mismatch
 // with its own message rather than this silently adopting one of the sizes.
-static int32_t getRequestedContactCapacity(const std::vector<TensorDescription>& output,
+static int32_t getRequestedContactCapacity(const std::optional<std::vector<array::Array>>& output,
                                            const std::vector<size_t>& payloadSlots)
 {
+    if (!output.has_value())
+    {
+        return 0;
+    }
+    const std::vector<array::Array>& slots = *output;
     int32_t capacity = 0;
     for (const size_t payloadSlot : payloadSlots)
     {
-        if (output.size() <= payloadSlot || !output[payloadSlot].data || output[payloadSlot].shape.empty())
+        if (slots.size() <= payloadSlot || !slots[payloadSlot].data() || slots[payloadSlot].ndim() == 0)
         {
             return 0;
         }
-        const int32_t slotCapacity = static_cast<int32_t>(output[payloadSlot].shape[0]);
+        const int32_t slotCapacity = static_cast<int32_t>(slots[payloadSlot].shape()[0]);
         if (capacity != 0 && slotCapacity != capacity)
         {
             return 0;
@@ -1569,34 +1711,11 @@ static int32_t getRequestedContactCapacity(const std::vector<TensorDescription>&
     return capacity;
 }
 
-static DLTensor makeSlotDLTensor(const OutputSlot& slot, const std::vector<int64_t>& shape, DLDataType dataType)
-{
-    DLTensor tensor{};
-    tensor.data = slot.data;
-    tensor.device = slot.gpu ? DLDevice{ kDLCUDA, slot.ordinal } : DLDevice{ kDLCPU, 0 };
-    tensor.dtype = dataType;
-    tensor.ndim = static_cast<int32_t>(shape.size());
-    tensor.shape = const_cast<int64_t*>(shape.data());
-    tensor.strides = nullptr;
-    return tensor;
-}
-
-static TensorDescription makeSlotTensorDescriptor(const OutputSlot& slot, const std::vector<int64_t>& shape, DType dataType)
-{
-    TensorDescription result;
-    result.data = slot.data;
-    result.dtype = dataType;
-    result.shape = shape;
-    result.device = slot.gpu ? DeviceKind::eGpu : DeviceKind::eCpu;
-    result.deviceOrdinal = slot.gpu ? slot.ordinal : -1;
-    return result;
-}
-
-// Per-output TensorSpecification (shape + dtype) for a multi-get registration -- lets the framework
+// Per-output ArrayTensorSpecification (shape + dtype) for a multi-get registration -- lets the framework
 // pre-allocate a device buffer per output on the DirectGPU lane.
-static TensorSpecification makeOutputSpecification(std::vector<int64_t> shape, DType dataType)
+static ArrayTensorSpecification makeOutputSpecification(std::vector<int64_t> shape, array::Dtype dataType)
 {
-    TensorSpecification specification;
+    ArrayTensorSpecification specification;
     specification.supports = true;
     specification.dtype = dataType;
     specification.shapeHint = std::move(shape);
@@ -1607,22 +1726,23 @@ static TensorSpecification makeOutputSpecification(std::vector<int64_t> shape, D
 // (the framework passes 0 or `expected`). Reject a partial list -- wrong size or
 // any null slot -- clearly rather than silently host-staging the rest, matching
 // the single-buffer path's all-or-nothing `out`.
-static void requireFullOrEmptyOutput(const std::vector<TensorDescription>& output,
+static void requireFullOrEmptyOutput(const std::optional<std::vector<array::Array>>& output,
                                      size_t expectedOutputCount,
                                      const char* label)
 {
-    if (output.empty())
+    // An absent or empty list both mean "no buffers supplied"; only a partially filled one is an error.
+    if (!output.has_value() || output->empty())
     {
         return;
     }
-    if (output.size() != expectedOutputCount)
+    if (output->size() != expectedOutputCount)
     {
         throw std::runtime_error(std::string(label) + ": expected " + std::to_string(expectedOutputCount) +
-                                 " output buffers (all or none), got " + std::to_string(output.size()));
+                                 " output buffers (all or none), got " + std::to_string(output->size()));
     }
     for (size_t i = 0; i < expectedOutputCount; ++i)
     {
-        if (!output[i].data)
+        if (!(*output)[i].data())
         {
             throw std::runtime_error(std::string(label) + ": output " + std::to_string(i) +
                                      " is null (supply all output buffers or none)");
@@ -1633,11 +1753,17 @@ static void requireFullOrEmptyOutput(const std::vector<TensorDescription>& outpu
 // Register a GET implementation that reports supports=false (the "unsupported" stub).
 static void registerUnsupportedGet(EntityView& view, const char* implementationName)
 {
-    TensorSpecification unsupportedSpecification;
+    ArrayTensorSpecification unsupportedSpecification;
     unsupportedSpecification.supports = false;
-    view.registerImplementation(
+    view.registerArrayImplementation(
         implementationName, ImplementationKind::eGet,
-        GetImplementationFunction{ [](const TensorDescription&, const TensorDescription& output) { return output; } },
+        GetArrayImplementationFunction{
+            [](const std::optional<array::Array>&, const std::optional<array::Array>&) -> array::Array
+            {
+                // Unreachable: the specification reports supports=false, so getArrayData rejects the
+                // call before it reaches this callback.
+                throw std::logic_error("unsupported contact operation: not implemented by ovphysx");
+            } },
         unsupportedSpecification);
 }
 
@@ -1696,7 +1822,9 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
     {
         const size_t filtersPerSensor = filterPatterns.size();
         const size_t sensorCount = sensorStrings.size();
-        filterStrings.reserve(checkedSizeProduct(filtersPerSensor, sensorCount > 0 ? sensorCount : 1u, "contact filters"));
+        // A capacity hint, not an allocation the loop below writes through: the inserts stay correct
+        // whatever this reserves, so the product needs no overflow guard of its own.
+        filterStrings.reserve(filtersPerSensor * (sensorCount > 0 ? sensorCount : 1u));
         if (sensorCount <= 1 || filtersPerSensor == 0)
         {
             filterStrings = filterPatterns;
@@ -1742,7 +1870,7 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
     m_filtersPerSensor = filtersPerSensor;
     m_buffers = std::make_shared<ContactBuffers>();
 
-    // Query dimensions for TensorSpecification shape hints.
+    // Query dimensions for ArrayTensorSpecification shape hints.
     checkOvphysxResult(ovphysx_get_contact_binding_spec(m_handle, contactBinding, &m_sensorCount, &m_filterCount),
                        "contact-binding-specification");
     if (m_sensorCount < 0 || m_filterCount < 0)
@@ -1777,49 +1905,58 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
 
     // "net-contact-forces": shape [S, 3]
     {
-        TensorSpecification specification;
-        specification.dtype = DType::eFloat32;
+        ArrayTensorSpecification specification;
+        specification.dtype = array::Dtype::Float32();
         specification.shapeHint = { registeredSensorCount, 3 };
         specification.supports = true;
         specification.supportsIndexedRead = false;
         specification.supportsIndexedWrite = false;
 
-        std::vector<int64_t> netForceShape = { registeredSensorCount, 3 };
-        auto netForceBuffer = std::make_shared<std::vector<float>>(
-            checkedElementCount({ registeredSensorCount, 3 }, "net-contact-forces"), 0.0f);
-        registerImplementation(
+        const array::Shape netForceShape(std::vector<int64_t>{ registeredSensorCount, 3 });
+        // Not const: a published staging buffer is re-staged when a consumer still holds the
+        // previous contents, which the mutable lambda below does through its own copy.
+        array::Array netForceStaging = array::zeros(netForceShape, array::Dtype::Float32());
+        registerArrayImplementation(
             "net-contact-forces", ImplementationKind::eGet,
-            GetImplementationFunction{
-                [this, netForceBuffer, netForceShape](
-                    const TensorDescription& /*indices*/, const TensorDescription& output) mutable -> TensorDescription
+            GetArrayImplementationFunction{
+                [this, netForceStaging, netForceShape](const std::optional<array::Array>& /*indices*/,
+                                                       const std::optional<array::Array>& output) mutable -> array::Array
                 {
                     // Read into the caller `out` when given (the framework hands a GPU
                     // buffer on the DirectGPU/suppressReadback lane, where ovphysx
                     // requires a device-matching destination); otherwise stage to the host buffer.
-                    const bool hasOutput = !output.isEmpty() && output.data;
-                    const bool outputOnGpu = hasOutput && output.device == DeviceKind::eGpu;
+                    const bool hasOutput = output.has_value() && output->data();
                     if (hasOutput)
                     {
-                        requireMatchingOutput(output, netForceShape, DType::eFloat32, "net-contact-forces");
+                        requireMatchingOutput(*output, netForceShape, array::Dtype::Float32(), "net-contact-forces");
                     }
-                    void* outputData = hasOutput ? output.data : static_cast<void*>(netForceBuffer->data());
-
-                    DLTensor destination{};
-                    destination.data = outputData;
-                    destination.device = outputOnGpu ? DLDevice{ kDLCUDA, output.deviceOrdinal } : DLDevice{ kDLCPU, 0 };
-                    destination.dtype = { static_cast<uint8_t>(kDLFloat), 32, 1 };
-                    destination.ndim = 2;
-                    destination.shape = const_cast<int64_t*>(netForceShape.data());
-                    destination.strides = nullptr;
+                    // The engine writes through a supplied `out` under this read's own shape; the reshape
+                    // shares the caller's storage rather than copying, and the array is never rebound.
+                    array::ArrayWriteAccess destinationAccess;
+                    if (hasOutput)
+                    {
+                        array::Array callerTarget = output->reshape(netForceShape);
+                        // A caller-supplied buffer cannot be swapped for a fresh one without silently
+                        // writing somewhere the caller is not looking, so report the conflict instead.
+                        std::optional<array::ArrayWriteAccess> access = array::tryAcquireWrite(callerTarget);
+                        if (!access)
+                        {
+                            throw std::runtime_error(
+                                "net-contact-forces: the supplied out array is still retained by another consumer");
+                        }
+                        destinationAccess = std::move(*access);
+                    }
+                    else
+                    {
+                        destinationAccess = acquireStagingWrite(netForceStaging);
+                    }
+                    // Re-read after acquisition: acquireStagingWrite() may have replaced the buffer.
+                    array::Array result = hasOutput ? output->reshape(netForceShape) : netForceStaging;
+                    DLTensor destination = convertToDLTensor(result, destinationAccess);
                     checkOvphysxResult(ovphysx_read_contact_net_forces(m_handle, m_contactBinding, &destination),
                                        "net-contact-forces");
+                    destinationAccess.release();
 
-                    TensorDescription result;
-                    result.data = outputData;
-                    result.dtype = DType::eFloat32;
-                    result.shape = netForceShape;
-                    result.device = outputOnGpu ? DeviceKind::eGpu : DeviceKind::eCpu;
-                    result.deviceOrdinal = outputOnGpu ? output.deviceOrdinal : -1;
                     return result;
                 } },
             specification);
@@ -1827,53 +1964,64 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
 
     // "contact-force-matrix": shape [S, F, 3] (requires filters)
     {
-        TensorSpecification specification;
-        specification.dtype = DType::eFloat32;
+        ArrayTensorSpecification specification;
+        specification.dtype = array::Dtype::Float32();
         specification.shapeHint = { registeredSensorCount, filterCount > 0 ? filterCount : 1, 3 };
         specification.supports = (filterCount > 0);
         specification.supportsIndexedRead = false;
         specification.supportsIndexedWrite = false;
 
-        std::vector<int64_t> forceMatrixShape = { registeredSensorCount, filterCount > 0 ? filterCount : 1, 3 };
-        auto forceMatrixBuffer = std::make_shared<std::vector<float>>(
-            checkedElementCount({ registeredSensorCount, filterCount > 0 ? filterCount : 1, 3 }, "contact-force-matrix"),
-            0.0f);
-        registerImplementation(
+        const array::Shape forceMatrixShape(
+            std::vector<int64_t>{ registeredSensorCount, filterCount > 0 ? filterCount : 1, 3 });
+        // Not const: a published staging buffer is re-staged when a consumer still holds the
+        // previous contents, which the mutable lambda below does through its own copy.
+        array::Array forceMatrixStaging = array::zeros(forceMatrixShape, array::Dtype::Float32());
+        registerArrayImplementation(
             "contact-force-matrix", ImplementationKind::eGet,
-            GetImplementationFunction{
-                [this, forceMatrixBuffer, forceMatrixShape, hasFilters = (filterCount > 0)](
-                    const TensorDescription& /*indices*/, const TensorDescription& output) mutable -> TensorDescription
+            GetArrayImplementationFunction{
+                [this, forceMatrixStaging, forceMatrixShape, hasFilters = (filterCount > 0)](
+                    const std::optional<array::Array>& /*indices*/,
+                    const std::optional<array::Array>& output) mutable -> array::Array
                 {
                     if (!hasFilters)
                     {
-                        TensorDescription empty;
-                        return empty;
+                        // Unreachable: the specification reports supports=false without filters, so getArrayData
+                        // rejects the call before it reaches this callback.
+                        throw std::logic_error("contact-force-matrix: requires filters");
                     }
                     // Honor a caller `out` device (GPU on the DirectGPU lane); else host buffer.
-                    const bool hasOutput = !output.isEmpty() && output.data;
-                    const bool outputOnGpu = hasOutput && output.device == DeviceKind::eGpu;
+                    const bool hasOutput = output.has_value() && output->data();
                     if (hasOutput)
                     {
-                        requireMatchingOutput(output, forceMatrixShape, DType::eFloat32, "contact-force-matrix");
+                        requireMatchingOutput(*output, forceMatrixShape, array::Dtype::Float32(), "contact-force-matrix");
                     }
-                    void* outputData = hasOutput ? output.data : static_cast<void*>(forceMatrixBuffer->data());
-
-                    DLTensor destination{};
-                    destination.data = outputData;
-                    destination.device = outputOnGpu ? DLDevice{ kDLCUDA, output.deviceOrdinal } : DLDevice{ kDLCPU, 0 };
-                    destination.dtype = { static_cast<uint8_t>(kDLFloat), 32, 1 };
-                    destination.ndim = 3;
-                    destination.shape = const_cast<int64_t*>(forceMatrixShape.data());
-                    destination.strides = nullptr;
+                    // The engine writes through a supplied `out` under this read's own shape; the reshape
+                    // shares the caller's storage rather than copying, and the array is never rebound.
+                    array::ArrayWriteAccess destinationAccess;
+                    if (hasOutput)
+                    {
+                        array::Array callerTarget = output->reshape(forceMatrixShape);
+                        // A caller-supplied buffer cannot be swapped for a fresh one without silently
+                        // writing somewhere the caller is not looking, so report the conflict instead.
+                        std::optional<array::ArrayWriteAccess> access = array::tryAcquireWrite(callerTarget);
+                        if (!access)
+                        {
+                            throw std::runtime_error(
+                                "contact-force-matrix: the supplied out array is still retained by another consumer");
+                        }
+                        destinationAccess = std::move(*access);
+                    }
+                    else
+                    {
+                        destinationAccess = acquireStagingWrite(forceMatrixStaging);
+                    }
+                    // Re-read after acquisition: acquireStagingWrite() may have replaced the buffer.
+                    array::Array result = hasOutput ? output->reshape(forceMatrixShape) : forceMatrixStaging;
+                    DLTensor destination = convertToDLTensor(result, destinationAccess);
                     checkOvphysxResult(ovphysx_read_contact_force_matrix(m_handle, m_contactBinding, &destination),
                                        "contact-force-matrix");
+                    destinationAccess.release();
 
-                    TensorDescription result;
-                    result.data = outputData;
-                    result.dtype = DType::eFloat32;
-                    result.shape = forceMatrixShape;
-                    result.device = outputOnGpu ? DeviceKind::eGpu : DeviceKind::eCpu;
-                    result.deviceOrdinal = outputOnGpu ? output.deviceOrdinal : -1;
                     return result;
                 } },
             specification);
@@ -1889,10 +2037,12 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
         int32_t contactCapacity = maximumContactDataCount;
 
         // Pre-allocate all contact-data output buffers.
-        const size_t scalarContactElementCount = checkedElementCount({ contactCapacity, 1 }, "contact-data");
-        const size_t vectorContactElementCount = checkedElementCount({ contactCapacity, 3 }, "contact-data");
-        const size_t sensorFilterElementCount =
-            checkedElementCount({ registeredSensorCount, filterCount }, "contact-data");
+        const array::Shape scalarContactShape(std::vector<int64_t>{ contactCapacity, 1 });
+        const array::Shape vectorContactShape(std::vector<int64_t>{ contactCapacity, 3 });
+        const array::Shape sensorFilterShape(std::vector<int64_t>{ registeredSensorCount, filterCount });
+        const size_t scalarContactElementCount = scalarContactShape.size();
+        const size_t vectorContactElementCount = vectorContactShape.size();
+        const size_t sensorFilterElementCount = sensorFilterShape.size();
         m_buffers->contactForce.assign(scalarContactElementCount, 0.0f);
         m_buffers->contactPoint.assign(vectorContactElementCount, 0.0f);
         m_buffers->contactNormal.assign(vectorContactElementCount, 0.0f);
@@ -1900,60 +2050,54 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
         m_buffers->contactCount.assign(sensorFilterElementCount, 0);
         m_buffers->contactStartIndex.assign(sensorFilterElementCount, 0);
 
-        std::vector<int64_t> scalarContactShape = { contactCapacity, 1 }, vectorContactShape = { contactCapacity, 3 };
-        std::vector<int64_t> sensorFilterShape = { registeredSensorCount, filterCount };
-
-        std::vector<TensorSpecification> contactDataSpecifications = {
-            makeOutputSpecification(scalarContactShape, DType::eFloat32),
-            makeOutputSpecification(vectorContactShape, DType::eFloat32),
-            makeOutputSpecification(vectorContactShape, DType::eFloat32),
-            makeOutputSpecification(scalarContactShape, DType::eFloat32),
-            makeOutputSpecification(sensorFilterShape, DType::eInt32),
-            makeOutputSpecification(sensorFilterShape, DType::eInt32)
+        std::vector<ArrayTensorSpecification> contactDataSpecifications = {
+            makeOutputSpecification(scalarContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(vectorContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(vectorContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(scalarContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(sensorFilterShape.shape(), array::Dtype::Int32()),
+            makeOutputSpecification(sensorFilterShape.shape(), array::Dtype::Int32())
         };
-        registerImplementation(
+        registerArrayImplementation(
             "contact-data", ImplementationKind::eGet,
-            GetMultiImplementationFunction{
-                [this, sensorFilterShape](const TensorDescription&, const std::vector<TensorDescription>& output) mutable
-                -> std::vector<TensorDescription>
+            GetArrayMultiImplementationFunction{
+                [this, sensorFilterShape](
+                    const std::optional<array::Array>&,
+                    const std::optional<std::vector<array::Array>>& output) mutable -> std::vector<array::Array>
                 {
                     const char* context = "contact-data";
                     requireFullOrEmptyOutput(output, 6, context);
                     // Adopt the caller's extent before validating against it, so the shapes below describe the
                     // buffers they actually passed.
                     _ensureContactCapacity(getRequestedContactCapacity(output, { 0, 1, 2, 3 }));
-                    const std::vector<int64_t> scalarContactShape = { m_maximumContactDataCount, 1 };
-                    const std::vector<int64_t> vectorContactShape = { m_maximumContactDataCount, 3 };
-                    OutputSlot forceSlot = resolveOutputSlot(
-                        output, 0, m_buffers->contactForce.data(), scalarContactShape, DType::eFloat32, context);
-                    OutputSlot pointSlot = resolveOutputSlot(
-                        output, 1, m_buffers->contactPoint.data(), vectorContactShape, DType::eFloat32, context);
-                    OutputSlot normalSlot = resolveOutputSlot(
-                        output, 2, m_buffers->contactNormal.data(), vectorContactShape, DType::eFloat32, context);
-                    OutputSlot separationSlot = resolveOutputSlot(
-                        output, 3, m_buffers->contactSeparation.data(), scalarContactShape, DType::eFloat32, context);
-                    OutputSlot countSlot = resolveOutputSlot(
-                        output, 4, m_buffers->contactCount.data(), sensorFilterShape, DType::eInt32, context);
-                    OutputSlot startIndexSlot = resolveOutputSlot(
-                        output, 5, m_buffers->contactStartIndex.data(), sensorFilterShape, DType::eInt32, context);
-                    DLDataType float32DataType = { static_cast<uint8_t>(kDLFloat), 32, 1 };
-                    DLDataType int32DataType = { static_cast<uint8_t>(kDLInt), 32, 1 };
-                    DLTensor forceTensor = makeSlotDLTensor(forceSlot, scalarContactShape, float32DataType);
-                    DLTensor pointTensor = makeSlotDLTensor(pointSlot, vectorContactShape, float32DataType);
-                    DLTensor normalTensor = makeSlotDLTensor(normalSlot, vectorContactShape, float32DataType);
-                    DLTensor separationTensor = makeSlotDLTensor(separationSlot, scalarContactShape, float32DataType);
-                    DLTensor countTensor = makeSlotDLTensor(countSlot, sensorFilterShape, int32DataType);
-                    DLTensor startIndexTensor = makeSlotDLTensor(startIndexSlot, sensorFilterShape, int32DataType);
+                    const array::Shape scalarContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 1 });
+                    const array::Shape vectorContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 3 });
+                    std::vector<array::Array> slots = {
+                        resolveOutputSlot(output, 0, m_buffers, m_buffers->contactForce.data(), scalarContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 1, m_buffers, m_buffers->contactPoint.data(), vectorContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 2, m_buffers, m_buffers->contactNormal.data(), vectorContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 3, m_buffers, m_buffers->contactSeparation.data(), scalarContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 4, m_buffers, m_buffers->contactCount.data(), sensorFilterShape,
+                                          array::Dtype::Int32(), context),
+                        resolveOutputSlot(output, 5, m_buffers, m_buffers->contactStartIndex.data(), sensorFilterShape,
+                                          array::Dtype::Int32(), context)
+                    };
+                    std::vector<array::ArrayWriteAccess> accesses = acquireOutputWrites(slots, context);
+                    DLTensor forceTensor = convertToDLTensor(slots[0], accesses[0]);
+                    DLTensor pointTensor = convertToDLTensor(slots[1], accesses[1]);
+                    DLTensor normalTensor = convertToDLTensor(slots[2], accesses[2]);
+                    DLTensor separationTensor = convertToDLTensor(slots[3], accesses[3]);
+                    DLTensor countTensor = convertToDLTensor(slots[4], accesses[4]);
+                    DLTensor startIndexTensor = convertToDLTensor(slots[5], accesses[5]);
                     checkOvphysxResult(
                         ovphysx_read_contact_data(m_handle, m_contactBinding, &forceTensor, &pointTensor, &normalTensor,
                                                   &separationTensor, &countTensor, &startIndexTensor),
                         context);
-                    return { makeSlotTensorDescriptor(forceSlot, scalarContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(pointSlot, vectorContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(normalSlot, vectorContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(separationSlot, scalarContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(countSlot, sensorFilterShape, DType::eInt32),
-                             makeSlotTensorDescriptor(startIndexSlot, sensorFilterShape, DType::eInt32) };
+                    return slots;
                 } },
             contactDataSpecifications);
 
@@ -1963,45 +2107,43 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
         m_buffers->frictionCount.assign(sensorFilterElementCount, 0);
         m_buffers->frictionStartIndex.assign(sensorFilterElementCount, 0);
 
-        std::vector<TensorSpecification> frictionDataSpecifications = {
-            makeOutputSpecification(vectorContactShape, DType::eFloat32),
-            makeOutputSpecification(vectorContactShape, DType::eFloat32),
-            makeOutputSpecification(sensorFilterShape, DType::eInt32),
-            makeOutputSpecification(sensorFilterShape, DType::eInt32)
+        std::vector<ArrayTensorSpecification> frictionDataSpecifications = {
+            makeOutputSpecification(vectorContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(vectorContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(sensorFilterShape.shape(), array::Dtype::Int32()),
+            makeOutputSpecification(sensorFilterShape.shape(), array::Dtype::Int32())
         };
-        registerImplementation(
+        registerArrayImplementation(
             "friction-data", ImplementationKind::eGet,
-            GetMultiImplementationFunction{
-                [this, sensorFilterShape](const TensorDescription&, const std::vector<TensorDescription>& output) mutable
-                -> std::vector<TensorDescription>
+            GetArrayMultiImplementationFunction{
+                [this, sensorFilterShape](
+                    const std::optional<array::Array>&,
+                    const std::optional<std::vector<array::Array>>& output) mutable -> std::vector<array::Array>
                 {
                     const char* context = "friction-data";
                     requireFullOrEmptyOutput(output, 4, context);
                     _ensureContactCapacity(getRequestedContactCapacity(output, { 0, 1 }));
-                    const std::vector<int64_t> vectorContactShape = { m_maximumContactDataCount, 3 };
-                    OutputSlot forceSlot = resolveOutputSlot(
-                        output, 0, m_buffers->frictionForce.data(), vectorContactShape, DType::eFloat32, context);
-                    OutputSlot pointSlot = resolveOutputSlot(
-                        output, 1, m_buffers->frictionPoint.data(), vectorContactShape, DType::eFloat32, context);
-                    OutputSlot countSlot = resolveOutputSlot(
-                        output, 2, m_buffers->frictionCount.data(), sensorFilterShape, DType::eInt32, context);
-                    OutputSlot startIndexSlot = resolveOutputSlot(
-                        output, 3, m_buffers->frictionStartIndex.data(), sensorFilterShape, DType::eInt32, context);
-                    DLDataType float32DataType = { static_cast<uint8_t>(kDLFloat), 32, 1 };
-                    DLDataType int32DataType = { static_cast<uint8_t>(kDLInt), 32, 1 };
-                    DLTensor frictionForceTensor = makeSlotDLTensor(forceSlot, vectorContactShape, float32DataType);
-                    DLTensor frictionPointTensor = makeSlotDLTensor(pointSlot, vectorContactShape, float32DataType);
-                    DLTensor frictionCountTensor = makeSlotDLTensor(countSlot, sensorFilterShape, int32DataType);
-                    DLTensor frictionStartIndexTensor =
-                        makeSlotDLTensor(startIndexSlot, sensorFilterShape, int32DataType);
+                    const array::Shape vectorContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 3 });
+                    std::vector<array::Array> slots = {
+                        resolveOutputSlot(output, 0, m_buffers, m_buffers->frictionForce.data(), vectorContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 1, m_buffers, m_buffers->frictionPoint.data(), vectorContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 2, m_buffers, m_buffers->frictionCount.data(), sensorFilterShape,
+                                          array::Dtype::Int32(), context),
+                        resolveOutputSlot(output, 3, m_buffers, m_buffers->frictionStartIndex.data(), sensorFilterShape,
+                                          array::Dtype::Int32(), context)
+                    };
+                    std::vector<array::ArrayWriteAccess> accesses = acquireOutputWrites(slots, context);
+                    DLTensor frictionForceTensor = convertToDLTensor(slots[0], accesses[0]);
+                    DLTensor frictionPointTensor = convertToDLTensor(slots[1], accesses[1]);
+                    DLTensor frictionCountTensor = convertToDLTensor(slots[2], accesses[2]);
+                    DLTensor frictionStartIndexTensor = convertToDLTensor(slots[3], accesses[3]);
                     checkOvphysxResult(ovphysx_read_friction_data(m_handle, m_contactBinding, &frictionForceTensor,
                                                                   &frictionPointTensor, &frictionCountTensor,
                                                                   &frictionStartIndexTensor),
                                        context);
-                    return { makeSlotTensorDescriptor(forceSlot, vectorContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(pointSlot, vectorContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(countSlot, sensorFilterShape, DType::eInt32),
-                             makeSlotTensorDescriptor(startIndexSlot, sensorFilterShape, DType::eInt32) };
+                    return slots;
                 } },
             frictionDataSpecifications);
     }
@@ -2018,9 +2160,15 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
     {
         int32_t contactCapacity = maximumContactDataCount;
         // Allocate 7 pre-allocated buffers for ovphysx_read_raw_contact_data.
-        const size_t scalarContactElementCount = checkedElementCount({ contactCapacity, 1 }, "raw-contact-data");
-        const size_t vectorContactElementCount = checkedElementCount({ contactCapacity, 3 }, "raw-contact-data");
-        const size_t sensorElementCount = checkedElementCount({ registeredSensorCount }, "raw-contact-data");
+        const array::Shape scalarContactShape(std::vector<int64_t>{ contactCapacity, 1 });
+        const array::Shape vectorContactShape(std::vector<int64_t>{ contactCapacity, 3 });
+        const array::Shape sensorShape(std::vector<int64_t>{ registeredSensorCount });
+        // other_actor_ids is one entry per contact (max_contact_data_count),
+        // not per sensor -- matches the legacy (max_c,) buffer shape.
+        const array::Shape actorIdentifierShape(std::vector<int64_t>{ contactCapacity });
+        const size_t scalarContactElementCount = scalarContactShape.size();
+        const size_t vectorContactElementCount = vectorContactShape.size();
+        const size_t sensorElementCount = sensorShape.size();
         m_buffers->rawForce.assign(scalarContactElementCount, 0.0f);
         m_buffers->rawPoint.assign(vectorContactElementCount, 0.0f);
         m_buffers->rawNormal.assign(vectorContactElementCount, 0.0f);
@@ -2029,71 +2177,136 @@ OvPhysxRigidContactEntityView::OvPhysxRigidContactEntityView(ovphysx_handle_t ha
         m_buffers->rawStartIndex.assign(sensorElementCount, 0);
         m_buffers->rawActorIdentifier.assign(scalarContactElementCount, 0);
 
-        std::vector<int64_t> scalarContactShape = { contactCapacity, 1 }, vectorContactShape = { contactCapacity, 3 };
-        std::vector<int64_t> sensorShape = { registeredSensorCount };
-        // other_actor_ids is one entry per contact (max_contact_data_count),
-        // not per sensor -- matches the legacy (max_c,) buffer shape.
-        std::vector<int64_t> actorIdentifierShape = { contactCapacity };
-
         // Per-output specifications (shape + dtype) so the framework can pre-allocate a device buffer
         // per output on the DirectGPU lane (ovphysx requires a device-matching destination on each).
-        std::vector<TensorSpecification> rawDataSpecifications = {
-            makeOutputSpecification(scalarContactShape, DType::eFloat32),
-            makeOutputSpecification(vectorContactShape, DType::eFloat32),
-            makeOutputSpecification(vectorContactShape, DType::eFloat32),
-            makeOutputSpecification(scalarContactShape, DType::eFloat32),
-            makeOutputSpecification(sensorShape, DType::eInt32),
-            makeOutputSpecification(sensorShape, DType::eInt32),
-            makeOutputSpecification(actorIdentifierShape, DType::eInt64)
+        std::vector<ArrayTensorSpecification> rawDataSpecifications = {
+            makeOutputSpecification(scalarContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(vectorContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(vectorContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(scalarContactShape.shape(), array::Dtype::Float32()),
+            makeOutputSpecification(sensorShape.shape(), array::Dtype::Int32()),
+            makeOutputSpecification(sensorShape.shape(), array::Dtype::Int32()),
+            makeOutputSpecification(actorIdentifierShape.shape(), array::Dtype::Int64())
         };
-        registerImplementation(
+        registerArrayImplementation(
             "raw-contact-data", ImplementationKind::eGet,
-            GetMultiImplementationFunction{
-                [this, sensorShape](const TensorDescription&,
-                                    const std::vector<TensorDescription>& output) mutable -> std::vector<TensorDescription>
+            GetArrayMultiImplementationFunction{
+                [this, sensorShape](
+                    const std::optional<array::Array>&,
+                    const std::optional<std::vector<array::Array>>& output) mutable -> std::vector<array::Array>
                 {
                     const char* context = "raw-contact-data";
+                    // The Python DirectGPU adapter supplies the native 0.6 six-buffer
+                    // layout, then splits the paired tensors with Warp on-device. This
+                    // avoids host staging and a dependency on a shared CUDA runtime.
+                    if (output.has_value() && output->size() == 6)
+                    {
+                        requireFullOrEmptyOutput(output, 6, context);
+                        _ensureContactCapacity(getRequestedContactCapacity(output, { 0, 1, 2, 3, 5 }));
+                        const array::Shape scalarContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 1 });
+                        const array::Shape vectorContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 3 });
+                        const array::Shape sensorLayoutShape(std::vector<int64_t>{ sensorShape[0], 2 });
+                        const array::Shape actorIdentifiersShape(std::vector<int64_t>{ m_maximumContactDataCount, 2 });
+                        std::vector<array::Array> slots = {
+                            resolveOutputSlot(
+                                output, 0, nullptr, nullptr, scalarContactShape, array::Dtype::Float32(), context),
+                            resolveOutputSlot(
+                                output, 1, nullptr, nullptr, vectorContactShape, array::Dtype::Float32(), context),
+                            resolveOutputSlot(
+                                output, 2, nullptr, nullptr, vectorContactShape, array::Dtype::Float32(), context),
+                            resolveOutputSlot(
+                                output, 3, nullptr, nullptr, scalarContactShape, array::Dtype::Float32(), context),
+                            resolveOutputSlot(
+                                output, 4, nullptr, nullptr, sensorLayoutShape, array::Dtype::Int32(), context),
+                            resolveOutputSlot(
+                                output, 5, nullptr, nullptr, actorIdentifiersShape, array::Dtype::Int64(), context)
+                        };
+                        for (size_t slotIndex = 1; slotIndex < slots.size(); ++slotIndex)
+                        {
+                            if (slots[slotIndex].device() != slots[0].device())
+                            {
+                                throw std::invalid_argument("raw-contact-data: native outputs must use the same device");
+                            }
+                        }
+                        std::vector<array::ArrayWriteAccess> accesses = acquireOutputWrites(slots, context);
+                        DLTensor forceTensor = convertToDLTensor(slots[0], accesses[0]);
+                        DLTensor pointTensor = convertToDLTensor(slots[1], accesses[1]);
+                        DLTensor normalTensor = convertToDLTensor(slots[2], accesses[2]);
+                        DLTensor separationTensor = convertToDLTensor(slots[3], accesses[3]);
+                        DLTensor sensorLayoutTensor = convertToDLTensor(slots[4], accesses[4]);
+                        DLTensor actorIdentifiersTensor = convertToDLTensor(slots[5], accesses[5]);
+                        checkOvphysxResult(ovphysx_read_raw_contact_data(m_handle, m_contactBinding, &forceTensor,
+                                                                         &pointTensor, &normalTensor, &separationTensor,
+                                                                         &sensorLayoutTensor, &actorIdentifiersTensor),
+                                           context);
+                        return slots;
+                    }
                     requireFullOrEmptyOutput(output, 7, context);
                     _ensureContactCapacity(getRequestedContactCapacity(output, { 0, 1, 2, 3, 6 }));
-                    const std::vector<int64_t> scalarContactShape = { m_maximumContactDataCount, 1 };
-                    const std::vector<int64_t> vectorContactShape = { m_maximumContactDataCount, 3 };
-                    const std::vector<int64_t> actorIdentifierShape = { m_maximumContactDataCount };
-                    OutputSlot forceSlot = resolveOutputSlot(
-                        output, 0, m_buffers->rawForce.data(), scalarContactShape, DType::eFloat32, context);
-                    OutputSlot pointSlot = resolveOutputSlot(
-                        output, 1, m_buffers->rawPoint.data(), vectorContactShape, DType::eFloat32, context);
-                    OutputSlot normalSlot = resolveOutputSlot(
-                        output, 2, m_buffers->rawNormal.data(), vectorContactShape, DType::eFloat32, context);
-                    OutputSlot separationSlot = resolveOutputSlot(
-                        output, 3, m_buffers->rawSeparation.data(), scalarContactShape, DType::eFloat32, context);
-                    OutputSlot countSlot =
-                        resolveOutputSlot(output, 4, m_buffers->rawCount.data(), sensorShape, DType::eInt32, context);
-                    OutputSlot startIndexSlot = resolveOutputSlot(
-                        output, 5, m_buffers->rawStartIndex.data(), sensorShape, DType::eInt32, context);
-                    OutputSlot actorIdentifierSlot = resolveOutputSlot(
-                        output, 6, m_buffers->rawActorIdentifier.data(), actorIdentifierShape, DType::eInt64, context);
-                    DLDataType float32DataType = { static_cast<uint8_t>(kDLFloat), 32, 1 };
-                    DLDataType int32DataType = { static_cast<uint8_t>(kDLInt), 32, 1 };
-                    DLDataType int64DataType = { static_cast<uint8_t>(kDLInt), 64, 1 };
-                    DLTensor forceTensor = makeSlotDLTensor(forceSlot, scalarContactShape, float32DataType);
-                    DLTensor pointTensor = makeSlotDLTensor(pointSlot, vectorContactShape, float32DataType);
-                    DLTensor normalTensor = makeSlotDLTensor(normalSlot, vectorContactShape, float32DataType);
-                    DLTensor separationTensor = makeSlotDLTensor(separationSlot, scalarContactShape, float32DataType);
-                    DLTensor countTensor = makeSlotDLTensor(countSlot, sensorShape, int32DataType);
-                    DLTensor startIndexTensor = makeSlotDLTensor(startIndexSlot, sensorShape, int32DataType);
-                    DLTensor actorIdentifierTensor =
-                        makeSlotDLTensor(actorIdentifierSlot, actorIdentifierShape, int64DataType);
-                    checkOvphysxResult(ovphysx_read_raw_contact_data(
-                                           m_handle, m_contactBinding, &forceTensor, &pointTensor, &normalTensor,
-                                           &separationTensor, &countTensor, &startIndexTensor, &actorIdentifierTensor),
+                    const array::Shape scalarContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 1 });
+                    const array::Shape vectorContactShape(std::vector<int64_t>{ m_maximumContactDataCount, 3 });
+                    const array::Shape actorIdentifierShape(std::vector<int64_t>{ m_maximumContactDataCount });
+                    std::vector<array::Array> slots = {
+                        resolveOutputSlot(output, 0, m_buffers, m_buffers->rawForce.data(), scalarContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 1, m_buffers, m_buffers->rawPoint.data(), vectorContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 2, m_buffers, m_buffers->rawNormal.data(), vectorContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 3, m_buffers, m_buffers->rawSeparation.data(), scalarContactShape,
+                                          array::Dtype::Float32(), context),
+                        resolveOutputSlot(output, 4, m_buffers, m_buffers->rawCount.data(), sensorShape,
+                                          array::Dtype::Int32(), context),
+                        resolveOutputSlot(output, 5, m_buffers, m_buffers->rawStartIndex.data(), sensorShape,
+                                          array::Dtype::Int32(), context),
+                        resolveOutputSlot(output, 6, m_buffers, m_buffers->rawActorIdentifier.data(),
+                                          actorIdentifierShape, array::Dtype::Int64(), context)
+                    };
+                    for (const array::Array& slot : slots)
+                    {
+                        if (!slot.device().isCpu())
+                        {
+                            throw std::invalid_argument(
+                                "raw-contact-data: the legacy seven-output layout supports CPU buffers only; "
+                                "use the native six-output layout for GPU buffers");
+                        }
+                    }
+                    std::vector<array::ArrayWriteAccess> accesses = acquireOutputWrites(slots, context);
+                    DLTensor forceTensor = convertToDLTensor(slots[0], accesses[0]);
+                    DLTensor pointTensor = convertToDLTensor(slots[1], accesses[1]);
+                    DLTensor normalTensor = convertToDLTensor(slots[2], accesses[2]);
+                    DLTensor separationTensor = convertToDLTensor(slots[3], accesses[3]);
+                    // The engine reports the sensor layout and the actor identifiers as paired columns,
+                    // so stage them here and split them into this layout's separate per-sensor and
+                    // per-contact outputs below. Both buffers are allocated right here, so acquiring
+                    // write access to them cannot contend with another consumer.
+                    array::Array sensorLayout =
+                        array::zeros(array::Shape(std::vector<int64_t>{ sensorShape[0], 2 }), array::Dtype::Int32());
+                    array::Array actorIdentifiers = array::zeros(
+                        array::Shape(std::vector<int64_t>{ actorIdentifierShape[0], 2 }), array::Dtype::Int64());
+                    array::ArrayWriteAccess sensorLayoutAccess = array::acquireWrite(sensorLayout);
+                    array::ArrayWriteAccess actorIdentifiersAccess = array::acquireWrite(actorIdentifiers);
+                    DLTensor sensorLayoutTensor = convertToDLTensor(sensorLayout, sensorLayoutAccess);
+                    DLTensor actorIdentifiersTensor = convertToDLTensor(actorIdentifiers, actorIdentifiersAccess);
+                    checkOvphysxResult(ovphysx_read_raw_contact_data(m_handle, m_contactBinding, &forceTensor,
+                                                                     &pointTensor, &normalTensor, &separationTensor,
+                                                                     &sensorLayoutTensor, &actorIdentifiersTensor),
                                        context);
-                    return { makeSlotTensorDescriptor(forceSlot, scalarContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(pointSlot, vectorContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(normalSlot, vectorContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(separationSlot, scalarContactShape, DType::eFloat32),
-                             makeSlotTensorDescriptor(countSlot, sensorShape, DType::eInt32),
-                             makeSlotTensorDescriptor(startIndexSlot, sensorShape, DType::eInt32),
-                             makeSlotTensorDescriptor(actorIdentifierSlot, actorIdentifierShape, DType::eInt64) };
+                    auto* counts = static_cast<int32_t*>(accesses[4].data());
+                    auto* starts = static_cast<int32_t*>(accesses[5].data());
+                    const auto* sensorLayoutData = static_cast<const int32_t*>(sensorLayoutAccess.data());
+                    for (int64_t sensorIndex = 0; sensorIndex < sensorShape[0]; ++sensorIndex)
+                    {
+                        counts[sensorIndex] = sensorLayoutData[static_cast<size_t>(sensorIndex) * 2];
+                        starts[sensorIndex] = sensorLayoutData[static_cast<size_t>(sensorIndex) * 2 + 1];
+                    }
+                    auto* identifiers = static_cast<int64_t*>(accesses[6].data());
+                    const auto* actorIdentifiersData = static_cast<const int64_t*>(actorIdentifiersAccess.data());
+                    for (int64_t contactIndex = 0; contactIndex < actorIdentifierShape[0]; ++contactIndex)
+                    {
+                        identifiers[contactIndex] = actorIdentifiersData[static_cast<size_t>(contactIndex) * 2 + 1];
+                    }
+                    return slots;
                 } },
             rawDataSpecifications);
     }
@@ -2182,7 +2395,7 @@ void OvPhysxRigidContactEntityView::_ensureContactCapacity(int32_t requestedCapa
 
 int OvPhysxRigidContactEntityView::getDeviceOrdinal() const noexcept
 {
-    return resolveOvPhysxDeviceOrdinal(*this);
+    return resolveOvPhysxDevice(*this).ordinal();
 }
 
 OvPhysxRigidContactEntityView::~OvPhysxRigidContactEntityView()

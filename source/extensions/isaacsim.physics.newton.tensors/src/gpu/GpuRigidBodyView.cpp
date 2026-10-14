@@ -131,7 +131,7 @@ void GpuRigidBodyView::_allocateStagingBuffer()
 
 bool GpuRigidBodyView::getTransforms(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 7u, "transform", __FUNCTION__))
         return false;
@@ -145,7 +145,7 @@ bool GpuRigidBodyView::getTransforms(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getVelocities(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 6u, "velocity", __FUNCTION__))
         return false;
@@ -160,7 +160,7 @@ bool GpuRigidBodyView::getVelocities(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getAccelerations(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid || !m_cachedBodyQdd)
+    if (!_checkBinding() || !m_cachedBodyQdd)
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 6u, "acceleration", __FUNCTION__))
         return false;
@@ -175,7 +175,7 @@ bool GpuRigidBodyView::getAccelerations(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getMasses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, m_count, "masses", __FUNCTION__))
         return false;
@@ -186,7 +186,7 @@ bool GpuRigidBodyView::getMasses(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getInvMasses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, m_count, "inv masses", __FUNCTION__))
         return false;
@@ -197,7 +197,7 @@ bool GpuRigidBodyView::getInvMasses(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getCOMs(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 7u, "com", __FUNCTION__))
         return false;
@@ -212,7 +212,7 @@ bool GpuRigidBodyView::getCOMs(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getInertias(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 9u, "inertia", __FUNCTION__))
         return false;
@@ -226,7 +226,7 @@ bool GpuRigidBodyView::getInertias(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::getInvInertias(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 9u, "inv inertia", __FUNCTION__))
         return false;
@@ -243,6 +243,8 @@ bool GpuRigidBodyView::getInvInertias(const TensorDesc* dstTensor) const
 
 bool GpuRigidBodyView::setTransforms(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * 7u, "transform", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -258,6 +260,8 @@ bool GpuRigidBodyView::setTransforms(const TensorDesc* srcTensor, const TensorDe
 
 bool GpuRigidBodyView::setVelocities(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * 6u, "velocity", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -273,6 +277,8 @@ bool GpuRigidBodyView::setVelocities(const TensorDesc* srcTensor, const TensorDe
 
 bool GpuRigidBodyView::setMasses(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, m_count, "mass", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -288,6 +294,8 @@ bool GpuRigidBodyView::setMasses(const TensorDesc* srcTensor, const TensorDesc* 
 
 bool GpuRigidBodyView::setCOMs(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * 7u, "com", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -306,6 +314,8 @@ bool GpuRigidBodyView::setCOMs(const TensorDesc* srcTensor, const TensorDesc* in
 
 bool GpuRigidBodyView::setInertias(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * 9u, "inertia", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -330,6 +340,8 @@ bool GpuRigidBodyView::applyForcesAndTorquesAtPosition(const TensorDesc* srcForc
                                                        const TensorDesc* indexTensor,
                                                        bool isGlobal)
 {
+    if (!_checkBinding())
+        return false;
     const bool hasForce = srcForceTensor && srcForceTensor->data;
     const bool hasTorque = srcTorqueTensor && srcTorqueTensor->data;
     if (!hasForce && !hasTorque)

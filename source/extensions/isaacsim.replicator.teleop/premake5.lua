@@ -22,8 +22,8 @@ repo_build.prebuild_link {
     { "isaacsim", ext.target_dir .. "/isaacsim" },
 }
 
--- Isaac Teleop only publishes Linux wheels. Other platforms still support the
--- extension's debug input mode without the optional pip prebundle.
+-- The optional pip prebundle is currently built for Linux x86_64 only.
+-- Other platforms still support the extension's debug input mode.
 if platform_target == "linux-x86_64" then
     repo_build.prebuild_link {
         { "$root/_build/target-deps/pip_teleop_prebundle", ext.target_dir .. "/pip_prebundle" },

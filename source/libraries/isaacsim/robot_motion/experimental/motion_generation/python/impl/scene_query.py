@@ -132,8 +132,8 @@ def _does_plane_intersect_aabb(plane: Plane, aabb: bound_utils.AABB) -> bool:
         ]
     )
 
-    plane_axis = plane.get_axes(indices=0)[0]
-    plane_center, plane_rotation = plane.get_world_poses(indices=0)
+    plane_axis = plane.get_axes(indices=[0])[0]
+    plane_center, plane_rotation = plane.get_world_poses(indices=[0])
     plane_center = plane_center.numpy()[0]
     R_world_plane = quaternion_to_rotation_matrix(quaternion=plane_rotation).numpy()[0]
 

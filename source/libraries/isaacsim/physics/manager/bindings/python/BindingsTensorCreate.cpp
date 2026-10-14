@@ -39,10 +39,7 @@ void isaacsim::physics::manager::details::bindTensorCreate(nb::module_& module)
         "create_entity",
         [](const std::string& engine, const std::string& entityName, const std::vector<std::string>& paths,
            const std::optional<EntityOptions>& options)
-        {
-            return std::static_pointer_cast<EntityView>(
-                TensorRegistry::getInstance().createEntity(engine, entityName, paths, options));
-        },
+        { return castTensorEntity(TensorRegistry::getInstance().createEntity(engine, entityName, paths, options)); },
         nb::arg("engine"), nb::arg("entity_name"), nb::arg("paths"), nb::arg("options") = nb::none(),
         "Create an entity view using a registered engine factory.");
 }

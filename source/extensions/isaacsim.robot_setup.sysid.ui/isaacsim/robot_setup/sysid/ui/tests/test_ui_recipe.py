@@ -18,10 +18,17 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import Mock
 
 import omni.kit.app
 import omni.kit.test
-from isaacsim.robot_setup.sysid.actuator_compatibility import ACTUATOR_RUNTIME_EXPLICIT, ACTUATOR_RUNTIME_IMPLICIT
+from isaacsim.robot_setup.sysid.actuator_compatibility import (
+    ACTUATOR_RUNTIME_AUTO,
+    ACTUATOR_RUNTIME_EXPLICIT,
+    ACTUATOR_RUNTIME_MIXED,
+    EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED,
+    PHYSICS_BACKEND_NEWTON,
+)
 from isaacsim.robot_setup.sysid.optimizer_config import OptimizerBackend, OptimizerBackendConfig
 from isaacsim.robot_setup.sysid.preset_loader import ParameterPreset, load_builtin_parameter_preset
 from isaacsim.robot_setup.sysid.recipes import recipe_parameter_type_values
@@ -38,6 +45,7 @@ from isaacsim.robot_setup.sysid.run_spec import (
 try:
     import omni.ui as ui
     from isaacsim.robot_setup.sysid.ui.live_charts import _cost_plot_bounds, _CostPlot
+    from isaacsim.robot_setup.sysid.ui.numeric_inputs import ExactFloatField, ExactIntField
     from isaacsim.robot_setup.sysid.ui.parameter_panel import ParameterPanel
     from isaacsim.robot_setup.sysid.ui.simulation_panel import (
         SimulationPanel,
@@ -45,6 +53,7 @@ try:
         engine_selection_from_label,
     )
     from isaacsim.robot_setup.sysid.ui.solver_panel import SolverPanel, visible_groups_for_backend
+    from isaacsim.robot_setup.sysid.ui.telemetry_panel import TelemetryPanel
     from isaacsim.robot_setup.sysid.ui.workflow_shell import WorkflowShell
 
     _UI_AVAILABLE = True
@@ -204,8 +213,76 @@ class PanelRoundTripTests(omni.kit.test.AsyncTestCase):
             self.assertFalse(flags["export_provenance_sidecar"])
             self.assertTrue(panel.is_viewport_pause_enabled())
             panel.set_export_run_spec_enabled(False)
+
+            self.assertIsInstance(panel._max_iter_field, ExactIntField)
+            self.assertIsInstance(panel._lambda_field, ExactFloatField)
+            panel._max_iter_field.set_value(0)
+            self.assertEqual(panel._max_iter_field.get_value(), 1)
         finally:
             panel.cleanup()
+            window.destroy()
+
+    async def test_telemetry_panel_uses_exact_inputs_and_percentage_holdout(self) -> None:
+        """Verify the Data panel uses exact inputs and presents holdout as a percentage."""
+        on_run_state_changed = Mock()
+        panel = TelemetryPanel(on_run_state_changed=on_run_state_changed)
+        window = await self._build_window(panel.build)
+        try:
+            self.assertIsInstance(panel._command_alignment_field, ExactFloatField)
+            self.assertIsInstance(panel._start_time_field, ExactFloatField)
+            self.assertIsInstance(panel._end_time_field, ExactFloatField)
+
+            panel.set_auto_split(True, train_fraction=0.75, min_chunk_seconds=0.5)
+            enabled, fraction, minimum = panel.get_auto_split()
+            self.assertTrue(enabled)
+            self.assertAlmostEqual(fraction, 0.75)
+            self.assertAlmostEqual(minimum, 0.5)
+            self.assertAlmostEqual(panel._auto_split_fraction_model.get_value_as_float(), 75.0)
+
+            panel._on_chunk_role_changed("Validation")
+            self.assertFalse(panel._chunk_weight_widget.enabled)
+            panel._on_chunk_role_changed("Train")
+            self.assertTrue(panel._chunk_weight_widget.enabled)
+
+            # A programmatic set is not a user edit: callers that set the window
+            # (trajectory load, recipe apply) notify run state once themselves.
+            on_run_state_changed.reset_mock()
+            panel._start_time_field.set_value(0.25)
+            self.assertAlmostEqual(panel._start_time_field.get_value(), 0.25)
+            on_run_state_changed.assert_not_called()
+
+            # A user edit arrives through the model and must notify.
+            panel._end_time_field.float_field.model.set_value(2.0)
+            on_run_state_changed.assert_called_once_with()
+            self.assertAlmostEqual(panel._end_time_field.get_value(), 2.0)
+        finally:
+            panel.cleanup()
+            window.destroy()
+
+    async def test_bound_reclamp_notifies_end_edit_consumer(self) -> None:
+        """Verify a bound change that moves the value reaches an end-edit-only owner."""
+        on_value_changed = Mock()
+        on_end_edit = Mock()
+        fields = []
+        window = await self._build_window(
+            lambda: fields.append(
+                ExactFloatField(
+                    "Gain",
+                    default_value=1.0,
+                    lower_limit=0.0,
+                    upper_limit=10.0,
+                    on_value_changed_fn=on_value_changed,
+                    on_end_edit_fn=on_end_edit,
+                )
+            )
+        )
+        try:
+            field = fields[0]
+            field.set_lower_limit(2.0)
+            self.assertAlmostEqual(field.get_value(), 2.0)
+            on_end_edit.assert_called_once_with(2.0)
+            on_value_changed.assert_not_called()
+        finally:
             window.destroy()
 
     async def test_simulation_panel_engine_round_trip(self) -> None:
@@ -233,14 +310,21 @@ class PanelRoundTripTests(omni.kit.test.AsyncTestCase):
             self.assertEqual(newton_spec.controller, "pd")
             self.assertEqual(newton_spec.effort_clamp, "max_effort")
             self.assertGreaterEqual(newton_spec.featherstone_substeps, 1)
+            self.assertIsInstance(panel._featherstone_substeps_field, ExactIntField)
+            self.assertIsInstance(panel._mujoco_substeps_field, ExactIntField)
+            self.assertFalse(panel._mujoco_group.visible)
 
             panel.set_engine_selection(SIMULATION_ENGINE_NEWTON, NEWTON_SOLVER_MUJOCO)
             panel.set_controller_mode("pid")
             panel.set_effort_clamp_mode("dc_motor")
             panel.set_offline_stepping(False)
             panel.set_cuda_graph_capture(False)
+            self.assertEqual(panel.get_newton_spec().mujoco_substeps, 1)
+            panel._mujoco_substeps_field.set_value(8)
             await omni.kit.app.get_app().next_update_async()
             newton_spec = panel.get_newton_spec()
+            self.assertTrue(panel._mujoco_group.visible)
+            self.assertEqual(newton_spec.mujoco_substeps, 8)
             self.assertFalse(panel._newton_compatibility_hint_label.visible)
             self.assertEqual(newton_spec.controller, "pid")
             self.assertEqual(newton_spec.effort_clamp, "dc_motor")
@@ -292,8 +376,9 @@ class PanelRoundTripTests(omni.kit.test.AsyncTestCase):
 
         window = await self._build_window(_build)
         try:
-            self.assertEqual(simulation.get_actuator_runtime(), ACTUATOR_RUNTIME_IMPLICIT)
+            self.assertEqual(simulation.get_actuator_runtime(), ACTUATOR_RUNTIME_AUTO)
             simulation.set_actuator_runtime(ACTUATOR_RUNTIME_EXPLICIT)
+            simulation.set_explicit_actuator_policy(EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED)
             parameters.set_advanced_flags({"include_command_delay": True})
             await omni.kit.app.get_app().next_update_async()
 
@@ -302,7 +387,16 @@ class PanelRoundTripTests(omni.kit.test.AsyncTestCase):
 
             simulation.set_engine_selection(SIMULATION_ENGINE_NEWTON, NEWTON_SOLVER_MUJOCO)
             await omni.kit.app.get_app().next_update_async()
-            self.assertEqual(simulation.get_actuator_runtime(), ACTUATOR_RUNTIME_IMPLICIT)
+            self.assertEqual(simulation.get_actuator_runtime(), ACTUATOR_RUNTIME_EXPLICIT)
+            self.assertEqual(simulation.get_explicit_actuator_policy(), EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED)
+            self.assertEqual(simulation.get_physics_backend(), PHYSICS_BACKEND_NEWTON)
+
+            simulation.set_actuator_runtime(ACTUATOR_RUNTIME_MIXED)
+            self.assertEqual(simulation.get_actuator_runtime(), ACTUATOR_RUNTIME_MIXED)
+
+            simulation.set_engine_selection(SIMULATION_ENGINE_NEWTON, NEWTON_SOLVER_FEATHERSTONE_DIFF)
+            simulation.set_actuator_runtime(ACTUATOR_RUNTIME_AUTO)
+            self.assertEqual(simulation.get_actuator_runtime(), ACTUATOR_RUNTIME_AUTO)
         finally:
             simulation.cleanup()
             parameters.cleanup()

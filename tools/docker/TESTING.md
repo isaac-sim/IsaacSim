@@ -33,7 +33,7 @@ docker compose -p isim -f docker-compose.yml up --build -d
 ```
 
 - **First run**: builds the `web-viewer` image (Node/Vite), then starts Isaac Sim and the web viewer.
-- Isaac Sim healthcheck waits for `AppReady` in logs (up to ~3 min start period), then the web viewer starts.
+- The Isaac Sim health check waits for the `App is loaded.` message in the logs before starting the web viewer. The health check has a 180-second startup grace period; this is not a maximum application startup time.
 
 To use a prebuilt NGC image instead of building locally:
 
@@ -55,6 +55,24 @@ Open the URL shown in the logs (e.g. `http://<host-ip>:8210`) in a Chromium-base
 2. Wait for the stream to connect (the "WAITING FOR STREAM..." message should disappear).
 3. You should see the Isaac Sim viewport with the default stage.
 4. Verify you can interact with the viewport (mouse orbit, pan, zoom).
+
+### Newton streaming check
+
+Using an image that supports `ISAACSIM_PHYSICS_ENGINE` and contains the combined
+Newton streaming launcher, start the stack with `ISAACSIM_PHYSICS_ENGINE=newton`.
+Use the host IP reachable from the client for `ISAACSIM_HOST`.
+
+Verify that the viewport physics-engine selector shows Newton, then play a
+simple Newton-compatible falling-body scene and confirm motion in the stream.
+Stop and play again to check that simulation resumes. Repeat with
+`ISAACSIM_PHYSICS_ENGINE=physx` to verify the existing streaming mode. Use one
+stack at a time when retaining the default ports.
+
+Run the isolated entrypoint and readiness health-check tests without a GPU or container:
+
+```bash
+python3 -m unittest discover -s tools/docker/tests -v
+```
 
 ## 4. Keyboard shortcut tests
 

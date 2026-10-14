@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
@@ -980,6 +981,8 @@ class RuleActionItem:
             default_value = param.default_value
             if default_value is None and param.param_type in (list, dict):
                 default_value = [] if param.param_type is list else {}
+            elif isinstance(default_value, (list, dict)):
+                default_value = copy.deepcopy(default_value)
             self._spec.params[param.name] = default_value
 
     # -- list / dict parameter editors --------------------------------------
@@ -1081,18 +1084,23 @@ class RuleActionItem:
         """
         frame = ui.Frame(height=0)
 
-        def _key_field(key: str) -> None:
+        def _key_field(row: list[str]) -> None:
             mdl = ui.SimpleStringModel()
-            mdl.set_value(key)
+            mdl.set_value(row[0])
 
-            def _on_rename(m: ui.SimpleStringModel, old: str = key) -> None:
+            def _on_rename(m: ui.SimpleStringModel) -> None:
+                old = row[0]
                 new = m.get_value_as_string()
-                if new == old or new in data:
+                if new == old:
+                    return
+                if not new or new in data or old not in data:
+                    m.set_value(old)
                     return
                 entries = list(data.items())
                 data.clear()
                 for k, v in entries:
                     data[new if k == old else k] = v
+                row[0] = new
 
             mdl.add_value_changed_fn(_on_rename)
             ui.StringField(model=mdl, height=22)
@@ -1111,14 +1119,21 @@ class RuleActionItem:
                             self._cascading_row(key, lambda k=key: _remove(k), sub)
                         else:
                             with ui.HStack(height=22, spacing=4):
-                                _key_field(key)
+                                row = [key]
+                                _key_field(row)
                                 val_mdl = ui.SimpleStringModel()
                                 val_mdl.set_value("" if value is None else str(value))
                                 val_mdl.add_value_changed_fn(
-                                    lambda m, k=key: data.__setitem__(k, m.get_value_as_string())
+                                    lambda m, r=row: (
+                                        data.__setitem__(r[0], m.get_value_as_string()) if r[0] in data else None
+                                    )
                                 )
                                 ui.StringField(model=val_mdl, height=22)
-                                self._icon_btn(REMOVE_ICON_URL, "Remove entry", lambda k=key: _remove(k))
+                                self._icon_btn(
+                                    REMOVE_ICON_URL,
+                                    "Remove entry",
+                                    lambda r=row: _remove(r[0]),
+                                )
                     self._icon_btn(ADD_ICON_URL, "Add entry", _add)
 
         def _add() -> None:

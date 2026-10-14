@@ -81,8 +81,8 @@ protected:
     {
         flatbuffers::FlatBufferBuilder builder;
         const int64_t time_ns = static_cast<int64_t>(data.timestamp * 1e9);
-        auto time_message = isaac::CreateTime(builder, time_ns, 0);
-        builder.Finish(time_message);
+        auto time_message = holoscan::schema::CreateTime(builder, time_ns, 0);
+        holoscan::schema::FinishTimeBuffer(builder, time_message);
         const uint8_t* buffer = builder.GetBufferPointer();
         const size_t size = builder.GetSize();
         return std::vector<uint8_t>(buffer, buffer + size);

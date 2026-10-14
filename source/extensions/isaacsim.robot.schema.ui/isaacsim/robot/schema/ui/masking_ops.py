@@ -462,14 +462,17 @@ class MaskingOperations:
         joint_prim.SetCustomDataByKey(MASKED_KEY, True)
 
     def _unmask_joint(self, stage: Usd.Stage, joint_prim: Usd.Prim, layer: Sdf.Layer) -> None:
-        """Remove all masking opinions for a joint, restoring base-layer values.
+        """Remove joint-mask opinions while preserving other masking features.
 
         Args:
             stage: USD stage containing the prim.
             joint_prim: The joint prim to unmask.
             layer: Masking sublayer holding the joint opinions.
         """
-        self._clear_prim_spec_recursive(layer, joint_prim.GetPath())
+        joint_path = joint_prim.GetPath()
+        self._remove_joint_enabled_opinion(layer, joint_path)
+        joint_prim.ClearCustomDataByKey(MASKED_KEY)
+        self._remove_inert_spec(layer, joint_path)
 
     # ==================================================================
     # Link mask / unmask
@@ -675,8 +678,10 @@ class MaskingOperations:
                 jp = Sdf.Path(jp_str)
                 spec = layer.GetPrimAtPath(jp)
                 if spec:
-                    for prop_name in list(spec.properties.keys()):
-                        spec.RemoveProperty(spec.properties[prop_name])
+                    for prop_name in ("physics:body0", "physics:localPos0", "physics:localRot0"):
+                        prop = spec.properties.get(prop_name)
+                        if prop:
+                            spec.RemoveProperty(prop)
                     self._remove_inert_spec(layer, jp)
 
         # 2. Restore backward joint — read metadata BEFORE clearing the link spec

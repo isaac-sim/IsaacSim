@@ -20,11 +20,9 @@ import re
 
 import carb
 import isaacsim.core.experimental.utils.prim as prim_utils
-from geometry_msgs.msg import Accel, Point, Pose, Quaternion, Twist, Vector3
 from isaacsim.core.experimental.prims import RigidPrim, XformPrim
 from isaacsim.storage.native import is_local_path
-from simulation_interfaces.msg import EntityState, Result
-from std_msgs.msg import Header
+from pxr import UsdPhysics
 
 
 def resolve_source_path(src: str, assets_root_path: str | None) -> str:
@@ -107,6 +105,12 @@ async def get_entity_state(entity_path: str) -> tuple[object | None, str, int]:
         Exception: If entity state retrieval fails due to invalid paths or physics errors.
 
     """
+    # ROS message packages are only available after the ROS 2 bridge loads. Keep these imports local so extension
+    # discovery and support-level validation can import this module when the bridge is unavailable.
+    from geometry_msgs.msg import Accel, Point, Pose, Quaternion, Twist, Vector3
+    from simulation_interfaces.msg import EntityState, Result
+    from std_msgs.msg import Header
+
     # Check if entity exists
     prim = prim_utils.get_prim_at_path(entity_path)
     if not prim.IsValid():
@@ -120,16 +124,21 @@ async def get_entity_state(entity_path: str) -> tuple[object | None, str, int]:
             Result.RESULT_FEATURE_UNSUPPORTED,
         )
 
-    # Get the frame_id - use isaac:nameOverride if available and not empty, otherwise use prim name
-    if prim.HasAttribute("isaac:nameOverride"):
-        override_value = prim.GetAttribute("isaac:nameOverride").Get()
-        if override_value and override_value.strip():
-            frame_id = override_value
-        else:
-            frame_id = prim.GetName()
+    # Links retain their lowercase schema attribute; joint names prefer the new attribute.
+    is_link = prim.HasAPI("IsaacLinkAPI")
+    canonical = prim.GetAttribute("isaac:NameOverride")
+    if not is_link and canonical and canonical.HasAuthoredValueOpinion():
+        frame_id = canonical.Get() or prim.GetName()
     else:
-        # Extract just the name part from the full path
-        frame_id = prim.GetName()
+        legacy = prim.GetAttribute("isaac:nameOverride")
+        value = legacy.Get() if legacy else None
+        frame_id = value if value and value.strip() else prim.GetName()
+        if value and value.strip() and not is_link and (prim.HasAPI("IsaacJointAPI") or prim.IsA(UsdPhysics.Joint)):
+            carb.log_warn(
+                f"Joint {prim.GetPath()} uses legacy isaac:nameOverride. Joint naming has switched to the robot schema "
+                "attribute isaac:NameOverride; legacy support will be removed in a future version. "
+                "Update the asset to use isaac:NameOverride."
+            )
 
     # Initialize the entity state
     entity_state = EntityState()
@@ -242,6 +251,7 @@ def create_empty_entity_state() -> object:
 
     """
     from geometry_msgs.msg import Accel, Point, Pose, Quaternion, Twist, Vector3
+    from simulation_interfaces.msg import EntityState
     from std_msgs.msg import Header
 
     empty_state = EntityState()

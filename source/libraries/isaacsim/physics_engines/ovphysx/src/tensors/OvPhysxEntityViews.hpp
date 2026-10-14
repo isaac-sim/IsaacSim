@@ -17,8 +17,7 @@
 
 #include <dlpack/dlpack.h>
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
+#include <isaacsim/physics/registration/tensors/ArrayTensorSpecification.hpp>
 #include <ovphysx/ovphysx_types.h>
 
 #include <cstdint>
@@ -36,17 +35,15 @@ namespace physics_engines
 namespace ovphysx
 {
 
-// Create a TensorSpecification from an ovphysx binding specification (shape, dtype).
-isaacsim::physics::tensors::TensorSpecification getTensorSpecificationFromOvphysx(ovphysx_handle_t handle,
-                                                                                  ovphysx_tensor_binding_handle_t binding,
-                                                                                  bool supportsIndexedRead,
-                                                                                  bool supportsIndexedWrite);
+// Create a ArrayTensorSpecification from an ovphysx binding specification (shape, dtype).
+isaacsim::physics::tensors::ArrayTensorSpecification getTensorSpecificationFromOvphysx(
+    ovphysx_handle_t handle, ovphysx_tensor_binding_handle_t binding, bool supportsIndexedRead, bool supportsIndexedWrite);
 
-// Resolve the device an ovphysx view's tensors live on. A view keeps whatever ordinal a caller assigned to
+// Resolve the device an ovphysx view's tensors live on. A view keeps whatever device a caller assigned to
 // it; otherwise it reports the backend-wide declaration, read on each access because ovphysx selects its
-// device when the scene is created, which may be after the view was built. `-1` means "unassigned" as well
-// as "host", so declaring the backend device is how a caller asks every view to follow it.
-int resolveOvPhysxDeviceOrdinal(const isaacsim::physics::tensors::EntityView& view);
+// device when the scene is created, which may be after the view was built. The CPU means "unassigned" as
+// well as "host", so declaring the backend device is how a caller asks every view to follow it.
+isaacsim::common::array::Device resolveOvPhysxDevice(const isaacsim::physics::tensors::EntityView& view);
 
 // Base class for OvPhysX tensor entity views. Holds the mapping from implementation name
 // to tensor binding handle and registers C++ lambdas as implementations.
@@ -77,7 +74,7 @@ protected:
     // Return the resolved prim paths from the first binding, or empty if unavailable.
     std::vector<std::string> getResolvedPrimPaths() const override;
 
-    // See resolveOvPhysxDeviceOrdinal.
+    // See resolveOvPhysxDevice.
     int getDeviceOrdinal() const noexcept override;
 
     ovphysx_handle_t m_handle;
@@ -95,6 +92,7 @@ public:
 
 private:
     OvPhysxArticulationEntityView(ovphysx_handle_t handle,
+                                  std::vector<std::string> constructionPaths,
                                   std::string pattern,
                                   std::optional<std::vector<std::string>> resolvedPaths);
     std::string m_pattern;
@@ -112,6 +110,7 @@ public:
 
 private:
     OvPhysxRigidBodyEntityView(ovphysx_handle_t handle,
+                               std::vector<std::string> constructionPaths,
                                std::string pattern,
                                std::optional<std::vector<std::string>> resolvedPaths);
     std::string m_pattern;
@@ -138,7 +137,7 @@ public:
         return m_contactBinding;
     }
 
-    // See resolveOvPhysxDeviceOrdinal.
+    // See resolveOvPhysxDevice.
     int getDeviceOrdinal() const noexcept override;
     int32_t getSensorCount() const noexcept
     {
@@ -187,6 +186,7 @@ public:
 
 private:
     OvPhysxVolumeDeformableBodyEntityView(ovphysx_handle_t handle,
+                                          std::vector<std::string> constructionPaths,
                                           std::string pattern,
                                           std::optional<std::vector<std::string>> resolvedPaths);
 };
@@ -201,6 +201,7 @@ public:
 
 private:
     OvPhysxSurfaceDeformableBodyEntityView(ovphysx_handle_t handle,
+                                           std::vector<std::string> constructionPaths,
                                            std::string pattern,
                                            std::optional<std::vector<std::string>> resolvedPaths);
 };
@@ -215,6 +216,7 @@ public:
 
 private:
     OvPhysxDeformableMaterialEntityView(ovphysx_handle_t handle,
+                                        std::vector<std::string> constructionPaths,
                                         std::string pattern,
                                         std::optional<std::vector<std::string>> resolvedPaths);
 };
@@ -223,8 +225,8 @@ private:
 // Uses the dedicated ovphysx_create_sdf_view / ovphysx_evaluate_sdf API rather than the
 // standard tensor binding path.
 //
-// The "distances-and-gradients" GET implementation takes query points [N, Q, 3] via the indices
-// TensorDescription and returns [N, Q, 4] (distance, grad.x, grad.y, grad.z).
+// The "distances-and-gradients" GET implementation takes query points [N, Q, 3] through the indices
+// slot and returns [N, Q, 4] (distance, grad.x, grad.y, grad.z).
 class OvPhysxSdfShapeEntityView : public isaacsim::physics::tensors::EntityView
 {
 public:
@@ -236,7 +238,7 @@ public:
         return m_handle;
     }
 
-    // See resolveOvPhysxDeviceOrdinal.
+    // See resolveOvPhysxDevice.
     int getDeviceOrdinal() const noexcept override;
 
 private:

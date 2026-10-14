@@ -15,7 +15,10 @@
 
 #pragma once
 
+#include <isaacsim/physics/registration/tensors/IEntityView.hpp>
 #include <nanobind/nanobind.h>
+
+#include <memory>
 
 namespace isaacsim
 {
@@ -30,6 +33,7 @@ void bindPhysicsBenchmarks(nanobind::module_& module);
 void bindPhysicsInteraction(nanobind::module_& module);
 void bindPhysicsSceneQuery(nanobind::module_& module);
 void bindPhysicsSimulation(nanobind::module_& module);
+nanobind::object castTensorEntity(const std::shared_ptr<isaacsim::physics::tensors::IEntityView>& value);
 void bindTensorCreate(nanobind::module_& module);
 void bindTensorViews(nanobind::module_& module);
 

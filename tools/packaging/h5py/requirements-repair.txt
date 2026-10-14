@@ -1,0 +1,4 @@
+# Install alongside requirements-build.txt on each native wheel builder.
+auditwheel==6.8.2; sys_platform == "linux"
+patchelf==0.19.1.0; sys_platform == "linux"
+delvewheel==1.13.1; sys_platform == "win32"

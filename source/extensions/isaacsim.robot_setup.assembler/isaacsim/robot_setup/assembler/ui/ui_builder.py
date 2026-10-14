@@ -267,7 +267,10 @@ class UIBuilder:
                         else:
                             self.single_robot_cb.visible = False.
                         """
-                        self._attach_selection()
+                        if not self._attach_selection():
+                            # Leave the robot selection frame open so the user can pick a
+                            # different attach point.
+                            return
 
                         self._assembler_frame.collapsed = False
                         self._assembler_frame.visible = True
@@ -366,7 +369,22 @@ class UIBuilder:
         def on_simulate_and_assemble_button_clicked(make_single_robot: bool) -> None:
 
             async def async_assemble() -> None:
-                self._robot_assembler.assemble()
+                try:
+                    self._robot_assembler.assemble()
+                except ValueError as exc:
+                    carb.log_warn(f"Robot Assembler: assembly could not start: {exc}")
+                    self._assembly_error_window = ui.Window("Assembly could not start", width=480, height=160)
+                    with self._assembly_error_window.frame:
+                        with ui.VStack(spacing=10):
+                            ui.Label(str(exc), word_wrap=True)
+                            ui.Button(
+                                "Close", clicked_fn=lambda: setattr(self._assembly_error_window, "visible", False)
+                            )
+                    self.simulate_and_assemble_button.enabled = True
+                    self.simulate_and_assemble_button.visible = True
+                    self.end_simulation_and_continue_button.enabled = False
+                    self.end_simulation_and_continue_button.visible = False
+                    return
                 # Mute and unmute the assembly layer to ensure that the assembly layer is updated in the scenegraph instance
                 stage = omni.usd.get_context().get_stage()
                 if self._robot_assembler._assembly_layer.identifier:
@@ -394,11 +412,27 @@ class UIBuilder:
                 if self._timeline.is_playing():
                     self._timeline.stop()
                     await omni.kit.app.get_app().next_update_async()
-                self._robot_assembler.finish_assemble()
+                self.end_simulation_and_continue_button.enabled = False
+                try:
+                    await self._robot_assembler.finish_assemble()
+                except Exception as exc:
+                    carb.log_warn(f"Robot Assembler: assembly could not be saved: {exc}")
+                    self._assembly_error_window = ui.Window("Assembly could not be saved", width=460, height=160)
+                    with self._assembly_error_window.frame:
+                        with ui.VStack(spacing=10):
+                            ui.Label(
+                                f"{exc}\nThe working assembly is retained. Retry saving or cancel the assembly.",
+                                word_wrap=True,
+                            )
+                            ui.Button(
+                                "Close", clicked_fn=lambda: setattr(self._assembly_error_window, "visible", False)
+                            )
+                    return
+                finally:
+                    self.end_simulation_and_continue_button.enabled = True
+                self.reset_ui()
 
             asyncio.ensure_future(async_finish_assemble())
-            #
-            self.reset_ui()
 
         self._assembler_frame = ui.CollapsableFrame("Robot Assembler", style=get_style(), collapsed=True, visible=False)
         with self._assembler_frame:
@@ -512,8 +546,12 @@ class UIBuilder:
         # no payload found
         return attach_path
 
-    def _attach_selection(self) -> None:
-        """Initiates the robot attachment process using the selected robots and attach points."""
+    def _attach_selection(self) -> bool:
+        """Initiates the robot attachment process using the selected robots and attach points.
+
+        Returns:
+            True if the assembly started, False if the selected attach points cannot be assembled.
+        """
         stage = omni.usd.get_context().get_stage()
 
         base_robot_path = self._robot_dropdowns[0].get_selection()
@@ -540,17 +578,22 @@ class UIBuilder:
         elif len(composed_payloads) != 0:
             variant_name = composed_payloads[0][0].assetPath.split("/")[-1].split(".")[0]
 
-        self._robot_assembler.begin_assembly(
-            stage,
-            base_robot_path,
-            base_mount_path,
-            attachment_robot_path,
-            attachment_mount_path,
-            variant_set,
-            variant_name,
-        )
+        try:
+            self._robot_assembler.begin_assembly(
+                stage,
+                base_robot_path,
+                base_mount_path,
+                attachment_robot_path,
+                attachment_mount_path,
+                variant_set,
+                variant_name,
+            )
+        except ValueError as error:
+            carb.log_error(f"Cannot assemble the selected robots: {error}")
+            return False
 
         self._select_attach_point_prim()
+        return True
 
     def _select_attach_point_prim(self) -> None:
         """Selects the attach point prim of the attachment robot in the stage viewport."""

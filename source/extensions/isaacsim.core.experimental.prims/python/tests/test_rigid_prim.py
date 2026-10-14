@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Literal
+from unittest.mock import patch
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
@@ -72,6 +74,12 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
     async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
+
+    async def test_tensor_entity_invalid_when_simulation_view_is_invalid(self) -> None:
+        """An invalidated simulation view must invalidate the wrapper predicate."""
+        rigid_state = SimpleNamespace(_physics_rigid_body_view=object())
+        with patch.object(SimulationManager, "_physics_sim_view__warp", SimpleNamespace(is_valid=False)):
+            self.assertFalse(RigidPrim.is_physics_tensor_entity_valid(rigid_state))
 
     # --------------------------------------------------------------------
 
@@ -260,6 +268,23 @@ class TestRigidPrim(omni.kit.test.AsyncTestCase):
                 check_allclose(expected_v0, output, given=(v0,))
                 expected_inverse = 1.0 / (output.numpy() + 1e-8)
                 check_allclose(expected_inverse, inverse_output, given=(v0,))
+
+    async def test_get_masses_without_mass_api_is_read_only(self) -> None:
+        """Verify that reading an unauthored mass does not modify the USD stage."""
+        await stage_utils.create_new_stage_async()
+        stage = stage_utils.get_current_stage(backend="usd")
+        prim = UsdGeom.Cube.Define(stage, "/World/Repro").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(prim)
+        UsdPhysics.CollisionAPI.Apply(prim)
+        rigid_prim = RigidPrim("/World/Repro")
+        layer_before = stage.GetRootLayer().ExportToString()
+
+        with use_backend("usd", raise_on_unsupported=True, raise_on_fallback=True):
+            masses = rigid_prim.get_masses()
+
+        self.assertFalse(prim.HasAPI(UsdPhysics.MassAPI))
+        self.assertEqual(stage.GetRootLayer().ExportToString(), layer_before)
+        np.testing.assert_array_equal(masses.numpy(), np.zeros((1, 1), dtype=np.float32))
 
     @parametrize(
         backends=["tensor", "usd"],

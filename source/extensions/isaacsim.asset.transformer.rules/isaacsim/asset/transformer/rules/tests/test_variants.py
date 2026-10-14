@@ -22,9 +22,11 @@ import shutil
 import tempfile
 
 import omni.kit.test
+from isaacsim.asset.transformer.manager import AssetTransformerManager
+from isaacsim.asset.transformer.models import RuleProfile, RuleSpec
 from isaacsim.asset.transformer.rules.structure.variants import VariantRoutingRule
 from isaacsim.asset.transformer.rules.utils import sanitize_prim_name
-from pxr import Gf, Sdf, Usd
+from pxr import Gf, Sdf, Usd, UsdGeom
 
 from .common import _TEST_DATA_DIR
 
@@ -161,6 +163,49 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
         self.assertIn("excluded_variants", param_names)
         self._success = True
 
+    async def test_synthetic_empty_none_variant_is_not_exported(self) -> None:
+        """A generated empty None option must not add a layer on the next transform."""
+        source_path = os.path.join(self._tmpdir, "source.usda")
+        stage = Usd.Stage.CreateNew(source_path)
+        prim = UsdGeom.Xform.Define(stage, "/Asset").GetPrim()
+        stage.SetDefaultPrim(prim)
+        variants = prim.GetVariantSets().AddVariantSet("Physics")
+        variants.AddVariant("none")
+        variants.AddVariant("mujoco")
+        variants.SetVariantSelection("mujoco")
+        with variants.GetVariantEditContext():
+            UsdGeom.Scope.Define(stage, "/Asset/Physics")
+        stage.GetRootLayer().Save()
+
+        empty_output = os.path.join(self._tmpdir, "empty_output")
+        rule = VariantRoutingRule(
+            source_stage=stage,
+            package_root=empty_output,
+            destination_path="payloads",
+            args={"input_stage_path": source_path, "params": {"excluded_variants": ["none"]}},
+        )
+        rule.process_rule()
+        self.assertFalse(os.path.exists(os.path.join(empty_output, "payloads", "Physics", "none.usda")))
+        self.assertTrue(os.path.isfile(os.path.join(empty_output, "payloads", "Physics", "mujoco.usda")))
+
+        # An authored None option is different: keep its placeholder so an
+        # excluded variant with meaningful opinions is not silently discarded.
+        variants.SetVariantSelection("none")
+        with variants.GetVariantEditContext():
+            prim.CreateAttribute("test:authored", Sdf.ValueTypeNames.Int).Set(1)
+        stage.GetRootLayer().Save()
+        authored_output = os.path.join(self._tmpdir, "authored_output")
+        rule = VariantRoutingRule(
+            source_stage=stage,
+            package_root=authored_output,
+            destination_path="payloads",
+            args={"input_stage_path": source_path, "params": {"excluded_variants": ["none"]}},
+        )
+        rule.process_rule()
+        self.assertTrue(os.path.isfile(os.path.join(authored_output, "payloads", "Physics", "none.usda")))
+        del rule, variants, prim, stage
+        self._success = True
+
     async def test_process_rule_creates_variants_and_dependencies(self) -> None:
         """Verify variant files and dependencies are generated."""
         stage = Usd.Stage.Open(_G1_USD)
@@ -188,6 +233,15 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
             variant_set = variant_sets.GetVariantSet(variant_set_name)
             for variant_name in variant_set.GetVariantNames():
                 variant_path = self._variant_file_path(variant_set_name, variant_name)
+                if variant_name.lower() == "none" and not os.path.isfile(variant_path):
+                    # The interface's empty None option needs no payload layer.
+                    # Guard against silently omitting a substantive authored option.
+                    prim_spec = stage.GetRootLayer().GetPrimAtPath(default_prim.GetPath())
+                    none_spec = prim_spec.variantSets[variant_set_name].variants[variant_name].primSpec
+                    self.assertEqual(set(none_spec.ListInfoKeys()), {"specifier"})
+                    self.assertFalse(none_spec.properties)
+                    self.assertFalse(none_spec.nameChildren)
+                    continue
                 self.assertTrue(os.path.isfile(variant_path))
                 self._assert_dependency_assets_exist(variant_path)
 
@@ -740,4 +794,195 @@ class TestVariantRoutingRule(omni.kit.test.AsyncTestCase):
             shutil.rmtree(nodep_dir, ignore_errors=True)
 
         self.assertEqual(failures, [], "\n".join(failures))
+        self._success = True
+
+
+def _instance_census(stage: Usd.Stage) -> tuple[int, int]:
+    """Count meshes and points over instance proxies.
+
+    Descending into ``GetPrototypes()`` instead would return identical counts
+    for every variant option, because a deactivated subtree still has a
+    prototype. Only instance-proxy traversal reflects what an option composes.
+
+    Args:
+        stage: Stage to measure.
+
+    Returns:
+        Tuple of ``(mesh_count, total_point_count)``.
+    """
+    meshes = 0
+    points = 0
+    for prim in Usd.PrimRange.Stage(stage, Usd.TraverseInstanceProxies()):
+        if prim.IsA(UsdGeom.Mesh):
+            meshes += 1
+            attr = UsdGeom.Mesh(prim).GetPointsAttr()
+            value = attr.Get() if attr else None
+            if value:
+                points += len(value)
+    return meshes, points
+
+
+class TestVariantRoutingThroughManager(omni.kit.test.AsyncTestCase):
+    """Guard the manager/rule interaction that routes variants to layers."""
+
+    async def setUp(self) -> None:
+        """Create a temporary directory for test output."""
+        self._tmpdir = tempfile.mkdtemp(prefix="asset_transformer_variant_routing_")
+        self._success = False
+
+    async def tearDown(self) -> None:
+        """Remove temporary directories after successful tests."""
+        if self._success:
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _build_variant_fixture(self, fixture_root: str) -> str:
+        """Author a stage whose variant option layers carry relative arcs of their own.
+
+        Layout::
+
+            <fixture_root>/root.usda            <-- /Robot, variant set "Config"
+                                                    heavy payloads ./variants/heavy.usda
+                                                    light payloads ./variants/light.usda
+            <fixture_root>/variants/heavy.usda  <-- references ../shared/two_meshes.usda
+            <fixture_root>/variants/light.usda  <-- references ../shared/one_mesh.usda
+            <fixture_root>/shared/two_meshes.usda
+            <fixture_root>/shared/one_mesh.usda
+
+        The nesting matters: each option's layer resolves its own relative
+        arcs. A fixture whose option layers sat beside the root with no arcs of
+        their own would survive being relocated and so could not detect the
+        collapse this test guards against.
+
+        Args:
+            fixture_root: Directory to author the fixture into.
+
+        Returns:
+            Path to the root layer.
+        """
+        shared_dir = os.path.join(fixture_root, "shared")
+        variants_dir = os.path.join(fixture_root, "variants")
+        os.makedirs(shared_dir, exist_ok=True)
+        os.makedirs(variants_dir, exist_ok=True)
+
+        for name, mesh_names in (("two_meshes.usda", ("MeshA", "MeshB")), ("one_mesh.usda", ("MeshA",))):
+            stage = Usd.Stage.CreateNew(os.path.join(shared_dir, name))
+            root = UsdGeom.Xform.Define(stage, "/Shared")
+            for mesh_name in mesh_names:
+                mesh = UsdGeom.Mesh.Define(stage, f"/Shared/{mesh_name}")
+                mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+            stage.SetDefaultPrim(root.GetPrim())
+            stage.GetRootLayer().Save()
+
+        for option, shared_name in (("heavy", "two_meshes.usda"), ("light", "one_mesh.usda")):
+            stage = Usd.Stage.CreateNew(os.path.join(variants_dir, f"{option}.usda"))
+            root = UsdGeom.Xform.Define(stage, "/Opt")
+            geom = UsdGeom.Xform.Define(stage, "/Opt/Geom")
+            geom.GetPrim().GetReferences().AddReference(f"../shared/{shared_name}")
+            stage.SetDefaultPrim(root.GetPrim())
+            stage.GetRootLayer().Save()
+
+        root_path = os.path.join(fixture_root, "root.usda")
+        root_stage = Usd.Stage.CreateNew(root_path)
+        robot = UsdGeom.Xform.Define(root_stage, "/Robot")
+        root_stage.SetDefaultPrim(robot.GetPrim())
+        variant_set = robot.GetPrim().GetVariantSets().AddVariantSet("Config")
+        for option in ("heavy", "light"):
+            variant_set.AddVariant(option)
+            variant_set.SetVariantSelection(option)
+            with variant_set.GetVariantEditContext():
+                holder = UsdGeom.Xform.Define(root_stage, "/Robot/Content")
+                holder.GetPrim().GetPayloads().AddPayload(f"./variants/{option}.usda")
+        variant_set.SetVariantSelection("heavy")
+        root_stage.GetRootLayer().Save()
+        return root_path
+
+    async def test_routed_variant_options_stay_pairwise_distinct(self) -> None:
+        """Routing variants through the manager must not collapse the options.
+
+        ``VariantRoutingRule`` reads the working stage the manager exports and
+        routes each option's layer to ``payloads/<set>/<option>.usda``. Anything
+        the manager does to the arcs beforehand can defeat that routing, leaving
+        every option composing the same content while every rule still reports
+        success.
+
+        Asserting pairwise distinctness matters: a weaker "at least two options
+        differ" check passes while one option is silently inert.
+        """
+        fixture_root = os.path.join(self._tmpdir, "src")
+        os.makedirs(fixture_root, exist_ok=True)
+        source_path = self._build_variant_fixture(fixture_root)
+
+        # Guard the fixture against the *source* stage, so that a collapse
+        # measured after the transform can only be the transform's doing.
+        source_stage = Usd.Stage.Open(source_path)
+        source_variant_set = source_stage.GetDefaultPrim().GetVariantSets().GetVariantSet("Config")
+        source_census: dict[str, tuple[int, int]] = {}
+        for option in source_variant_set.GetVariantNames():
+            source_variant_set.SetVariantSelection(option)
+            source_census[option] = _instance_census(source_stage)
+        self.assertNotEqual(
+            source_census.get("heavy"),
+            source_census.get("light"),
+            f"fixture must author distinct options, got {source_census}",
+        )
+        del source_stage
+
+        out_root = os.path.join(self._tmpdir, "out")
+        profile = RuleProfile(
+            profile_name="variant_routing",
+            flatten_source=False,
+            base_name="base.usd",
+            rules=[
+                RuleSpec(
+                    name="Route Variants",
+                    type="isaacsim.asset.transformer.rules.structure.variants.VariantRoutingRule",
+                    destination="payloads",
+                    params={"excluded_variants": ["none", "default", "physx"]},
+                )
+            ],
+        )
+        report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+        failures = [f"rule '{r.rule.name}' failed: {r.error}" for r in report.results if not r.success]
+        self.assertEqual(failures, [], "\n".join(failures))
+
+        # The routed layer per option must exist where the rule places it.
+        for option in ("heavy", "light"):
+            routed = os.path.join(out_root, "payloads", "Config", f"{option}.usda")
+            self.assertTrue(os.path.isfile(routed), f"routed variant layer missing: {routed}")
+
+        out_stage = Usd.Stage.Open(report.output_stage_path)
+        default_prim = out_stage.GetDefaultPrim()
+        self.assertTrue(default_prim and default_prim.IsValid(), "output lost its default prim")
+        variant_set = default_prim.GetVariantSets().GetVariantSet("Config")
+        self.assertIn("Config", default_prim.GetVariantSets().GetNames(), "variant set missing from output")
+
+        census: dict[str, tuple[int, int]] = {}
+        for option in variant_set.GetVariantNames():
+            variant_set.SetVariantSelection(option)
+            census[option] = _instance_census(out_stage)
+
+        self.assertEqual(
+            census,
+            source_census,
+            f"transform changed what the options compose: source {source_census} vs output {census}",
+        )
+
+        collapsed = [
+            (left, right)
+            for index, left in enumerate(sorted(census))
+            for right in sorted(census)[index + 1 :]
+            if census[left] == census[right]
+        ]
+        self.assertEqual(
+            collapsed,
+            [],
+            f"variant options collapsed to identical content: {collapsed} from {census}",
+        )
+
+        self.assertEqual(
+            report.composition_errors,
+            [],
+            f"routed variants left unresolved arcs: {report.composition_errors}",
+        )
         self._success = True

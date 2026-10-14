@@ -92,6 +92,51 @@ class TestFlattenRule(omni.kit.test.AsyncTestCase):
         self.assertTrue(flattened_layer.GetPrimAtPath("/ur10e/base_link").IsValid())
         self._success = True
 
+    async def test_flatten_retargets_default_asset_identifier(self) -> None:
+        """Verify the flattened default prim points at the package-local interface layer.
+
+        Flatten resolves a model's ``assetInfo:identifier`` to the absolute source
+        path. The rule must rewrite it to an explicit-relative path pointing at the
+        generated interface layer so the flattened ``base.usda`` does not advertise
+        the pre-transform source location.
+        """
+        input_path = os.path.join(self._tmpdir, "model.usda")
+        source_identifier = os.path.join(self._tmpdir, "original", "model.usda")
+
+        stage = Usd.Stage.CreateNew(input_path)
+        model = stage.DefinePrim("/model", "Xform")
+        stage.SetDefaultPrim(model)
+        model.SetAssetInfoByKey("identifier", Sdf.AssetPath(source_identifier))
+        stage.Save()
+
+        stage = Usd.Stage.Open(input_path)
+        output_subdir = "payloads"
+        os.makedirs(os.path.join(self._tmpdir, output_subdir), exist_ok=True)
+
+        rule = FlattenRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path=output_subdir,
+            args={
+                "input_stage_path": input_path,
+                "params": {
+                    "output_path": "base.usda",
+                    "clear_variants": False,
+                },
+            },
+        )
+
+        rule.process_rule()
+
+        flattened_layer = Sdf.Layer.FindOrOpen(os.path.join(self._tmpdir, output_subdir, "base.usda"))
+        self.assertIsNotNone(flattened_layer)
+        default_spec = flattened_layer.GetPrimAtPath(Sdf.Path.absoluteRootPath.AppendChild(flattened_layer.defaultPrim))
+        identifier = dict(default_spec.GetInfo("assetInfo"))["identifier"].path
+        # base.usda lives in payloads/, the interface asset (model.usda) at the
+        # package root, so the retargeted identifier is one level up.
+        self.assertEqual(identifier, "../model.usda")
+        self._success = True
+
     async def test_flatten_without_input_stage_path_skips(self) -> None:
         """Verify rule skips when input stage path is missing."""
         stage = Usd.Stage.Open(_UR10E_USD)

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import math
 import os
 import tempfile
@@ -28,6 +27,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
+import carb
 import numpy as np
 import torch
 
@@ -45,8 +45,6 @@ from .runtime import yield_control
 from .trajectory_csv import TrajectoryDataset
 from .trajectory_resampling import combine_sample_weights
 from .trajectory_segments import ChunkValidationMetric, TrajectoryChunk
-
-_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -76,11 +74,16 @@ class ChunkValidationReplay:
     rollout: SysIdRolloutPlotData | None = None
 
 
-def _array_content_signature(values: np.ndarray | None) -> tuple[object, ...] | None:
+def _array_content_signature(
+    values: np.ndarray | None,
+    *,
+    num_steps: int | None = None,
+) -> tuple[object, ...] | None:
     """Return a stable signature that changes when an array is mutated in place.
 
     Args:
         values: Optional array whose shape, dtype, and contents identify cached data.
+        num_steps: Optional leading-axis limit for rollout-relevant data.
 
     Returns:
         Shape, dtype, and content digest, or ``None`` for an absent channel.
@@ -88,22 +91,28 @@ def _array_content_signature(values: np.ndarray | None) -> tuple[object, ...] | 
     if values is None:
         return None
     array = np.asarray(values)
-    contiguous = np.ascontiguousarray(array)
+    consumed = array if num_steps is None or array.ndim == 0 else array[: max(0, int(num_steps))]
+    contiguous = np.ascontiguousarray(consumed)
     digest = hashlib.blake2b(contiguous.tobytes(order="C"), digest_size=8).digest()
-    return (tuple(int(size) for size in array.shape), array.dtype.str, digest)
+    return (tuple(int(size) for size in consumed.shape), consumed.dtype.str, digest)
 
 
-def _trajectory_content_signature(trajectory: TrajectoryDataset) -> tuple[object, ...]:
+def _trajectory_content_signature(
+    trajectory: TrajectoryDataset,
+    *,
+    num_steps: int | None = None,
+) -> tuple[object, ...]:
     """Return the rollout-relevant content signature for a trajectory.
 
     Args:
         trajectory: Trajectory whose required and optional channels are fingerprinted.
+        num_steps: Optional leading-axis limit for rollout-relevant data.
 
     Returns:
         Content signatures for every trajectory channel consumed by rollouts.
     """
     return tuple(
-        _array_content_signature(getattr(trajectory, name, None))
+        _array_content_signature(getattr(trajectory, name, None), num_steps=num_steps)
         for name in (
             "times",
             "positions",
@@ -335,12 +344,12 @@ def save_clone_joint_angles_debug_png(
         fig.tight_layout()
         fig.savefig(output_path, dpi=140)
         plt.close(fig)
-        _LOGGER.info(
+        carb.log_info(
             f"SysId: wrote clone joint angle debug plot -> {output_path} "
             f"(x={x_label}, span={float(np.ptp(t)):.6g}, samples={len(sample_indices)})"
         )
     except Exception as exc:
-        _LOGGER.warning("SysId: failed to write clone joint angle debug plot: %s", exc)
+        carb.log_warn(f"SysId: failed to write clone joint angle debug plot: {exc}")
 
 
 def save_clone_joint_efforts_debug_png(
@@ -411,13 +420,13 @@ def save_clone_joint_efforts_debug_png(
         fig.tight_layout()
         fig.savefig(output_path, dpi=140)
         plt.close(fig)
-        _LOGGER.info(
+        carb.log_info(
             f"SysId: wrote clone joint effort debug plot -> {output_path} "
             f"(x={x_label}, span={float(np.ptp(t)):.6g}, samples={len(sample_indices)}, "
             f"recorded={'yes' if measured is not None else 'no'})"
         )
     except Exception as exc:
-        _LOGGER.warning("SysId: failed to write clone joint effort debug plot: %s", exc)
+        carb.log_warn(f"SysId: failed to write clone joint effort debug plot: {exc}")
 
 
 class RolloutOptimizerBase:
@@ -555,8 +564,7 @@ class RolloutOptimizerBase:
     ) -> torch.Tensor | None:
         if array is None:
             return None
-        tensor = torch.tensor(array, device=device, dtype=torch.float32)
-        return tensor[:num_steps]
+        return torch.tensor(np.asarray(array)[:num_steps], device=device, dtype=torch.float32)
 
     @staticmethod
     def trajectory_tensors(  # noqa: D102
@@ -567,19 +575,14 @@ class RolloutOptimizerBase:
         # ROS bag/MCAP timestamps can be epoch seconds (~1e9). Converting those
         # directly to float32 loses sub-second spacing, so plot/debug payloads
         # carry times relative to the sliced trajectory start.
-        relative_times = np.asarray(trajectory.times, dtype=np.float64).reshape(-1)
+        step_count = len(trajectory.times) if num_steps is None else max(0, int(num_steps))
+        relative_times = np.asarray(trajectory.times, dtype=np.float64).reshape(-1)[:step_count]
         if relative_times.shape[0] > 0 and np.all(np.isfinite(relative_times)):
             relative_times = relative_times - float(relative_times[0])
         times = torch.tensor(relative_times, device=device, dtype=torch.float32)
-        positions = torch.tensor(trajectory.positions, device=device, dtype=torch.float32)
-        velocities = torch.tensor(trajectory.velocities, device=device, dtype=torch.float32)
-        commands = torch.tensor(trajectory.commands, device=device, dtype=torch.float32)
-        if num_steps is not None:
-            times = times[:num_steps]
-            positions = positions[:num_steps]
-            velocities = velocities[:num_steps]
-            commands = commands[:num_steps]
-        step_count = num_steps or int(positions.shape[0])
+        positions = torch.tensor(np.asarray(trajectory.positions)[:step_count], device=device, dtype=torch.float32)
+        velocities = torch.tensor(np.asarray(trajectory.velocities)[:step_count], device=device, dtype=torch.float32)
+        commands = torch.tensor(np.asarray(trajectory.commands)[:step_count], device=device, dtype=torch.float32)
         return {
             "times": times,
             "positions": positions,
@@ -600,7 +603,11 @@ class RolloutOptimizerBase:
         device: torch.device,
         num_steps: int,
     ) -> dict[str, torch.Tensor | None]:
-        key = (_trajectory_content_signature(trajectory), str(device), int(num_steps))
+        key = (
+            _trajectory_content_signature(trajectory, num_steps=num_steps),
+            str(device),
+            int(num_steps),
+        )
         if self._trajectory_tensor_cache is not None and self._trajectory_tensor_cache.key == key:
             return self._trajectory_tensor_cache.tensors
         tensors = self.trajectory_tensors(trajectory, device, num_steps=num_steps)
@@ -615,6 +622,15 @@ class RolloutOptimizerBase:
         num_steps: int,
     ) -> torch.Tensor | None:
         trajectory_weights = getattr(trajectory, "residual_sample_weights", None)
+        key = (
+            id(residual_cfg),
+            _array_content_signature(residual_cfg.sample_weights, num_steps=num_steps),
+            _array_content_signature(trajectory_weights, num_steps=num_steps),
+            str(device),
+            int(num_steps),
+        )
+        if self._sample_weight_tensor_cache is not None and self._sample_weight_tensor_cache.key == key:
+            return self._sample_weight_tensor_cache.tensor
         combined = combine_sample_weights(
             residual_cfg.sample_weights,
             trajectory_weights,
@@ -623,15 +639,6 @@ class RolloutOptimizerBase:
         if combined is None:
             self._sample_weight_tensor_cache = None
             return None
-        key = (
-            id(residual_cfg),
-            _array_content_signature(residual_cfg.sample_weights),
-            _array_content_signature(trajectory_weights),
-            str(device),
-            int(num_steps),
-        )
-        if self._sample_weight_tensor_cache is not None and self._sample_weight_tensor_cache.key == key:
-            return self._sample_weight_tensor_cache.tensor
         tensor = torch.tensor(
             combined[:num_steps],
             device=device,
@@ -641,7 +648,16 @@ class RolloutOptimizerBase:
         return tensor
 
     def _ensure_bridge_setup(self, bridge: SysIdEnvironmentBridge, config: OptimizerConfig) -> None:
-        setup_key = (id(bridge), _trajectory_content_signature(config.trajectory), tuple(config.param_entries))
+        # `set_trajectory` receives the untruncated trajectory and derives the
+        # physics substep rate from the median dt over every sample, so the key
+        # must cover the whole trajectory. Keying on the first
+        # `max_rollout_steps` samples lets two chunks that share a prefix but
+        # differ in their tails collide and replay at the wrong substep rate.
+        setup_key = (
+            id(bridge),
+            _trajectory_content_signature(config.trajectory),
+            tuple(config.param_entries),
+        )
         if self._bridge_setup_key == setup_key:
             return
         bridge.set_trajectory(config.trajectory)
@@ -1090,9 +1106,11 @@ class RolloutOptimizerBase:
         Returns:
             One validation metric and rollout payload per chunk.
         """
+        self._raise_if_cancelled()
         replays: list[ChunkValidationReplay] = []
         total = max(1, len(chunks))
         for idx, chunk in enumerate(chunks):
+            self._raise_if_cancelled()
             start = idx / total
             end = (idx + 1) / total
             label = chunk.spec.display_name(idx)
@@ -1118,7 +1136,71 @@ class RolloutOptimizerBase:
                     on_progress=chunk_progress if on_progress is not None else None,
                 )
             )
+            self._raise_if_cancelled()
         return replays
+
+    async def evaluate_validation_parameter_sets_with_rollouts(
+        self,
+        config: OptimizerConfig,
+        chunks: list[TrajectoryChunk],
+        theta_values: list[list[float] | torch.Tensor],
+        on_progress: Optional[Callable[[str, float], None]] = None,
+    ) -> list[list[ChunkValidationReplay]]:
+        """Replay several parameter sets on the same validation chunks.
+
+        Bridges with arbitrary candidate batching evaluate every parameter set
+        in one simulation pass per chunk. Other bridges preserve the same
+        result contract with serial passes.
+
+        Args:
+            config: Optimizer and trajectory configuration.
+            chunks: Held-out trajectory chunks to replay.
+            theta_values: Parameter vectors evaluated in result order.
+            on_progress: Optional progress callback.
+
+        Returns:
+            Validation replays grouped by parameter-set index.
+        """
+        self._raise_if_cancelled()
+        if not theta_values:
+            return []
+        supports_batch = bool(getattr(self._bridge, "supports_arbitrary_candidate_batch", False))
+        if len(theta_values) < 2 or not supports_batch:
+            grouped: list[list[ChunkValidationReplay]] = []
+            total = max(1, len(theta_values))
+            for index, theta in enumerate(theta_values):
+                self._raise_if_cancelled()
+                start = index / total
+                end = (index + 1) / total
+                grouped.append(
+                    await self.evaluate_validation_chunks_with_rollouts(
+                        config,
+                        chunks,
+                        theta,
+                        on_progress=self._progress_for_phase(on_progress, start, end),
+                    )
+                )
+                self._raise_if_cancelled()
+            return grouped
+
+        grouped = [[] for _ in theta_values]
+        total = max(1, len(chunks))
+        for chunk_index, chunk in enumerate(chunks):
+            self._raise_if_cancelled()
+            replays = await self._evaluate_validation_chunk_theta_batch(
+                config,
+                chunk,
+                theta_values,
+                on_progress=self._progress_for_phase(
+                    on_progress,
+                    chunk_index / total,
+                    (chunk_index + 1) / total,
+                ),
+            )
+            for parameter_index, replay in enumerate(replays):
+                grouped[parameter_index].append(replay)
+            self._raise_if_cancelled()
+        return grouped
 
     async def evaluate_validation_chunk(
         self,
@@ -1165,6 +1247,36 @@ class RolloutOptimizerBase:
         Returns:
             Validation metric and rollout plot payload for ``chunk``.
         """
+        replays = await self._evaluate_validation_chunk_theta_batch(
+            config,
+            chunk,
+            [theta],
+            on_progress=on_progress,
+        )
+        return replays[0]
+
+    async def _evaluate_validation_chunk_theta_batch(
+        self,
+        config: OptimizerConfig,
+        chunk: TrajectoryChunk,
+        theta_values: list[list[float] | torch.Tensor],
+        *,
+        on_progress: Optional[Callable[[str, float], None]] = None,
+    ) -> list[ChunkValidationReplay]:
+        """Replay one validation chunk for a candidate batch.
+
+        Args:
+            config: Optimizer and trajectory configuration.
+            chunk: Validation trajectory chunk to replay.
+            theta_values: Parameter vectors evaluated in result order.
+            on_progress: Optional progress callback.
+
+        Returns:
+            One validation replay per parameter vector.
+        """
+        self._raise_if_cancelled()
+        if not theta_values:
+            return []
         bridge = self._bridge
         if not callable(getattr(bridge, "set_trajectory", None)) or not callable(
             getattr(bridge, "run_rollout_async", None)
@@ -1218,12 +1330,17 @@ class RolloutOptimizerBase:
         if on_progress:
             on_progress("rollout", 0.25)
             await yield_control()
+            self._raise_if_cancelled()
 
-        theta_tensor = torch.as_tensor(theta, device=bridge.device, dtype=torch.float32).reshape(1, -1)
+        theta_tensor = torch.stack(
+            [torch.as_tensor(theta, device=bridge.device, dtype=torch.float32).reshape(-1) for theta in theta_values],
+            dim=0,
+        )
         rollout = await bridge.run_rollout_async(theta_tensor, chunk_config.param_entries, commands, num_steps)
+        self._raise_if_cancelled()
         _validate_rollout_shapes(
             rollout,
-            expected_envs=1,
+            expected_envs=len(theta_values),
             expected_steps=num_steps,
             expected_trailing_shapes=expected_trailing_shapes,
         )
@@ -1250,50 +1367,55 @@ class RolloutOptimizerBase:
             )
         )
         residual_dim = max(1, int(residuals.shape[1]))
-        cost = float(cost_per_env[0].detach().cpu().item())
 
         if on_progress:
             on_progress("metrics", 0.9)
             await yield_control()
+            self._raise_if_cancelled()
 
-        metric = ChunkValidationMetric(
-            name=chunk.spec.name,
-            role=chunk.spec.role,
-            excitation=chunk.spec.excitation,
-            start=float(chunk.spec.start),
-            end=float(chunk.spec.end),
-            sample_count=int(num_steps),
-            cost=cost,
-            normalized_cost=cost / residual_dim,
-            position_rmse=_rmse(sim_pos[0, :num_steps], meas_pos[:num_steps]),
-            velocity_rmse=_rmse(sim_vel[0, :num_steps], meas_vel[:num_steps]),
-            torque_rmse=(
-                _rmse(sim_torque[0, :num_steps], meas_torque[:num_steps])
-                if sim_torque is not None and meas_torque is not None
-                else None
-            ),
-            end_effector_pose_rmse=(
-                _rmse(sim_ee[0, :num_steps], meas_ee[:num_steps])
-                if sim_ee is not None and meas_ee is not None
-                else None
-            ),
-            contact_force_rmse=(
-                _rmse(sim_contact[0, :num_steps], meas_contact[:num_steps])
-                if sim_contact is not None and meas_contact is not None
-                else None
-            ),
-        )
-        rollout_plot = make_rollout_plot_data(
-            traj["times"],
-            meas_pos,
-            meas_vel,
-            sim_pos,
-            sim_vel,
-            0,
-            meas_torque=meas_torque,
-            sim_torque=sim_torque,
-        )
-        return ChunkValidationReplay(metric=metric, rollout=rollout_plot)
+        replays: list[ChunkValidationReplay] = []
+        costs = cost_per_env.detach().cpu().tolist()
+        for env_index, cost_value in enumerate(costs):
+            cost = float(cost_value)
+            metric = ChunkValidationMetric(
+                name=chunk.spec.name,
+                role=chunk.spec.role,
+                excitation=chunk.spec.excitation,
+                start=float(chunk.spec.start),
+                end=float(chunk.spec.end),
+                sample_count=int(num_steps),
+                cost=cost,
+                normalized_cost=cost / residual_dim,
+                position_rmse=_rmse(sim_pos[env_index, :num_steps], meas_pos[:num_steps]),
+                velocity_rmse=_rmse(sim_vel[env_index, :num_steps], meas_vel[:num_steps]),
+                torque_rmse=(
+                    _rmse(sim_torque[env_index, :num_steps], meas_torque[:num_steps])
+                    if sim_torque is not None and meas_torque is not None
+                    else None
+                ),
+                end_effector_pose_rmse=(
+                    _rmse(sim_ee[env_index, :num_steps], meas_ee[:num_steps])
+                    if sim_ee is not None and meas_ee is not None
+                    else None
+                ),
+                contact_force_rmse=(
+                    _rmse(sim_contact[env_index, :num_steps], meas_contact[:num_steps])
+                    if sim_contact is not None and meas_contact is not None
+                    else None
+                ),
+            )
+            rollout_plot = make_rollout_plot_data(
+                traj["times"],
+                meas_pos,
+                meas_vel,
+                sim_pos,
+                sim_vel,
+                env_index,
+                meas_torque=meas_torque,
+                sim_torque=sim_torque,
+            )
+            replays.append(ChunkValidationReplay(metric=metric, rollout=rollout_plot))
+        return replays
 
     async def evaluate_nominal_cost(self, config: OptimizerConfig, theta: torch.Tensor) -> float:  # noqa: D102
         batch = theta.unsqueeze(0)

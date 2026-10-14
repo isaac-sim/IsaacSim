@@ -141,9 +141,9 @@ class VisualCuesManager:
     def show_side(self, side: SideName) -> tuple[bool, str]:
         """Create drop-line geometry for one side."""
         side = side.lower()  # type: ignore[assignment]
-        if not stage_utils.is_stage_set() and omni.usd.get_context().get_stage() is None:
+        stage = self._current_stage()
+        if stage is None:
             return False, "No USD stage available"
-        stage = stage_utils.get_current_stage()
         if side in self._active_sides and self._layer_is_attached(stage):
             return True, f"{side.capitalize()} drop line active"
         if self._layer is not None and not self._layer_is_attached(stage):
@@ -218,8 +218,8 @@ class VisualCuesManager:
         if self._layer is None:
             return
 
-        if stage_utils.is_stage_set() or omni.usd.get_context().get_stage() is not None:
-            stage = stage_utils.get_current_stage()
+        stage = self._current_stage()
+        if stage is not None:
             session = stage.GetSessionLayer()
             ident = self._layer.identifier
             if ident in session.subLayerPaths:
@@ -242,13 +242,16 @@ class VisualCuesManager:
         self._release_update_subscription()
         self._layer = None
 
+    def _current_stage(self) -> Usd.Stage | None:
+        """Return the current stage, or None when no stage is available."""
+        try:
+            return stage_utils.get_current_stage()
+        except ValueError:
+            return None
+
     @contextmanager
     def _edit_ctx(self) -> Generator[Usd.Stage | None, None, None]:
-        stage = (
-            stage_utils.get_current_stage()
-            if stage_utils.is_stage_set() or omni.usd.get_context().get_stage() is not None
-            else None
-        )
+        stage = self._current_stage()
         if stage is not None and self._layer is not None and self._layer_is_attached(stage):
             with Usd.EditContext(stage, self._layer):
                 yield stage
@@ -280,12 +283,8 @@ class VisualCuesManager:
     def _on_update(self, _event: object) -> None:
         if not self._active_sides:
             return
-        try:
-            stage = stage_utils.get_current_stage()
-        except ValueError:
-            self._invalidate_stale_layer()
-            return
-        if not self._layer_is_attached(stage):
+        stage = self._current_stage()
+        if stage is None or not self._layer_is_attached(stage):
             self._invalidate_stale_layer()
             return
         for side in list(self._active_sides):
@@ -294,9 +293,9 @@ class VisualCuesManager:
     def _resolve_world_position(self, side: SideName) -> tuple[tuple[float, float, float] | None, str]:
         override = self._override_paths[side].strip()
         if override:
-            if not stage_utils.is_stage_set() and omni.usd.get_context().get_stage() is None:
+            stage = self._current_stage()
+            if stage is None:
                 return None, "No stage"
-            stage = stage_utils.get_current_stage()
             prim = stage.GetPrimAtPath(override)
             if not prim or not prim.IsValid():
                 return None, f"Override prim not found: {override}"

@@ -23,6 +23,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable, Sequence
+from functools import partial
+from types import TracebackType
 from typing import TypeVar
 
 import pytest
@@ -32,9 +35,15 @@ _TENSORS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _TENSORS_DIR not in sys.path:
     sys.path.append(_TENSORS_DIR)
 
-from _scenario import DeviceParams, RunnerInMemory, ScenarioBase  # noqa: E402
+from _scenario import DeviceParams, RunnerInMemory, ScenarioBase, SimulationEntities  # noqa: E402
 
 TestClass = TypeVar("TestClass", bound=type[object])
+_ScenarioOutcome = tuple[BaseException, TracebackType | None] | None
+_SCENARIO_BATCHES: dict[tuple[str, type[ScenarioBase]], tuple[type[ScenarioBase], ...]] = {}
+_SCENARIO_BATCH_RESULTS: dict[
+    tuple[str, str, bool, bool, int | None, tuple[type[ScenarioBase], ...]],
+    dict[type[ScenarioBase], _ScenarioOutcome],
+] = {}
 
 
 def cpu_device() -> DeviceParams:
@@ -57,6 +66,123 @@ def gpu_device() -> DeviceParams:
     return DeviceParams(use_gpu_sim=True, use_gpu_pipeline=True)
 
 
+def register_scenario_batches(
+    engine: str,
+    batches: Sequence[Sequence[type[ScenarioBase]]],
+) -> None:
+    """Register compatible scenarios that can share one backend lifecycle.
+
+    Args:
+        engine: Registered physics engine name.
+        batches: Groups of scenarios with identical stages and warmup needs.
+
+    Raises:
+        ValueError: If a batch is too small or registers one scenario more than once.
+
+    """
+    for scenarios in batches:
+        batch = tuple(scenarios)
+        if len(batch) < 2:
+            raise ValueError("A scenario batch must contain at least two scenarios")
+        for scenario_cls in batch:
+            key = (engine, scenario_cls)
+            existing = _SCENARIO_BATCHES.get(key)
+            if existing is not None and existing != batch:
+                raise ValueError(f"Scenario is registered in multiple {engine} batches: {scenario_cls.__name__}")
+            _SCENARIO_BATCHES[key] = batch
+
+
+def _capture_scenario_outcome(operation: Callable[[], object]) -> _ScenarioOutcome:
+    """Run one scenario operation and retain a later-reportable outcome.
+
+    Args:
+        operation: Zero-argument callable to execute.
+
+    Returns:
+        Captured exception and traceback, or None after success.
+
+    """
+    try:
+        operation()
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as error:
+        return error, error.__traceback__
+    return None
+
+
+def _run_scenario_check(
+    test_case: object,
+    scenario_cls: type[ScenarioBase],
+    device: DeviceParams,
+    simulation: SimulationEntities,
+) -> None:
+    """Initialize and check one scenario against an already-warmed simulation.
+
+    Args:
+        test_case: Test instance supplied to the scenario.
+        scenario_cls: Scenario class whose assertions should run.
+        device: Simulation and tensor device selection.
+        simulation: Entity-view factory for the attached backend.
+
+    """
+    scenario = scenario_cls(test_case, device)
+    scenario.on_start(simulation)
+    scenario.check_cell()
+
+
+def _run_scenario_batch(
+    test_case: object,
+    scenario_classes: tuple[type[ScenarioBase], ...],
+    engine: str,
+    device: DeviceParams,
+    frontend: str,
+) -> dict[type[ScenarioBase], _ScenarioOutcome]:
+    """Run compatible scenario checks through one attached backend.
+
+    Args:
+        test_case: Test instance supplied to the scenarios.
+        scenario_classes: Scenario classes sharing a stage shape and warmup.
+        engine: Registered physics engine name.
+        device: Simulation and tensor device selection.
+        frontend: Tensor frontend name.
+
+    Returns:
+        Captured outcome for every scenario class.
+
+    """
+    outcomes: dict[type[ScenarioBase], _ScenarioOutcome] = {}
+    first_class = scenario_classes[0]
+    first_scenario = first_class(test_case, device)
+    runner = RunnerInMemory(first_scenario, engine=engine, frontend=frontend)
+
+    start_outcome = _capture_scenario_outcome(runner.start)
+    if start_outcome is not None:
+        _capture_scenario_outcome(runner.stop)
+        return dict.fromkeys(scenario_classes, start_outcome)
+
+    try:
+        outcomes[first_class] = _capture_scenario_outcome(runner.simulate)
+        for scenario_cls in scenario_classes[1:]:
+            outcomes[scenario_cls] = _capture_scenario_outcome(
+                partial(
+                    _run_scenario_check,
+                    test_case,
+                    scenario_cls,
+                    device,
+                    first_scenario.sim,
+                )
+            )
+    finally:
+        stop_outcome = _capture_scenario_outcome(runner.stop)
+
+    if stop_outcome is not None:
+        first_success = next((scenario_cls for scenario_cls, outcome in outcomes.items() if outcome is None), None)
+        if first_success is not None:
+            outcomes[first_success] = stop_outcome
+    return outcomes
+
+
 def run_scenario(
     test_case: object,
     scenario_cls: type[ScenarioBase],
@@ -77,6 +203,26 @@ def run_scenario(
         frontend: Tensor frontend name.
 
     """
+    batch = _SCENARIO_BATCHES.get((engine, scenario_cls))
+    if batch is not None:
+        batch_key = (
+            engine,
+            frontend,
+            device.use_gpu_sim,
+            device.use_gpu_pipeline,
+            device.num_workers,
+            batch,
+        )
+        outcomes = _SCENARIO_BATCH_RESULTS.get(batch_key)
+        if outcomes is None:
+            outcomes = _run_scenario_batch(test_case, batch, engine, device, frontend)
+            _SCENARIO_BATCH_RESULTS[batch_key] = outcomes
+        outcome = outcomes[scenario_cls]
+        if outcome is None:
+            return
+        error, traceback = outcome
+        raise error.with_traceback(traceback)
+
     scenario = scenario_cls(test_case, device)
     runner = RunnerInMemory(scenario, engine=engine, frontend=frontend)
     exc_info = None

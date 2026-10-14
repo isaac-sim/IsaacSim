@@ -1,5 +1,9 @@
 # Changelog
 
+## [4.2.5] - 2026-09-22
+### Fixed
+- `BaseIsaacBenchmark.fully_load_stage`: raise `RuntimeError` instead of continuing silently when the stage fails to open.
+
 ## [4.2.4] - 2026-08-26
 ### Fixed
 - Document OmniPerf's scalar-only custom measurements and warn when unsupported types are supplied.

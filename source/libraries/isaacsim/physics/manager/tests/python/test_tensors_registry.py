@@ -187,16 +187,16 @@ class TestImplDispatch(TensorsRegistryTestCase):
             else:
                 backing[...] = arr
 
-        spec_get = t.TensorSpec(
-            dtype=t.DType.FLOAT32,
+        spec_get = t.ArrayTensorSpec(
+            dtype=wp.float32,
             shape_hint=[1, 4],
-            device_kind=t.DeviceKind.CPU,
+            device="cpu",
             supports_indexed_read=indexed_read,
         )
-        spec_set = t.TensorSpec(
-            dtype=t.DType.FLOAT32,
+        spec_set = t.ArrayTensorSpec(
+            dtype=wp.float32,
             shape_hint=[1, 4],
-            device_kind=t.DeviceKind.CPU,
+            device="cpu",
             supports_indexed_write=True,
         )
 
@@ -268,7 +268,7 @@ class TestImplDispatch(TensorsRegistryTestCase):
             "fresh",
             t.ImplKind.Get,
             get_fresh,
-            t.TensorSpec(dtype=t.DType.FLOAT32, shape_hint=[1, 4], device_kind=t.DeviceKind.CPU),
+            t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[1, 4], device="cpu"),
         )
 
         # get_data on a raw EntityView returns a single-use DLPack capsule;
@@ -337,26 +337,26 @@ class TestImplDispatch(TensorsRegistryTestCase):
             "echo-out",
             t.ImplKind.Get,
             lambda indices, out: out,
-            t.TensorSpec(dtype=t.DType.FLOAT32, shape_hint=[1, 4], device_kind=t.DeviceKind.CPU),
+            t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[1, 4], device="cpu"),
         )
         # The array passed as `out` is the SOLE reference to the caller storage;
         # the helper drops it before the GC/pressure so only the binding's
         # retention (of the caller's real out) can keep the result alive.
         self._assert_result_survives_pressure(view, "echo-out", out=np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32))
 
-    def test_get_result_pins_desc_ndarray(self) -> None:
-        """Verify that a tensor descriptor retains its wrapped NumPy array."""
+    def test_get_result_pins_fresh_ndarray(self) -> None:
+        """Verify that a fresh NumPy result retains its backing array."""
         import numpy as np
 
         wp.init()
         view = self._fresh_view()
         view._register_impl(
-            "desc-ndarray",
+            "fresh-ndarray",
             t.ImplKind.Get,
-            lambda indices, out: t.TensorDesc(np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)),
-            t.TensorSpec(dtype=t.DType.FLOAT32, shape_hint=[1, 4], device_kind=t.DeviceKind.CPU),
+            lambda indices, out: np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
+            t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[1, 4], device="cpu"),
         )
-        self._assert_result_survives_pressure(view, "desc-ndarray")
+        self._assert_result_survives_pressure(view, "fresh-ndarray")
 
     def test_get_result_pins_dlpack_capsule(self) -> None:
         """Verify that a raw DLPack result retains its imported managed tensor."""
@@ -368,7 +368,7 @@ class TestImplDispatch(TensorsRegistryTestCase):
             "dlpack-capsule",
             t.ImplKind.Get,
             lambda indices, out: np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32).__dlpack__(),
-            t.TensorSpec(dtype=t.DType.FLOAT32, shape_hint=[1, 4], device_kind=t.DeviceKind.CPU),
+            t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[1, 4], device="cpu"),
         )
         self._assert_result_survives_pressure(view, "dlpack-capsule")
 
@@ -387,7 +387,7 @@ class TestImplDispatch(TensorsRegistryTestCase):
                 np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
                 np.array([[5.0, 6.0, 8.0, 9.0]], dtype=np.float32).__dlpack__(),
             ],
-            t.TensorSpec(dtype=t.DType.FLOAT32, shape_hint=[1, 4], device_kind=t.DeviceKind.CPU),
+            t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[1, 4], device="cpu"),
         )
         results = view.get_data_multi("multi-fresh")
         warrs = [wp.from_dlpack(r) for r in results]
@@ -401,35 +401,9 @@ class TestImplDispatch(TensorsRegistryTestCase):
         del warrs, _pressure
         gc.collect()
 
-    def test_desc_to_array_pins_backing(self) -> None:
-        """Verify that descriptor conversion retains a temporary NumPy backing."""
-        import gc
-
-        import numpy as np
-
-        wp.init()
-
-        # The TensorDesc and its source ndarray are both temporaries: after
-        # to_array() returns, only the returned array's own keepalive can keep the
-        # backing alive.
-        warr = wp.from_dlpack(t.TensorDesc(np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)).to_array())
-        assert warr.numpy().tolist() == [[1.0, 2.0, 3.0, 4.0]]
-
-        gc.collect()
-        _pressure = [np.full((1, 4), 7.0, dtype=np.float32) for _ in range(4096)]
-        assert warr.numpy().tolist() == [
-            [1.0, 2.0, 3.0, 4.0]
-        ], "TensorDesc.to_array() result dangled: the source ndarray was freed and clobbered"
-        del warr, _pressure
-        gc.collect()
-
 
 class TestRawIndexDtypeGuard(TensorsRegistryTestCase):
-    """Verify index data-type guards on raw entity-view entry points.
-
-    Integer indices must use 32-bit elements. Floating-point payloads remain
-    valid because signed-distance-field queries use the same argument slot.
-    """
+    """Verify the int32 index contract at the raw EntityView boundary."""
 
     def _view(self) -> t.EntityView:
         """Create a raw entity view with single and multi implementations.
@@ -453,12 +427,8 @@ class TestRawIndexDtypeGuard(TensorsRegistryTestCase):
                     return backing[rows.reshape(-1), :].copy()
             return backing  # None or float payload -> full buffer
 
-        gspec = t.TensorSpec(
-            dtype=t.DType.FLOAT32, shape_hint=[2, 4], device_kind=t.DeviceKind.CPU, supports_indexed_read=True
-        )
-        sspec = t.TensorSpec(
-            dtype=t.DType.FLOAT32, shape_hint=[2, 4], device_kind=t.DeviceKind.CPU, supports_indexed_write=True
-        )
+        gspec = t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[2, 4], device="cpu", supports_indexed_read=True)
+        sspec = t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[2, 4], device="cpu", supports_indexed_write=True)
         view._register_impl("op", t.ImplKind.Get, get_op, gspec)
         view._register_impl("op", t.ImplKind.Set, lambda data, indices: None, sspec)
         view._register_multi_impl("op-multi", t.ImplKind.Get, lambda indices, out: [backing], gspec)
@@ -520,7 +490,7 @@ class TestDiscoverability(TensorsRegistryTestCase):
             "dof-position",
             t.ImplKind.Get,
             lambda i, o: wp.zeros((1,), dtype=wp.float32, device="cpu"),
-            t.TensorSpec(dtype=t.DType.FLOAT32, shape_hint=[1]),
+            t.ArrayTensorSpec(dtype=wp.float32, shape_hint=[1]),
         )
         # No Set impl registered.
         assert view.list_impls(t.ImplKind.Get) == ["dof-position"]
@@ -537,7 +507,7 @@ class TestDiscoverability(TensorsRegistryTestCase):
             "fixed-tendon-stiffness",
             t.ImplKind.Get,
             lambda i, o: None,
-            t.TensorSpec(supports=False),
+            t.ArrayTensorSpec(supports=False),
         )
         assert "fixed-tendon-stiffness" in view.list_impls(t.ImplKind.Get)
         assert not (view.has_impl("fixed-tendon-stiffness", t.ImplKind.Get))
@@ -545,19 +515,19 @@ class TestDiscoverability(TensorsRegistryTestCase):
     def test_get_impl_spec_round_trip(self) -> None:
         """Verify that implementation specification fields round-trip."""
         view = t.EntityView([])
-        spec = t.TensorSpec(
-            dtype=t.DType.FLOAT64,
+        spec = t.ArrayTensorSpec(
+            dtype=wp.float64,
             shape_hint=[3, 4],
-            device_kind=t.DeviceKind.GPU,
+            device="cuda:0",
             supports_indexed_read=True,
             supports_indexed_write=True,
             supports_masked_write=True,
         )
         view._register_impl("dof-position", t.ImplKind.Get, lambda i, o: None, spec)
-        got = view.get_impl_spec("dof-position", t.ImplKind.Get)
-        assert got.dtype == t.DType.FLOAT64
+        got = view.get_array_impl_spec("dof-position", t.ImplKind.Get)
+        assert got.dtype == wp.float64
         assert list(got.shape_hint) == [3, 4]
-        assert got.device_kind == t.DeviceKind.GPU
+        assert got.device == "cuda:0"
         assert got.supports_indexed_read
         assert got.supports_indexed_write
         assert got.supports_masked_write
@@ -594,7 +564,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "no-go",
             t.ImplKind.Get,
             lambda i, o: wp.zeros((1,), dtype=wp.float32, device="cpu"),
-            t.TensorSpec(supports=False),
+            t.ArrayTensorSpec(supports=False),
         )
         with pytest.raises(
             RuntimeError, match="EntityView::getData: implementation 'no-go' is registered but reports supports=false"
@@ -609,7 +579,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "no-go",
             t.ImplKind.Get,
             lambda indices, out: calls.append((indices, out)),
-            t.TensorSpec(supports=False),
+            t.ArrayTensorSpec(supports=False),
         )
         t._attach_warp_dispatch(view)
 
@@ -622,7 +592,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
     def test_python_dispatch_uses_registered_spec_copy(self) -> None:
         """Verify that dispatch retains a copy of the registered specification."""
         calls = []
-        spec = t.TensorSpec(supports=False)
+        spec = t.ArrayTensorSpec(supports=False)
         view = t.EntityView([])
         view._register_impl(
             "no-go",
@@ -648,7 +618,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "plain-set",
             t.ImplKind.Set,
             lambda data, indices: calls.append((data, indices)),
-            t.TensorSpec(supports=True, supports_indexed_write=False),
+            t.ArrayTensorSpec(supports=True, supports_indexed_write=False),
         )
         t._attach_warp_dispatch(view)
 
@@ -670,7 +640,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "no-go-multi",
             t.ImplKind.Set,
             lambda data, indices: calls.append((data, indices)),
-            t.TensorSpec(supports=False),
+            t.ArrayTensorSpec(supports=False),
         )
         t._attach_warp_dispatch(view)
 
@@ -692,7 +662,7 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "plain-multi-get",
             t.ImplKind.Get,
             lambda indices, out: calls.append((indices, out)),
-            t.TensorSpec(supports=True, supports_indexed_read=False),
+            t.ArrayTensorSpec(supports=True, supports_indexed_read=False),
         )
         t._attach_warp_dispatch(view)
 
@@ -713,14 +683,14 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "shared-name",
             t.ImplKind.Get,
             lambda indices, out: wp.zeros((1,), dtype=wp.float32, device="cpu"),
-            t.TensorSpec(supports=True),
+            t.ArrayTensorSpec(supports=True),
         )
         with pytest.raises(ValueError):
             view._register_multi_impl(
                 "shared-name",
                 t.ImplKind.Get,
                 lambda indices, out: [],
-                t.TensorSpec(supports=True),
+                t.ArrayTensorSpec(supports=True),
             )
 
         reverse = t.EntityView([])
@@ -728,14 +698,14 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "shared-name",
             t.ImplKind.Get,
             lambda indices, out: [],
-            t.TensorSpec(supports=True),
+            t.ArrayTensorSpec(supports=True),
         )
         with pytest.raises(ValueError):
             reverse._register_impl(
                 "shared-name",
                 t.ImplKind.Get,
                 lambda indices, out: None,
-                t.TensorSpec(supports=True),
+                t.ArrayTensorSpec(supports=True),
             )
 
     def test_cross_cardinality_set_registration_is_rejected(self) -> None:
@@ -745,14 +715,14 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "shared-name",
             t.ImplKind.Set,
             lambda data, indices: None,
-            t.TensorSpec(supports=True),
+            t.ArrayTensorSpec(supports=True),
         )
         with pytest.raises(ValueError):
             view._register_impl(
                 "shared-name",
                 t.ImplKind.Set,
                 lambda data, indices: None,
-                t.TensorSpec(supports=True),
+                t.ArrayTensorSpec(supports=True),
             )
 
         reverse = t.EntityView([])
@@ -760,14 +730,14 @@ class TestErrorPaths(TensorsRegistryTestCase):
             "shared-name",
             t.ImplKind.Set,
             lambda data, indices: None,
-            t.TensorSpec(supports=True),
+            t.ArrayTensorSpec(supports=True),
         )
         with pytest.raises(ValueError):
             reverse._register_multi_impl(
                 "shared-name",
                 t.ImplKind.Set,
                 lambda data, indices: None,
-                t.TensorSpec(supports=True),
+                t.ArrayTensorSpec(supports=True),
             )
 
 
@@ -845,21 +815,77 @@ class TestEntityOptions(TensorsRegistryTestCase):
             t.create_entity("mock", "articulation", [])
         assert not called
 
-    def test_device_ordinal_applied_to_view(self) -> None:
-        """Verify that a caller-supplied device ordinal lands on the created view."""
+    def test_device_applied_to_view(self) -> None:
+        """Verify that a caller-supplied device lands on the created view."""
         t.register_entity("mock", "articulation", lambda paths, options=None: t.EntityView(paths))
 
-        view = t.create_entity("mock", "articulation", ["/World/Robot"], device_ordinal=3)
-        assert view.device_ordinal == 3
+        view = t.create_entity("mock", "articulation", ["/World/Robot"], device="cuda:3")
+        assert view.device == "cuda:3"
 
-    def test_device_ordinal_left_alone_when_unset(self) -> None:
-        """Verify that omitting the device ordinal preserves what the engine reported."""
+    def test_device_left_alone_when_unset(self) -> None:
+        """Verify that omitting the device preserves what the engine reported."""
 
         def factory(paths: list[str], options: dict[str, object] | None = None) -> t.EntityView:
             view = t.EntityView(paths)
-            view.device_ordinal = 5
+            view.device = "cuda:5"
             return view
 
         t.register_entity("mock", "articulation", factory)
         view = t.create_entity("mock", "articulation", ["/World/Robot"])
-        assert view.device_ordinal == 5
+        assert view.device == "cuda:5"
+
+
+class TestDTypeCaster:
+    """Verify that element types cross the binding boundary as Warp data types."""
+
+    ALL_TYPES = (
+        wp.bool,
+        wp.int8,
+        wp.int16,
+        wp.int32,
+        wp.int64,
+        wp.uint8,
+        wp.uint16,
+        wp.uint32,
+        wp.uint64,
+        wp.float32,
+        wp.float64,
+    )
+
+    def test_default_is_the_warp_float32_singleton(self) -> None:
+        """Verify the default element type arrives as Warp's own float32, not a proxy."""
+        assert t.ArrayTensorSpec().dtype is wp.float32
+
+    @pytest.mark.parametrize("dtype", ALL_TYPES)
+    def test_every_supported_type_round_trips(self, dtype: object) -> None:
+        """Verify each element type survives a write and read back unchanged."""
+        assert t.ArrayTensorSpec(dtype=dtype).dtype is dtype
+
+        spec = t.ArrayTensorSpec()
+        spec.dtype = dtype
+        assert spec.dtype is dtype
+
+    @pytest.mark.parametrize("dtype", ALL_TYPES)
+    def test_round_trips_through_the_native_registry(self, dtype: object) -> None:
+        """Verify the element type survives a registration and spec query through C++."""
+        view = t.EntityView(["/World/Robot"])
+        view._register_impl("op", t.ImplKind.Get, lambda indices, out: wp.zeros(1), t.ArrayTensorSpec(dtype=dtype))
+        assert view.get_array_impl_spec("op", t.ImplKind.Get).dtype is dtype
+
+    def test_spec_dtype_allocates_a_matching_warp_array(self) -> None:
+        """Verify a spec's element type is directly usable for allocation."""
+        spec = t.ArrayTensorSpec(dtype=wp.uint8, shape_hint=[2, 3])
+        buffer = wp.zeros(tuple(spec.shape_hint), dtype=spec.dtype)
+        assert buffer.dtype is wp.uint8
+        assert tuple(buffer.shape) == (2, 3)
+
+    @pytest.mark.parametrize("unsupported", [wp.float16, wp.vec3, wp.mat22, "float32", 0, None])
+    def test_rejects_types_with_no_element_type_counterpart(self, unsupported: object) -> None:
+        """Verify unrepresentable inputs are refused rather than silently approximated.
+
+        Warp's ``float16``/``bfloat16`` and its vector and matrix types have no counterpart, and a
+        vector is deliberately not flattened to its component type: treating a vector width as a
+        trailing shape dimension is the caller's convention, not a property of the element type.
+        """
+        with pytest.raises(TypeError):
+            t.ArrayTensorSpec(dtype=unsupported)

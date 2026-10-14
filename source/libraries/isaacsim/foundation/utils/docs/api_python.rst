@@ -25,7 +25,7 @@ Python guide and API reference
 .. _isaacsim-foundation-utils-python-summary:
 
 Summary
-=======
+========
 
 * :ref:`Backend <isaacsim-foundation-utils-python-backend>`
 * :ref:`Stage <isaacsim-foundation-utils-python-stage>`
@@ -35,7 +35,7 @@ Summary
 .. _isaacsim-foundation-utils-python-backend:
 
 Backend
-=======
+========
 
 Provides a context manager that activates a named backend for the
 current thread and restores the previous state on exit.

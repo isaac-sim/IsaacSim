@@ -1,5 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -46,8 +58,10 @@ public:
      */
     virtual bool importStageFromString(const std::string& usdContent) = 0;
 
-    /** @brief Initialize the simulation. */
-    virtual void initialize() = 0;
+    /** @brief Initialize the simulation.
+     * @param[in] timeStep Physics time step in seconds.
+     */
+    virtual void initialize(double timeStep) = 0;
 
     /** @brief Invalidate the simulation. */
     virtual void invalidate() = 0;
@@ -134,9 +148,10 @@ public:
      *
      * @param[in] simulationId Non-empty identifier for the simulation.
      * @param[in] usdContent Non-empty USD layer content to import.
+     * @param[in] timeStep Physics time step in seconds; defaults to 1/60 second.
      * @return An OK status when initialization was scheduled, or an error status when the request is invalid.
      */
-    ::grpc::Status createSimulation(std::string simulationId, std::string usdContent);
+    ::grpc::Status createSimulation(std::string simulationId, std::string usdContent, double timeStep = 1.0 / 60.0);
 
     /**
      * @brief Get the current state of a hosted simulation.
@@ -249,7 +264,8 @@ private:
     bool m_simulationInitialized{ false };
     int64_t m_simulationTimeNs{ 0 };
     int64_t m_latestVisibleTimeNs{ 0 };
-    size_t m_timePhase{ 0 };
+    int64_t m_stepCount{ 0 };
+    double m_timeStep{ 1.0 / 60.0 };
     std::unordered_map<std::string, int64_t> m_latestWriteTimes;
 
     std::unique_ptr<NativeSimulation> m_nativeSimulation;

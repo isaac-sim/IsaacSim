@@ -37,7 +37,7 @@ The last-used profile is automatically restored when the window opens. Profile v
 
 ### Session Panel
 
-**Connect** / **Disconnect** establish or tear down the OpenXR teleop session. Start CloudXR externally first (`python -m isaacteleop.cloudxr --accept-eula`). Frame marker management (**Show** / **Remove** with adjustable scale), Tracking Space prim selection with coordinate system dropdown, XR Anchor configuration (position offset, rotation mode, smoothing, fixed-height lock), and a **Debug** section with synthetic input controls (thumbstick, trigger, and squeeze sliders plus locomotion buttons) and a **Write Backend** dropdown to override the global XformPrim backend (USD / USD-RT / Fabric).
+**Connect** / **Disconnect** establish or tear down the OpenXR teleop session. Start CloudXR externally first (`python -m isaacteleop.cloudxr --accept-eula`). Frame marker management (**Show** / **Remove** with adjustable scale), Tracking Space prim selection with coordinate system dropdown, XR Anchor configuration (position offset, rotation mode, smoothing, fixed-height lock), and a **Debug** section with synthetic input controls (thumbstick, trigger, and squeeze sliders plus locomotion buttons) and a **Transform Backend** dropdown for teleop transform operations (USD / USD-RT / Fabric). Rigid-body velocity commands use Tensor or USD independently.
 
 ### Recording & Replay
 

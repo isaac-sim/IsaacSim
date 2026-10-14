@@ -74,10 +74,10 @@ Reports: Isaac Sim version, asset root, stage state, timeline, display, enabled 
 Isaac Sim assets (robots, environments) require either a Nucleus server or S3 cloud fallback. If Nucleus is unavailable, configure S3 assets:
 
 ```bash
-python scripts/isaacsim_send.py --file scripts/set_asset_root.py --arg asset_root=staging
+python scripts/isaacsim_send.py --file scripts/set_asset_root.py --arg asset_root=production
 ```
 
-**Asset servers:** `staging` (S3, Isaac 6.0 paths), `production` (S3, Isaac 5.0 paths), `nucleus` (default).
+**Asset servers:** `production` (S3, Isaac 6.2; recommended), `staging` (S3, Isaac 6.2; explicit testing only), `nucleus` (legacy name that resets to the configured application default). Omit the override to preserve the configured root.
 Use `verify_asset.py` for concrete asset availability; `set_asset_root.py` only updates the persistent root setting.
 
 After changing the root, run [`scripts/verify_asset.py`](../scripts/verify_asset.py) through `isaacsim_send.py` with the root, asset path, and target prim as arguments.

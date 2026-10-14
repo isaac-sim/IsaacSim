@@ -1,0 +1,22 @@
+{
+  "protocol_version": 2,
+  "sdk_revision": "599b901adde8cb278f3b741cb5e068aeb18f0bf8",
+  "sha256": {
+    "geometry.fbs": "3cda16571347cb22783e2e4e1b7fe17adcb307fa5c9a59268a85e936c78c7718",
+    "header.fbs": "6895bc9ea18e71df3ff6ce19d3856c4e3b9359cc0379a823a5dd4931681b7774",
+    "image.fbs": "94a500d16a612e8b5c4bdd3105bdd159a9ebeaa55f17fdbdb5537168ac913d45",
+    "imu.fbs": "c4e34e11f27cc9426248adbfd0db4ce0c8a2f20cd61188d3dbc66241f9a26bdf",
+    "joint_command.fbs": "2196605f81ff3074bca3a92ea789bcc1b2cf3f780c06c7f2756140dc2c2fb193",
+    "joint_state.fbs": "80def925b5fb7c32906eb1cd05db708c63d0e5db5ada6d1bcecd28eb21924cb1",
+    "tensor.fbs": "632cb3be60e8f73449d64e3baf5f688db844ef70237ea3f9cda2803e25d4e0db",
+    "time.fbs": "da26398911d4c4d3d981f0015afd9529d661ecdf2ef8ef90f37d812fc6c04212"
+  },
+  "sdk_sha256": {
+    "geometry.fbs": "3cda16571347cb22783e2e4e1b7fe17adcb307fa5c9a59268a85e936c78c7718",
+    "header.fbs": "34f4235c670a2ec7411b73ea3bc0ca7310bb85cc68b684f885854d2cd70e7c49",
+    "image.fbs": "ff75ca979c238d72cddbfb2f290e062f223be1197dea4493a1aec7967ee7b323",
+    "imu.fbs": "68c6c774e453d7bbf691b503ef84777978634b725af6185ecb332428ca3e9a89",
+    "tensor.fbs": "632cb3be60e8f73449d64e3baf5f688db844ef70237ea3f9cda2803e25d4e0db",
+    "time.fbs": "da26398911d4c4d3d981f0015afd9529d661ecdf2ef8ef90f37d812fc6c04212"
+  }
+}

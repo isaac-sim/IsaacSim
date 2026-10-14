@@ -29,5 +29,15 @@ class TestRuleRegistration(omni.kit.test.AsyncTestCase):
 
     async def test_isaac_sim_rules_are_registered(self) -> None:
         """Isaac Sim runtime and sensor rules appear in the Asset Validator registry."""
-        self.assertGreater(len(ValidationRulesRegistry.rules("IsaacSim.SensorRules")), 0)
+        for category in (
+            "IsaacSim.Sensor.Shared",
+            "IsaacSim.Sensor.Camera",
+            "IsaacSim.Sensor.Camera.Depth",
+            "IsaacSim.Sensor.Camera.ISP",
+            "IsaacSim.Sensor.Camera.Lens",
+            "IsaacSim.Sensor.Lidar",
+            "IsaacSim.Sensor.Radar",
+            "IsaacSim.Sensor.SPG",
+        ):
+            self.assertGreater(len(ValidationRulesRegistry.rules(category)), 0, category)
         self.assertGreater(len(ValidationRulesRegistry.rules("BaseArticulation")), 1)

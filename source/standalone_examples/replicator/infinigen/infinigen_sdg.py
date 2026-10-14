@@ -126,9 +126,9 @@ config = {
     },
     # Physics GPU memory settings for the simulation (override defaults if scenes are complex)
     "physics": {
-        # GPU collision stack size in bytes (default: 300 MB, PhysX default is only 64 MB which is
+        # GPU collision stack size in bytes (default: 384 MiB, PhysX default is only 64 MiB which is
         # insufficient for infinigen scenes with many colliders)
-        "gpu_collision_stack_size": 314572800,
+        "gpu_collision_stack_size": 402653184,
     },
     # Hide ceilling to get a top-down view of the scene, move viewport camera to the top-down view
     "debug_mode": True,
@@ -141,6 +141,7 @@ parser.add_argument("--config", required=False, help="Include specific config pa
 parser.add_argument(
     "--close-on-completion", action="store_true", help="Ensure the app closes on completion even in debug mode"
 )
+parser.add_argument("--headless", action="store_true", help="Run without a window or viewport rendering")
 args, unknown = parser.parse_known_args()
 args_config = {}
 if args.config and os.path.isfile(args.config):
@@ -157,7 +158,7 @@ else:
 # Update the default config dict with the external one
 config.update(args_config)
 
-simulation_app = SimulationApp(launch_config={"headless": False})
+simulation_app = SimulationApp(launch_config={"headless": args.headless, "disable_viewport_updates": args.headless})
 
 
 from itertools import cycle

@@ -395,10 +395,8 @@ OutputValueType getAttributeValues(const std::vector<std::string>& paths,
             switch (std::get<InstanceMethodType>(methodIterator->second))
             {
             case InstanceMethodType::eMeshDisplayColors:
-                return std::static_pointer_cast<objects::Mesh>(instance)->getDisplayColors(indices);
             case InstanceMethodType::eShapeDisplayColors:
                 return instance->getAttributeValues("primvars:displayColor", indices);
-                // TODO: return std::static_pointer_cast<objects::shapes::Shape>(instance)->getDisplayColors(indices);
             case InstanceMethodType::eXformWorldPositions:
                 return std::get<0>(std::static_pointer_cast<objects::Xform>(instance)->getWorldPoses(indices));
             case InstanceMethodType::eXformWorldOrientations:

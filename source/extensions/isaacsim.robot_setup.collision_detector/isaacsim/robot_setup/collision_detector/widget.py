@@ -89,7 +89,7 @@ def _ensure_group_count(n: int) -> None:
         _registered_group_ids.append(gid)
 
 
-def _get_group_id(index: int) -> int:
+def _get_group_id(index: int) -> int | None:
     """Return the persistent group ID at the given index.
 
     Lazily registers new groups when ``index`` exceeds the current count.
@@ -98,7 +98,10 @@ def _get_group_id(index: int) -> int:
         index: Zero-based index into the registered group list.
 
     Returns:
-        The selection-group identifier.
+        The selection-group identifier, or None when the engine pool is
+        exhausted. Callers must skip highlighting rather than substitute a
+        group, since group 0 is the viewport's default and sharing one group
+        between bodies would give them the same colour.
     """
     _ensure_group_count(index + 1)
     if index >= len(_registered_group_ids):
@@ -106,8 +109,7 @@ def _get_group_id(index: int) -> int:
             f"Selection group {index} unavailable: register_selection_group failed "
             f"(only {len(_registered_group_ids)} groups registered)"
         )
-        # Return last registered group, since 0 is reserved for the default group and should not be used, and 0 only as ultimate last resort
-        return _registered_group_ids[-1] if _registered_group_ids else 0
+        return None
     return _registered_group_ids[index]
 
 
@@ -125,10 +127,14 @@ def _reset_group_colors(gid: int) -> None:
 
 
 def deregister_selection_groups() -> None:
-    """Reset and release all registered selection groups."""
+    """Clear the colours of every selection group the widget registered.
+
+    The group identifiers themselves are retained. The viewport offers no way
+    to hand a selection group back, so discarding them here would force fresh
+    registrations on the next use and drain the finite pool.
+    """
     for gid in _registered_group_ids:
         _reset_group_colors(gid)
-    _registered_group_ids.clear()
 
 
 # -- Subtree traversal -------------------------------------------------------
@@ -1036,15 +1042,18 @@ class CollisionDetectorWidget:
         self._suppressing_notices = True
         try:
             stage = self._usd_context.get_stage()
-            group_index = 0
             for body_path in new_bodies:
                 idx = self._color_assignments.get(body_path)
                 if idx is None:
                     continue
                 color = PASTEL_PALETTE[idx]
 
-                gid = _get_group_id(group_index)
-                group_index += 1
+                # Index by colour so a colour always owns the same group, which
+                # is what `_select_collision_prim` relies on when it re-applies
+                # a group without setting its colour.
+                gid = _get_group_id(idx)
+                if gid is None:
+                    continue
                 self._active_groups[body_path] = gid
                 self._usd_context.set_selection_group_outline_color(gid, (*color, 1.0))
                 self._usd_context.set_selection_group_shade_color(gid, (*color, 0.3))
@@ -1146,11 +1155,12 @@ class CollisionDetectorWidget:
         idx = self._color_assignments.get(body_path)
         if idx is not None:
             gid = _get_group_id(idx)
-            self._active_groups[body_path] = gid
-            gprims = self._collect_gprims(stage, body_path)
-            self._group_prims[body_path] = gprims
-            for p in gprims:
-                self._usd_context.set_selection_group(gid, p)
+            if gid is not None:
+                self._active_groups[body_path] = gid
+                gprims = self._collect_gprims(stage, body_path)
+                self._group_prims[body_path] = gprims
+                for p in gprims:
+                    self._usd_context.set_selection_group(gid, p)
 
         # Resolve collision prims and set stage selection
         prim = stage.GetPrimAtPath(body_path)

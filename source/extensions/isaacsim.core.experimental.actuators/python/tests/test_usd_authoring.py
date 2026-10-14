@@ -39,11 +39,11 @@ from newton.actuators import (
     ClampingDCMotor,
     ClampingMaxEffort,
     ClampingPositionBased,
-    ControllerNeuralLSTM,
-    ControllerNeuralMLP,
-    ControllerPD,
-    ControllerPID,
     Delay,
+    DriveNeuralLSTM,
+    DriveNeuralMLP,
+    DrivePD,
+    DrivePID,
 )
 from pxr import Usd
 
@@ -65,7 +65,7 @@ try:
     class _TinyLSTMModule(_torch.nn.Module):
         """Minimal wrapper around a single ``torch.nn.LSTM`` for the LSTM test.
 
-        ``ControllerNeuralLSTM`` requires ``network.lstm`` to be a
+        ``DriveNeuralLSTM`` requires ``network.lstm`` to be a
         ``torch.nn.LSTM`` with ``input_size=2``, ``batch_first=True``,
         ``num_layers >= 1``, non-bidirectional, and ``proj_size == 0``.
         This module satisfies those constraints with the smallest network
@@ -114,7 +114,7 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
     # ------------------------------------------------------------------
 
     async def test_pd_controller_authored_and_discovered(self) -> None:
-        """Verify that a `PDControlConfig` yields a `ControllerPD` in `ArticulationActuators`."""
+        """Verify that a `PDControlConfig` yields a `DrivePD` in `ArticulationActuators`."""
         add_actuator(
             _ART_ROOT,
             target_names=_REVOLUTE_JOINT_NAME,
@@ -125,12 +125,12 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
         actuated = ArticulationActuators(_ART_ROOT)
         try:
             self.assertEqual(len(actuated.actuators), 1)
-            self.assertIsInstance(actuated.actuators[0].controller, ControllerPD)
+            self.assertIsInstance(actuated.actuators[0].controller, DrivePD)
         finally:
             actuated.close()
 
     async def test_pid_controller_authored_and_discovered(self) -> None:
-        """Verify that a `PIDControlConfig` yields a `ControllerPID` in `ArticulationActuators`."""
+        """Verify that a `PIDControlConfig` yields a `DrivePID` in `ArticulationActuators`."""
         add_actuator(
             _ART_ROOT,
             target_names=_REVOLUTE_JOINT_NAME,
@@ -141,7 +141,7 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
         actuated = ArticulationActuators(_ART_ROOT)
         try:
             self.assertEqual(len(actuated.actuators), 1)
-            self.assertIsInstance(actuated.actuators[0].controller, ControllerPID)
+            self.assertIsInstance(actuated.actuators[0].controller, DrivePID)
         finally:
             actuated.close()
 
@@ -173,11 +173,11 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
         return model_path
 
     async def test_neural_mlp_controller_authored_and_discovered(self) -> None:
-        """Verify that a `NeuralControlConfig` pointing at an MLP checkpoint yields a `ControllerNeuralMLP`.
+        """Verify that a `NeuralControlConfig` pointing at an MLP checkpoint yields a `DriveNeuralMLP`.
 
         Exercises authoring → discovery → controller-class resolution for the
         neural-MLP path.  The `model_type` key in the checkpoint metadata is
-        what dispatches `NewtonNeuralControlAPI` to `ControllerNeuralMLP`.
+        what dispatches `NewtonNeuralControlAPI` to `DriveNeuralMLP`.
         """
         if not _HAS_TORCH:
             self.skipTest("torch not installed")
@@ -193,16 +193,16 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
             actuated = ArticulationActuators(_ART_ROOT)
             try:
                 self.assertEqual(len(actuated.actuators), 1)
-                self.assertIsInstance(actuated.actuators[0].controller, ControllerNeuralMLP)
+                self.assertIsInstance(actuated.actuators[0].controller, DriveNeuralMLP)
             finally:
                 actuated.close()
 
     async def test_neural_lstm_controller_authored_and_discovered(self) -> None:
-        """Verify that a `NeuralControlConfig` pointing at an LSTM checkpoint yields a `ControllerNeuralLSTM`.
+        """Verify that a `NeuralControlConfig` pointing at an LSTM checkpoint yields a `DriveNeuralLSTM`.
 
         Same dispatch path as the MLP case but with ``model_type="lstm"`` in
         the metadata; the network has the structural constraints
-        ``ControllerNeuralLSTM`` checks at construction (``network.lstm`` is a
+        ``DriveNeuralLSTM`` checks at construction (``network.lstm`` is a
         ``torch.nn.LSTM`` with ``input_size=2``, ``batch_first=True``, etc.).
         """
         if not _HAS_TORCH:
@@ -219,7 +219,7 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
             actuated = ArticulationActuators(_ART_ROOT)
             try:
                 self.assertEqual(len(actuated.actuators), 1)
-                self.assertIsInstance(actuated.actuators[0].controller, ControllerNeuralLSTM)
+                self.assertIsInstance(actuated.actuators[0].controller, DriveNeuralLSTM)
             finally:
                 actuated.close()
 
@@ -488,7 +488,7 @@ class TestUsdAuthoring(omni.kit.test.AsyncTestCase):
         try:
             self.assertIsInstance(
                 actuated.actuators[0].controller,
-                ControllerPID,
+                DrivePID,
                 "Overwritten prim must use the new controller type",
             )
         finally:

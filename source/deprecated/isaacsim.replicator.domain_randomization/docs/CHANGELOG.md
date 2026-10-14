@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.4] - 2026-09-28
+### Fixed
+- Wait for Franka assets before resetting articulation tests.
+
 ## [1.2.3] - 2026-07-07
 ### Changed
 - Update the generated Python API inventory.

@@ -7,6 +7,7 @@
   - def reset(self)
   - def is_root_joint(self, prim: object) -> bool
   - def get_articulation_root_api_path(self, prim_path: str) -> str
+  - def resolve_joint_body_path(self, prim_path: str) -> str
   - def mask_collisions(self, prim_path_a: str, prim_path_b: str) -> Usd.Relationship
   - def begin_assembly(self, stage: object, base_prim_path: str, base_mount_path: str, attachment_prim_path: str, attachment_mount_path: str, variant_set: str, variant_name: str)
   - def cancel_assembly(self)

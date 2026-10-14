@@ -21,8 +21,9 @@ isaacsim.physics_engines.ovstage
 ================================
 
 This module makes the private OVStage Python and native runtimes discoverable.
-Engine facades invoke it in the platform-appropriate native-library load order.
-It does not import or modify the process-wide ``pxr`` package.
+It registers the Newton and PhysX USD schemas before population, then loads
+engine runtimes in the platform-appropriate native-library order. It does not
+import or modify the process-wide ``pxr`` package.
 
 .. toctree::
     :maxdepth: 2

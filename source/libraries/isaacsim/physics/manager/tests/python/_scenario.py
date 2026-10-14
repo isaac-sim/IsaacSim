@@ -116,14 +116,14 @@ class SimulationEntities:
 
     Args:
         engine: Name the simulation registered its entity factories under.
-        device_ordinal: Ordinal of the device holding the simulation's tensors, or ``None`` for an engine
+        device: Device holding the simulation's tensors as a string such as ``"cpu"`` or ``"cuda:0"``, or ``None`` for an engine
             that reports its own. Only engines that cannot report one at creation need this.
 
     """
 
-    def __init__(self, engine: str, device_ordinal: int | None = None) -> None:
+    def __init__(self, engine: str, device: str | None = None) -> None:
         self.engine = engine
-        self.device_ordinal = device_ordinal
+        self.device = device
 
     def create_view(self, entity: str, paths: str | Sequence[str], options: dict[str, object] | None = None) -> object:
         """Create an entity view of any registered type.
@@ -139,7 +139,7 @@ class SimulationEntities:
         """
         import isaacsim.physics.manager.impl.tensors as t
 
-        return t.create_entity(self.engine, entity, paths, options or None, device_ordinal=self.device_ordinal)
+        return t.create_entity(self.engine, entity, paths, options or None, device=self.device)
 
     def create_articulation_view(self, paths: str | Sequence[str]) -> object:
         """Create an articulation view.
@@ -977,7 +977,11 @@ class RunnerInMemory:
             from isaacsim.physics_engines.ovnewton.impl import NewtonConfig
 
             engine = self._engine_module()
-            self._registered_id = engine.register(NewtonConfig(device=self.scenario.wp_device))
+            config = NewtonConfig(device=self.scenario.wp_device)
+            configure_newton = getattr(self.scenario, "configure_newton", None)
+            if configure_newton is not None:
+                configure_newton(config)
+            self._registered_id = engine.register(config)
 
         # Dual-input contract: the caller owns the ovstage. Export the in-memory
         # stage to disk, populate an ovstage from it, and hand its native handle to

@@ -8,15 +8,19 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "isaacsim-asset"
 dynamic = ["version"]
-description = "USD asset transformation and importer utilities from NVIDIA Isaac Sim"
+description = "USD asset import, export, and transformation tools from NVIDIA Isaac Sim"
 requires-python = "==3.12.*"
 dependencies = [
-    "mujoco-usd-converter==0.5.0",
+    "mujoco==3.12.0",
+    "mujoco-usd-converter==0.6.1",
+    "newton-usd-schemas==0.5.0",
+    "urdf-usd-converter==0.3.2",
     "usd-exchange==2.3.0",
-    "usd-optimize>=1.1.0",
+    # USD Optimize passes live stages to native code; keep its OpenUSD ABI aligned with usd-exchange.
+    "usd-optimize==1.1.0",
 ]
 license = "Apache-2.0"
-keywords = ["nvidia", "isaac", "sim", "usd", "asset", "transformer", "importer"]
+keywords = ["nvidia", "isaac", "sim", "usd", "asset", "transformer", "importer", "exporter"]
 authors = [{ name = "NVIDIA Corporation" }]
 classifiers = [
     "Development Status :: 3 - Alpha",

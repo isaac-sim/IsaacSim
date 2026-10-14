@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import importlib
 import os
-import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -83,35 +82,37 @@ def _resident_memory_mib() -> float | None:
 
 @dataclass(frozen=True)
 class _ProcessSnapshot:
-    """Low-overhead process counters captured outside the measured timer."""
+    """Process memory observed outside the workload timers."""
 
-    cpu_seconds: float
     rss_mib: float | None
 
 
 def process_snapshot() -> _ProcessSnapshot:
-    """Capture process counters used by the process metric profile.
+    """Capture process memory used by the process metric profile.
 
     Returns:
-        Current process snapshot.
+        Current process memory snapshot.
 
     """
-    return _ProcessSnapshot(cpu_seconds=time.process_time(), rss_mib=_resident_memory_mib())
+    return _ProcessSnapshot(rss_mib=_resident_memory_mib())
 
 
-def process_metrics(before: _ProcessSnapshot, after: _ProcessSnapshot, elapsed_seconds: float) -> dict[str, float]:
-    """Derive process metrics for one measured sample.
+def process_metrics(
+    before: _ProcessSnapshot, after: _ProcessSnapshot, elapsed_seconds: float, *, cpu_seconds: float
+) -> dict[str, float]:
+    """Combine workload CPU time with before/after memory observations.
 
     Args:
         before: Process snapshot captured before the sample.
         after: Process snapshot captured after the sample.
         elapsed_seconds: Measured wall-clock duration.
+        cpu_seconds: Process CPU time measured around the workload stopwatch.
 
     Returns:
         Available process metrics keyed by metric name.
 
     """
-    cpu_seconds = max(0.0, after.cpu_seconds - before.cpu_seconds)
+    cpu_seconds = max(0.0, cpu_seconds)
     metrics = {
         "process_cpu_time_s": cpu_seconds,
         "process_cpu_utilization": cpu_seconds / elapsed_seconds if elapsed_seconds > 0.0 else 0.0,
@@ -127,9 +128,13 @@ class _GpuDeviceSnapshot:
     """NVML counters for one device captured outside the measured timer."""
 
     utilization: float
+    #: Device-wide NVML utilization ratio.
     vram_used_mib: float
+    #: Device-wide VRAM usage in mebibytes.
     process_vram_used_mib: float | None
-    process_active: bool
+    #: Current-process VRAM in mebibytes; `0.0` is a known zero and `None` means unavailable.
+    process_active: bool | None
+    #: `True` when the PID is observed, `False` when confirmed absent, or `None` when unknown.
 
 
 @dataclass(frozen=True)
@@ -204,44 +209,48 @@ class _NvmlMonitor:
             )
         return _GpuSnapshot(devices=tuple(devices))
 
-    def _process_vram_used_mib(self, handle: Any) -> tuple[bool, float | None]:
+    def _process_vram_used_mib(self, handle: Any) -> tuple[bool | None, float | None]:
         """Return whether this process uses a device and its VRAM when available.
 
         Args:
             handle: NVML device handle.
 
         Returns:
-            Process activity and VRAM usage in mebibytes, if available.
+            Process activity and VRAM usage in mebibytes. Activity is ``True`` if either query
+            observes the PID, ``False`` if both queries succeed without it, or ``None`` if a
+            query is missing or fails and neither observes the PID. Memory is ``None`` if
+            either query is incomplete or reports unavailable process memory, including
+            ``NVML_VALUE_NOT_AVAILABLE``; ``0.0`` represents confirmed zero usage.
 
         """
         process_active = False
-        process_queries_succeeded = False
-        process_query_failed = False
+        queries_complete = True
+        memory_available = True
         used_memory_values: list[float] = []
         for query_name in ("nvmlDeviceGetComputeRunningProcesses", "nvmlDeviceGetGraphicsRunningProcesses"):
             query = getattr(self._nvml, query_name, None)
             if query is None:
+                queries_complete = False
                 continue
             try:
                 processes = query(handle)
             except self._nvml.NVMLError:
-                process_query_failed = True
+                queries_complete = False
                 continue
-            process_queries_succeeded = True
             for process in processes:
                 if process.pid != os.getpid():
                     continue
                 process_active = True
                 used_memory = getattr(process, "usedGpuMemory", None)
                 if used_memory is None or used_memory == getattr(self._nvml, "NVML_VALUE_NOT_AVAILABLE", None):
+                    memory_available = False
                     continue
                 used_memory_values.append(float(used_memory) / _MIB)
 
-        if used_memory_values:
-            # Compute and graphics queries can both report the same process allocation.
-            return process_active, max(used_memory_values)
-        available_zero = process_queries_succeeded and not process_query_failed and not process_active
-        return process_active, 0.0 if available_zero else None
+        activity = True if process_active else (False if queries_complete else None)
+        # Compute and graphics queries can both report the same process allocation.
+        memory = max(used_memory_values, default=0.0) if queries_complete and memory_available else None
+        return activity, memory
 
     def _shutdown_after_initialization_failure(self) -> None:
         """Release NVML without masking the initialization error."""
@@ -262,11 +271,18 @@ def gpu_metrics(before: _GpuSnapshot, after: _GpuSnapshot) -> dict[str, float]:
         after: GPU snapshot captured after the sample.
 
     Returns:
-        Available GPU metrics keyed by metric name.
+        Metrics for devices used by the process at either boundary. If all devices are
+        inactive at both boundaries, return only zero ``process_vram_used_mib``. Omit process
+        VRAM if any selected device lacks a memory observation at either boundary.
+
+    Raises:
+        RuntimeError: If the device count changes or any device's process activity is unknown.
 
     """
     if len(before.devices) != len(after.devices):
         raise RuntimeError("NVML device count changed during benchmark measurement")
+    if any(device.process_active is None for snapshot in (before, after) for device in snapshot.devices):
+        raise RuntimeError("GPU process activity is unavailable; cannot attribute device metrics to this benchmark")
 
     selected_indices = [
         index
@@ -274,7 +290,7 @@ def gpu_metrics(before: _GpuSnapshot, after: _GpuSnapshot) -> dict[str, float]:
         if before_device.process_active or after_device.process_active
     ]
     if not selected_indices:
-        selected_indices = list(range(len(before.devices)))
+        return {"process_vram_used_mib": 0.0}
 
     metrics = {
         "device_gpu_utilization": max(
@@ -295,7 +311,7 @@ def gpu_metrics(before: _GpuSnapshot, after: _GpuSnapshot) -> dict[str, float]:
             )
             if value is not None
         ]
-        if not values:
+        if len(values) != 2:
             process_vram_available = False
             break
         process_vram_used_mib += max(values)

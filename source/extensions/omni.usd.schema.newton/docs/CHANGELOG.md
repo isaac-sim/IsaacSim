@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.0] - 2026-09-24
+### Changed
+- Updated newton-usd-schemas to 0.5.0.
+
 ## [1.4.0] - 2026-08-05
 ### Changed
 - Updated newton-usd-schemas to 0.4.1

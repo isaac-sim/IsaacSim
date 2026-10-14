@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.9.1] - 2026-09-23
+### Fixed
+- `Mesh.get_normals()` returns an empty array when normals are unauthored.
+
 ## [0.9.0] - 2026-07-27
 ### Added
 - Add `Stage` object

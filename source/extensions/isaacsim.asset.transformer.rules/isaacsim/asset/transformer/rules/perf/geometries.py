@@ -33,10 +33,6 @@ from .. import utils
 # Material binding purposes to check
 _MATERIAL_PURPOSES: tuple[str, ...] = ("", "physics", "preview", "full")
 
-# Direct physics material binding. Its target lies outside the instance prototypes, so it is
-# authored on the instanceable prims in the base layer rather than in the instances layer.
-_PHYSICS_MATERIAL_BINDING: str = "material:binding:physics"
-
 # Default Configuration Parameters
 _DEFAULT_SCOPE: str = "/"
 _DEFAULT_GEOMETRIES_LAYER_PATH: str = "geometries.usd"
@@ -1898,8 +1894,7 @@ class GeometriesRoutingRule(RuleInterface):
         Hashes all non-intrinsic data that differentiates instances:
         - Applied API schemas (CollisionAPI, PhysicsAPI, etc.)
         - Non-intrinsic attributes (physics properties, custom attributes)
-        - Relationships (material bindings, etc.), except the geometry prim's physics
-          material binding, which is authored on the instanceable prim instead
+        - Relationships (material bindings, etc.)
         - Effective inherited purpose computed from ancestor Xforms
         - Child prim deltas (GeomSubsets with material bindings)
 
@@ -1963,9 +1958,6 @@ class GeometriesRoutingRule(RuleInterface):
             if rel_name in intrinsic_props:
                 continue
             if not rel.HasAuthoredTargets():
-                continue
-            # Authored on the instanceable prim, not in the prototype, so it must not split prototypes
-            if rel_name == _PHYSICS_MATERIAL_BINDING and prim.IsA(UsdGeom.Mesh):
                 continue
 
             hasher.update(rel_name.encode())
@@ -2143,7 +2135,7 @@ class GeometriesRoutingRule(RuleInterface):
         This method copies all non-intrinsic data from the composed stage:
         - Applied API schemas (CollisionAPI, PhysicsAPI, etc.)
         - Non-intrinsic attributes (physics properties, custom attributes)
-        - Relationships (material bindings, etc.), except the physics material binding
+        - Relationships (material bindings, etc.)
 
         Intrinsic geometry properties are NOT copied (those are in geometries layer).
 
@@ -2233,14 +2225,6 @@ class GeometriesRoutingRule(RuleInterface):
 
             # Skip intrinsic relationships (like proxyPrim from Imageable)
             if rel_name in intrinsic_props:
-                continue
-
-            # Skip the physics material binding: its target lies outside the referenced
-            # prototype, so USD would drop it. ``_update_source_stage_references`` authors it
-            # on the instanceable prim, where the instance proxies inherit it. The copied
-            # ``MaterialBindingAPI`` must stay: the UsdPhysics parser only resolves material
-            # bindings for colliders that have it.
-            if rel_name == _PHYSICS_MATERIAL_BINDING:
                 continue
 
             if not rel.HasAuthoredTargets():
@@ -2906,10 +2890,8 @@ class GeometriesRoutingRule(RuleInterface):
     ) -> None:
         """Recursively collect *visual* material bindings from a prim and its children.
 
-        Physics-purpose bindings (``material:binding:physics``) are skipped
-        here. The geometry prim's physics binding is authored on its
-        instanceable prim by ``_update_source_stage_references`` so it keeps
-        pointing at the original physics material prim in the base layer.
+        Physics-purpose bindings are skipped here and resolved before source
+        references are updated, then authored on the instance roots in the base layer.
 
         Args:
             src_prim: The source prim to process.
@@ -2952,6 +2934,65 @@ class GeometriesRoutingRule(RuleInterface):
                 child, child_inst_path, materials_scope_path, all_materials, prim_bindings
             )
 
+    @staticmethod
+    def _resolve_physics_binding(prim: Usd.Prim) -> tuple[list[Sdf.Path], str]:
+        """Resolve physics-purpose bindings, excluding the all-purpose fallback.
+
+        Args:
+            prim: Prim whose effective physics material binding is resolved.
+
+        Returns:
+            Material target paths and binding strength, or empty targets when no physics binding exists.
+        """
+        material, relationship = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial(materialPurpose="physics")
+        if material and relationship:
+            name = relationship.GetName()
+            # An all-purpose visual material can win when no physics binding exists.
+            if name == "material:binding:physics" or name.startswith("material:binding:collection:physics:"):
+                return [material.GetPath()], UsdShade.MaterialBindingAPI.GetMaterialBindingStrength(relationship)
+        return [], UsdShade.Tokens.weakerThanDescendants
+
+    def _author_local_physics_binding(
+        self, prim_spec: Sdf.PrimSpec, targets: list[Sdf.Path], binding_strength: str
+    ) -> None:
+        """Author a physics binding and its API on the source instance root.
+
+        Args:
+            prim_spec: Source instance root specification to edit.
+            targets: Resolved physics material target paths.
+            binding_strength: Strength to author on the material binding.
+        """
+        if not targets:
+            return
+        with Usd.EditContext(self.source_stage, prim_spec.layer):
+            prim = self.source_stage.GetPrimAtPath(prim_spec.path)
+            material = UsdShade.Material(self.source_stage.GetPrimAtPath(targets[0]))
+            UsdShade.MaterialBindingAPI.Apply(prim).Bind(
+                material, bindingStrength=binding_strength, materialPurpose="physics"
+            )
+
+    @staticmethod
+    def _remove_instance_physics_bindings(layer: Sdf.Layer) -> None:
+        """Unbind local physics relationships whose targets escape the reference scope.
+
+        Args:
+            layer: Layer containing the instance-local bindings to remove.
+        """
+        stage = Usd.Stage.Open(layer)
+        with Usd.EditContext(stage, layer):
+            # Include over/class prims, but only edit relationships authored in this layer.
+            for prim in stage.TraverseAll():
+                prim_spec = layer.GetPrimAtPath(prim.GetPath())
+                if prim_spec is None:
+                    continue
+                binding_api = UsdShade.MaterialBindingAPI(prim)
+                direct = binding_api.GetDirectBindingRel(materialPurpose="physics")
+                if direct and direct.GetName() in prim_spec.relationships:
+                    binding_api.UnbindDirectBinding(materialPurpose="physics")
+                for relationship in binding_api.GetCollectionBindingRels(materialPurpose="physics"):
+                    if relationship.GetName() in prim_spec.relationships:
+                        binding_api.UnbindCollectionBinding(relationship.GetBaseName(), materialPurpose="physics")
+
     def _update_source_stage_references(
         self,
         instance_by_key: dict[tuple[str, str], InstanceEntry],
@@ -2964,8 +3005,7 @@ class GeometriesRoutingRule(RuleInterface):
         For each geometry prim in the source stage, replaces it with an instanceable
         reference to the corresponding deduplicated instance in the instances layer.
         Multiple source prims with identical geometry and deltas will reference the
-        same deduplicated instance definition. The physics material binding of each
-        geometry prim is authored on its instanceable prim.
+        same deduplicated instance definition.
 
         Args:
             instance_by_key: Dictionary mapping (geometry_hash, delta_hash) tuples to
@@ -2994,6 +3034,13 @@ class GeometriesRoutingRule(RuleInterface):
 
         self.log_operation(f"Reference path: {source_layer.identifier} -> {instance_layer_rel_path}")
 
+        # Resolve against the original hierarchy before any parent/child merges.
+        physics_bindings = {
+            source.prim_path: self._resolve_physics_binding(self.source_stage.GetPrimAtPath(source.prim_path))
+            for entry in instance_by_key.values()
+            for source in entry.sources
+        }
+
         # Track processed paths to avoid duplicates
         processed_paths: set[str] = set()
 
@@ -3006,6 +3053,7 @@ class GeometriesRoutingRule(RuleInterface):
 
             for source in instance_entry.sources:
                 update_path = source.prim_path
+                physics_targets, physics_strength = physics_bindings[update_path]
 
                 # Skip if already processed
                 if update_path in processed_paths:
@@ -3014,11 +3062,6 @@ class GeometriesRoutingRule(RuleInterface):
 
                 # Check if we should merge this prim with its parent
                 should_merge = self._should_merge_with_parent(update_path)
-
-                # Capture the physics material binding before the geometry prim is rewritten below
-                source_prim = self.source_stage.GetPrimAtPath(update_path)
-                physics_binding_rel = source_prim.GetRelationship(_PHYSICS_MATERIAL_BINDING) if source_prim else None
-                physics_material_paths = physics_binding_rel.GetTargets() if physics_binding_rel else []
 
                 if self._verbose:
                     self.log_operation(
@@ -3092,8 +3135,7 @@ class GeometriesRoutingRule(RuleInterface):
 
                     # Set parent as instanceable
                     parent_prim_spec.instanceable = True
-
-                    self._bind_physics_material(parent_path, physics_material_paths)
+                    self._author_local_physics_binding(parent_prim_spec, physics_targets, physics_strength)
 
                     updated_count += 1
                 else:
@@ -3175,10 +3217,11 @@ class GeometriesRoutingRule(RuleInterface):
 
                     # Set as instanceable
                     prim_spec.instanceable = True
-
-                    self._bind_physics_material(update_path, physics_material_paths)
+                    self._author_local_physics_binding(prim_spec, physics_targets, physics_strength)
 
                     updated_count += 1
+
+        self._remove_instance_physics_bindings(instances_layer)
 
         # Remove "doc" metadata from all properties before final export
         self._remove_doc_metadata_from_layer(instances_layer)
@@ -3187,33 +3230,6 @@ class GeometriesRoutingRule(RuleInterface):
         instances_layer.Export(instance_layer_abs_path)
 
         self.log_operation(f"Updated {updated_count} prims in source stage with instanceable references")
-
-    def _bind_physics_material(self, prim_path: str, material_paths: list[Sdf.Path]) -> None:
-        """Author a physics material binding on an instanceable prim in the source stage.
-
-        The instance proxies of the referenced prototype inherit the binding. An existing
-        ``strongerThanDescendants`` physics binding on the prim, which a merged parent may
-        carry, is kept because it already overrides the geometry's own binding.
-
-        Args:
-            prim_path: Path of the instanceable prim.
-            material_paths: Physics material paths bound to the source geometry prim.
-
-        """
-        if not material_paths:
-            return
-
-        prim = self.source_stage.GetPrimAtPath(prim_path)
-        if not prim.IsValid():
-            return
-        existing_binding = UsdShade.MaterialBindingAPI(prim).GetDirectBinding(materialPurpose="physics")
-        if existing_binding.GetMaterialPath() and (
-            UsdShade.MaterialBindingAPI.GetMaterialBindingStrength(existing_binding.GetBindingRel())
-            == UsdShade.Tokens.strongerThanDescendants
-        ):
-            return
-        UsdShade.MaterialBindingAPI.Apply(prim)
-        prim.CreateRelationship(_PHYSICS_MATERIAL_BINDING, custom=False).SetTargets(material_paths)
 
     def _cleanup_flattened_prototypes(self) -> None:
         """Clean up flattened prototypes created during de-instancing.
@@ -3326,7 +3342,7 @@ class GeometriesRoutingRule(RuleInterface):
         - Were tracked during relocation (in _relocated_material_sources)
         - Have a prim spec in the source layer (not from references/sublayers)
         - Are not inside the VisualMaterials scope (already relocated)
-        - Are not physics materials, which physics material bindings may still target
+        - Are not physics materials (physics bindings still target the original)
         """
         if not hasattr(self, "_relocated_material_sources") or not self._relocated_material_sources:
             return
@@ -3349,7 +3365,8 @@ class GeometriesRoutingRule(RuleInterface):
             if material_path.startswith(visual_materials_scope):
                 continue
 
-            # Keep physics materials: physics material bindings may still target them
+            # Keep physics materials: physics bindings, including those of colliders this rule
+            # does not route, still target the original material
             material_prim = self.source_stage.GetPrimAtPath(material_path)
             if material_prim and "PhysicsMaterialAPI" in material_prim.GetAppliedSchemas():
                 continue

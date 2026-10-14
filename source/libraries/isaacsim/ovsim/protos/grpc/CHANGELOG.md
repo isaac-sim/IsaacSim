@@ -6,6 +6,7 @@
 
 ### Added
 
+- Simulation creation negotiates an optional physics time step in seconds.
 - OV SIM world-state and lifecycle protocols.
 - Standard `google.rpc.Status` payloads for asynchronous lifecycle failures.
 

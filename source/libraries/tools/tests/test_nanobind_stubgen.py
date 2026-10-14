@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,6 +37,7 @@ class NanobindStubgenTests(unittest.TestCase):
                     "argv",
                     [
                         "launcher",
+                        launcher.WINDOWS_ISOLATED_FLAG,
                         "--binding-dir",
                         str(root),
                         "--preload-module",
@@ -72,7 +74,14 @@ class NanobindStubgenTests(unittest.TestCase):
                 mock.patch.object(
                     launcher.sys,
                     "argv",
-                    ["launcher", "--binding-dir", str(binding_directory), str(stubgen), "-q"],
+                    [
+                        "launcher",
+                        launcher.WINDOWS_ISOLATED_FLAG,
+                        "--binding-dir",
+                        str(binding_directory),
+                        str(stubgen),
+                        "-q",
+                    ],
                 ),
                 mock.patch.dict(
                     launcher.os.environ,
@@ -89,6 +98,64 @@ class NanobindStubgenTests(unittest.TestCase):
                 [binding_directory.resolve(), debug_runtime.resolve()],
             )
             run_path.assert_called_once_with(str(stubgen), run_name="__main__")
+
+    def test_windows_runs_stubgen_with_private_standard_handles(self) -> None:
+        """Delegate to a child process so a spawned daemon cannot hold the caller's pipes."""
+
+        def run_child(command: list[str], **kwargs: object) -> mock.Mock:
+            self.assertIs(kwargs["stdin"], launcher.subprocess.DEVNULL)
+            for stream_name in ("stdout", "stderr"):
+                self.assertIsInstance(kwargs[stream_name].fileno(), int)
+            kwargs["stdout"].write(b"stub output\n")
+            kwargs["stderr"].write(b"stub warning\n")
+            return mock.Mock(returncode=3)
+
+        stdout = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+        stderr = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+        with (
+            mock.patch.object(launcher.sys, "platform", "win32"),
+            mock.patch.object(launcher.sys, "argv", ["launcher", "--binding-dir", "bindings", "stubgen.py"]),
+            mock.patch.object(launcher.sys, "stdout", stdout),
+            mock.patch.object(launcher.sys, "stderr", stderr),
+            mock.patch.object(launcher.subprocess, "run", side_effect=run_child) as run,
+            mock.patch.object(launcher.runpy, "run_path") as run_path,
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                launcher.main()
+
+        self.assertEqual(raised.exception.code, 3)
+        run_path.assert_not_called()
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[-4:], [launcher.WINDOWS_ISOLATED_FLAG, "--binding-dir", "bindings", "stubgen.py"])
+        self.assertEqual(stdout.buffer.getvalue(), b"stub output\n")
+        self.assertEqual(stderr.buffer.getvalue(), b"stub warning\n")
+
+    def test_relays_output_to_streams_without_binary_buffer(self) -> None:
+        """Decode captured output for text-only streams and skip missing streams."""
+        with tempfile.TemporaryFile() as source:
+            source.write(b"stub output\n")
+            text_stream = io.StringIO()
+
+            launcher._relay_output(source, text_stream)
+            launcher._relay_output(source, None)
+
+        self.assertEqual(text_stream.getvalue(), "stub output\n")
+
+    def test_isolated_flag_is_recognized_only_as_first_argument(self) -> None:
+        """Forward a later occurrence of the private flag to stubgen unchanged."""
+        with (
+            mock.patch.object(launcher.sys, "platform", "linux"),
+            mock.patch.object(
+                launcher.sys,
+                "argv",
+                ["launcher", "stubgen.py", launcher.WINDOWS_ISOLATED_FLAG],
+            ),
+            mock.patch.object(launcher.runpy, "run_path"),
+        ):
+            launcher.main()
+
+            self.assertEqual(launcher.sys.argv, ["stubgen.py", launcher.WINDOWS_ISOLATED_FLAG])
 
 
 if __name__ == "__main__":

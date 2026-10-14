@@ -134,8 +134,10 @@ def stanley_control(
 ) -> tuple[float, int]:
     """Compute the Stanley steering control output.
 
+    This implementation supports forward motion and standstill only.
+
     Args:
-        state: Current vehicle state.
+        state: Current vehicle state with a non-negative speed.
         cx: Reference path x-coordinates.
         cy: Reference path y-coordinates.
         cyaw: Reference path yaw angles.
@@ -147,14 +149,19 @@ def stanley_control(
 
     Returns:
         Tuple of (steering_angle, target_index).
+
+    Raises:
+        ValueError: If the cross-track error is not finite.
     """
     current_target_idx, error_front_axle = calc_target_index(state, cx, cy)
+    if not np.isfinite(error_front_axle):
+        raise ValueError("Cross-track error must be finite")
 
     if last_target_idx >= current_target_idx:
         current_target_idx = last_target_idx
 
     theta_e = normalize_angle(cyaw[current_target_idx] - state.yaw)
-    theta_d = np.arctan2(k * normalize_angle(error_front_axle), state.v)
+    theta_d = np.arctan2(k * error_front_axle, state.v)
 
     delta = theta_e + theta_d
 

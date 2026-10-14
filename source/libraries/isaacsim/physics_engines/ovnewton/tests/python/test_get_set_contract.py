@@ -44,6 +44,7 @@ from _legacy_runner import (  # noqa: E402
     cpu_device,
     gpu_device,
     gpu_only,
+    register_scenario_batches,
     run_scenario,
 )
 from common.get_set_contract import (  # noqa: E402
@@ -300,6 +301,72 @@ class _NewtonWriteOnlyRejectsGet(WriteOnlyRejectsGetCommon):
             self,
             lambda oob: self.view.set_data("apply-forces", data, oob),
         )
+
+
+_ARTICULATION_CONTRACT_SCENARIOS = (
+    DofPositionsFullGetCommon,
+    DofPositionsExternalGetCommon,
+    _NewtonDofPositionsIndexedGet,
+    DofPositionsIndexedExternalGetCommon,
+    DofPositionsFullSetCommon,
+    _NewtonDofPositionsSubsetSet,
+    _NewtonDofPositionsIndexSizeSet,
+    DofStiffnessesFullGetCommon,
+    DofStiffnessesExternalGetCommon,
+    DofStiffnessesIndexedGetCommon,
+    DofStiffnessesIndexedExternalGetCommon,
+    DofStiffnessesFullSetCommon,
+    DofStiffnessesSubsetSetCommon,
+    DofStiffnessesIndexSizeSetCommon,
+    DofDampingsFullGetCommon,
+    DofDampingsExternalGetCommon,
+    DofDampingsIndexedGetCommon,
+    DofDampingsIndexedExternalGetCommon,
+    DofDampingsFullSetCommon,
+    DofDampingsSubsetSetCommon,
+    DofDampingsIndexSizeSetCommon,
+    DofArmaturesFullGetCommon,
+    DofArmaturesExternalGetCommon,
+    DofArmaturesIndexedGetCommon,
+    DofArmaturesIndexedExternalGetCommon,
+    DofArmaturesFullSetCommon,
+    DofArmaturesSubsetSetCommon,
+    DofArmaturesIndexSizeSetCommon,
+    DofMaxForcesFullGetCommon,
+    DofMaxForcesExternalGetCommon,
+    DofMaxForcesIndexedGetCommon,
+    DofMaxForcesIndexedExternalGetCommon,
+    DofMaxForcesFullSetCommon,
+    DofMaxForcesSubsetSetCommon,
+    DofMaxForcesIndexSizeSetCommon,
+    ExtensibilityCommon,
+    MetadataCommon,
+    ReadOnlyRejectsSetCommon,
+)
+_RIGID_BODY_CONTRACT_SCENARIOS = (
+    VelocitiesFullGetCommon,
+    VelocitiesExternalGetCommon,
+    VelocitiesIndexedGetCommon,
+    VelocitiesIndexedExternalGetCommon,
+    VelocitiesFullSetCommon,
+    VelocitiesSubsetSetCommon,
+    VelocitiesIndexSizeSetCommon,
+    MassesFullGetCommon,
+    MassesExternalGetCommon,
+    MassesIndexedGetCommon,
+    MassesIndexedExternalGetCommon,
+    MassesFullSetCommon,
+    MassesSubsetSetCommon,
+    MassesIndexSizeSetCommon,
+    _NewtonWriteOnlyRejectsGet,
+)
+register_scenario_batches(
+    "newton",
+    (
+        _ARTICULATION_CONTRACT_SCENARIOS,
+        _RIGID_BODY_CONTRACT_SCENARIOS,
+    ),
+)
 
 
 class TestGetSetContract:

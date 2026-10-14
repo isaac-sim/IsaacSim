@@ -1,4 +1,9 @@
 # Changelog
+
+## [0.1.3] - 2026-08-18
+### Changed
+- Default SPG render config enables gaussian accumulation quality overrides.
+
 ## [0.1.2] - 2026-06-10
 ### Fixed
 - Fixed pydoclint errors and updated docstrings.

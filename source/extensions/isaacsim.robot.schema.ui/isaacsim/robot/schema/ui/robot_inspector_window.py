@@ -35,7 +35,7 @@ from usd.schema.isaac import robot_schema
 from .inspector_stage_delegate import InspectorStageDelegate
 from .masking_state import MaskingState
 from .model import ConnectionItem
-from .scene import ConnectionInstance
+from .scene import DISPLAY_CONNECTIONS_SETTING, ConnectionInstance
 from .selection_watch import SelectionWatch
 from .utils import (
     HierarchyMode,
@@ -86,6 +86,7 @@ class RobotInspectorWindow(ui.Window):
         self._tracked_robot_prim_paths: set[str] = set()
         self._stage_listener: Any | None = None
         self._refresh_ui_pending: bool = False
+        self._refresh_ui_generation: int = 0
         self._refresh_ui_task: asyncio.Task[Any] | None = None
         self._tabbed_out: bool = False
         self._joint_connections_full: list[Any] = []
@@ -206,6 +207,16 @@ class RobotInspectorWindow(ui.Window):
                     )
                     self._option_frames.append(frame)
             ui.Spacer()
+
+        settings = carb.settings.get_settings()
+        settings.set_default_bool(DISPLAY_CONNECTIONS_SETTING, True)
+        with ui.HStack(height=22):
+            connections = ui.CheckBox(width=20, identifier="robot_inspector_show_connections")
+            connections.model.set_value(settings.get(DISPLAY_CONNECTIONS_SETTING))
+            connections.model.add_value_changed_fn(
+                lambda model: settings.set_bool(DISPLAY_CONNECTIONS_SETTING, model.as_bool)
+            )
+            ui.Label("Show connections", tooltip="Show robot connections in the viewport while simulation is stopped.")
 
         self._view_mode_collection.model.add_value_changed_fn(self._on_view_mode_changed)
 
@@ -752,20 +763,30 @@ class RobotInspectorWindow(ui.Window):
 
         Multiple calls before the next frame coalesce into one refresh.
         """
-        if self._refresh_ui_pending:
-            return
+        self._refresh_ui_generation += 1
         self._refresh_ui_pending = True
-        self._refresh_ui_task = asyncio.ensure_future(self._deferred_refresh_ui())
+        if self._refresh_ui_task is None:
+            self._refresh_ui_task = asyncio.ensure_future(self._deferred_refresh_ui())
 
     async def _deferred_refresh_ui(self) -> None:
-        """Run hierarchy generation in a background task, then update UI on the main thread."""
+        """Coalesce requests while retaining one replacement for changes during a worker run."""
+        task = asyncio.current_task()
         try:
-            await omni.kit.app.get_app().next_update_async()
+            while self._refresh_ui_pending:
+                await omni.kit.app.get_app().next_update_async()
+                self._refresh_ui_pending = False
+                await self._generate_hierarchy_async()
         except asyncio.CancelledError:
             return
         finally:
-            self._refresh_ui_task = None
-            self._refresh_ui_pending = False
+            # A cancelled task must not clear a replacement scheduled after reopening.
+            if self._refresh_ui_task is task:
+                self._refresh_ui_task = None
+                self._refresh_ui_pending = False
+
+    async def _generate_hierarchy_async(self) -> None:
+        """Generate one hierarchy snapshot and discard results superseded by a refresh."""
+        generation = self._refresh_ui_generation
         if self._stage_widget is None:
             return
         if self._active_robot_root_path is None:
@@ -785,16 +806,24 @@ class RobotInspectorWindow(ui.Window):
             self._hierarchy_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="robot_hierarchy")
         loop = asyncio.get_event_loop()
         active_root_str = self._active_robot_root_path.pathString
-        try:
-            data = await loop.run_in_executor(
-                self._hierarchy_executor,
-                generate_robot_hierarchy_stage_in_background,
-                root_layer_identifier,
-                masking_layer_id,
-                self._hierarchy_mode,
-                active_root_str,
-            )
-        except asyncio.CancelledError:
+        hierarchy_mode = self._hierarchy_mode
+        # Propagate cancellation so the owner cannot consume a reopened window's refresh.
+        data = await loop.run_in_executor(
+            self._hierarchy_executor,
+            generate_robot_hierarchy_stage_in_background,
+            root_layer_identifier,
+            masking_layer_id,
+            self._hierarchy_mode,
+            active_root_str,
+        )
+        if (
+            self._refresh_ui_generation != generation
+            or self._usd_context.get_stage() != stage
+            or self._active_robot_root_path is None
+            or self._active_robot_root_path.pathString != active_root_str
+            or self._hierarchy_mode != hierarchy_mode
+            or not self._is_effectively_visible()
+        ):
             return
         hierarchy_stage, path_map, connection_tuples = deserialize_hierarchy_result(data)
         if hierarchy_stage is None:
@@ -905,6 +934,7 @@ class RobotInspectorWindow(ui.Window):
 
             window.refresh_ui()
         """
+        self._refresh_ui_generation += 1
         if self._active_robot_root_path is None:
             self._apply_hierarchy_result(None, PathMap(), [])
             return

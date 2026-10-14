@@ -1,22 +1,55 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+include "geometry.fbs";
 include "header.fbs";
-include "math_types.fbs";
-include "tensor.fbs";
 
-namespace isaac;
+namespace holoscan.schema;
 
-// Inertial measurement unit message (orientation as Tensor, order: w, x, y, z).
+// Conditions asserted for this sample. A clear bit means no claim, not a denial. Combine generated
+// C++ enum flags using an explicit ImuFlags cast.
+enum ImuFlags : ubyte (bit_flags) {
+  // Orientation contains a valid estimate. Raw sources without orientation leave this clear.
+  ORIENTATION_VALID,
+
+  // Acceleration clipped at the configured full-scale range.
+  ACCELEROMETER_SATURATED,
+
+  // angular_velocity clipped at the configured full-scale range.
+  GYROSCOPE_SATURATED,
+
+  // Values are in engineering units but have no bias or scale correction.
+  UNCALIBRATED,
+}
+
+// One IMU sample with measurements, covariances, and a header. Put vendor-specific fields in a
+// separate table containing this type.
 table Imu {
-  // Header (frame and timestamps).
+  // Frame, timestamps, and device sample number.
   header: Header (id: 0);
 
-  // Orientation as a tensor: float32, shape [4], in order [w, x, y, z].
-  orientation: Tensor (id: 1);
+  // Quaternion in x, y, z, w order. Use only when ORIENTATION_VALID is set; an all-zero quaternion
+  // is not a rotation.
+  orientation: Quaternionf (id: 1, native_inline);
 
-  // Angular velocity (x, y, z) in radians per second.
+  // Inline angular velocity about the sensor body axes, in radians per second.
   angular_velocity: Vector3f (id: 2, native_inline);
 
-  // Linear acceleration (x, y, z) in meters per second squared.
+  // Acceleration along sensor body axes in m/s^2, including gravity.
   linear_acceleration: Vector3f (id: 3, native_inline);
+
+  // Conditions asserted for this sample.
+  flags: ImuFlags = 0 (id: 4);
+
+  // Covariance of the orientation estimate, in radians squared, about the body axes.
+  orientation_covariance: Matrix3f (id: 5);
+
+  // Covariance of the angular velocity measurement, in radians squared per second squared.
+  angular_velocity_covariance: Matrix3f (id: 6);
+
+  // Covariance of the linear acceleration measurement, in meters squared per second to the fourth.
+  linear_acceleration_covariance: Matrix3f (id: 7);
 }
 
 root_type Imu;
+file_identifier "HSIM";

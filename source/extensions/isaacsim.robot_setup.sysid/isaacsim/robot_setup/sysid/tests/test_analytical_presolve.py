@@ -73,12 +73,13 @@ class UnmappedSubtreeDiagnosticsTests(omni.kit.test.AsyncTestCase):
     """Verify optional unmapped-subtree diagnostics remain observable and nonfatal."""
 
     async def test_collection_failure_is_logged_and_remains_nonfatal(self) -> None:
-        with patch("isaacsim.robot_setup.sysid.analytical_presolve._LOGGER.debug") as debug:
+        with patch("carb.log_verbose") as log_verbose:
             result = _collect_unmapped_subtree_links(None, [], {}, {})
 
         self.assertEqual(result, ())
-        debug.assert_called_once()
-        self.assertIn("collection failed", debug.call_args.args[0])
+        log_verbose.assert_called_once()
+        self.assertIn("collection failed", log_verbose.call_args.args[0])
+        self.assertIn("Traceback", log_verbose.call_args.args[0])
 
 
 def _skew(v: np.ndarray) -> np.ndarray:

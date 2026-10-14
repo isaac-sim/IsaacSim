@@ -199,6 +199,7 @@ class TestExistingTypesUnchanged(omni.kit.test.AsyncTestCase):
     async def test_cube_returns_single_list(self) -> None:
         """Cube returns single list."""
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         UsdGeom.Cube.Define(stage, "/cube")
         result = read_geometry(stage.GetPrimAtPath("/cube"))
         self.assertEqual(len(result), 1)
@@ -208,6 +209,7 @@ class TestExistingTypesUnchanged(omni.kit.test.AsyncTestCase):
     async def test_sphere_returns_single_list(self) -> None:
         """Sphere returns single list."""
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         UsdGeom.Sphere.Define(stage, "/sphere")
         result = read_geometry(stage.GetPrimAtPath("/sphere"))
         self.assertEqual(len(result), 1)
@@ -216,6 +218,7 @@ class TestExistingTypesUnchanged(omni.kit.test.AsyncTestCase):
     async def test_cylinder_returns_single_list(self) -> None:
         """Cylinder returns single list."""
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         UsdGeom.Cylinder.Define(stage, "/cyl")
         result = read_geometry(stage.GetPrimAtPath("/cyl"))
         self.assertEqual(len(result), 1)
@@ -224,6 +227,7 @@ class TestExistingTypesUnchanged(omni.kit.test.AsyncTestCase):
     async def test_mesh_returns_single_list(self) -> None:
         """Mesh returns single list."""
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         UsdGeom.Mesh.Define(stage, "/mesh")
         result = read_geometry(stage.GetPrimAtPath("/mesh"))
         self.assertEqual(len(result), 1)
@@ -232,6 +236,7 @@ class TestExistingTypesUnchanged(omni.kit.test.AsyncTestCase):
     async def test_unsupported_type_returns_empty(self) -> None:
         """Unsupported type returns empty."""
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         UsdGeom.Xform.Define(stage, "/xform")
         result = read_geometry(stage.GetPrimAtPath("/xform"))
         self.assertEqual(len(result), 0)
@@ -465,6 +470,7 @@ class TestReconstructSourceGeometry(omni.kit.test.AsyncTestCase):
 
     def _build_capsule_stage(self) -> Usd.Stage:
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         root = UsdGeom.Xform.Define(stage, "/robot")
         stage.SetDefaultPrim(root.GetPrim())
 
@@ -488,6 +494,7 @@ class TestReconstructSourceGeometry(omni.kit.test.AsyncTestCase):
 
     def _build_cone_stage(self) -> Usd.Stage:
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         root = UsdGeom.Xform.Define(stage, "/robot")
         stage.SetDefaultPrim(root.GetPrim())
 
@@ -591,6 +598,7 @@ class TestReconstructSourceGeometry(omni.kit.test.AsyncTestCase):
         )
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         count = reconstruct_source_geometry(stage, [])
         self.assertEqual(count, 0)
 
@@ -806,6 +814,8 @@ class TestJointBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         g2 = LinkData(name="hip_ghost_2")
 
         j1 = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="hip_rotX",
             joint_type="revolute",
             parent_link="torso",
@@ -826,6 +836,8 @@ class TestJointBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
             },
         )
         j2 = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="hip_rotY",
             joint_type="revolute",
             parent_link="hip_ghost_1",
@@ -835,6 +847,8 @@ class TestJointBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
             limit_upper=1.5708,
         )
         j3 = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="hip_rotZ",
             joint_type="revolute",
             parent_link="hip_ghost_2",
@@ -873,6 +887,8 @@ class TestJointBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         ghost = LinkData(name="slider_ghost_1")
 
         j1 = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="slider_rotX",
             joint_type="revolute",
             parent_link="base",
@@ -892,6 +908,8 @@ class TestJointBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
             },
         )
         j2 = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="slider_transZ",
             joint_type="prismatic",
             parent_link="slider_ghost_1",
@@ -925,6 +943,8 @@ class TestJointBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         parent = LinkData(name="base")
         child = LinkData(name="link1")
         j = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="joint1",
             joint_type="revolute",
             parent_link="base",
@@ -957,6 +977,7 @@ class TestMultiDofJointExpansion(omni.kit.test.AsyncTestCase):
 
     def _build_two_body_stage(self) -> Usd.Stage:
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/Robot")
         stage.SetDefaultPrim(robot.GetPrim())
 
@@ -1141,6 +1162,7 @@ class TestJointReconstruction(omni.kit.test.AsyncTestCase):
 
     def _build_chain_stage(self) -> Usd.Stage:
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/Robot")
         stage.SetDefaultPrim(robot.GetPrim())
 
@@ -1231,6 +1253,7 @@ class TestJointReconstruction(omni.kit.test.AsyncTestCase):
         )
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/Robot")
         stage.SetDefaultPrim(robot.GetPrim())
 
@@ -1299,6 +1322,7 @@ class TestJointReconstruction(omni.kit.test.AsyncTestCase):
         )
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         UsdGeom.Xform.Define(stage, "/Robot")
 
         count = reconstruct_source_joints(stage, [])
@@ -1335,6 +1359,8 @@ class TestDriveBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         child = LinkData(name="arm")
 
         j = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="arm_joint",
             joint_type="revolute",
             parent_link="base",
@@ -1378,6 +1404,8 @@ class TestDriveBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         child = LinkData(name="arm")
 
         j = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="arm_joint",
             joint_type="revolute",
             parent_link="base",
@@ -1424,6 +1452,8 @@ class TestDriveBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         child = LinkData(name="arm")
 
         j = JointData(
+            limit_effort=10.0,
+            limit_velocity=2.0,
             name="arm_joint",
             joint_type="revolute",
             parent_link="base",
@@ -1449,6 +1479,7 @@ class TestDriveBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         )
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/Robot")
         stage.SetDefaultPrim(robot.GetPrim())
 
@@ -1493,6 +1524,7 @@ class TestDriveBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         )
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/Robot")
         stage.SetDefaultPrim(robot.GetPrim())
 
@@ -1553,6 +1585,7 @@ class TestDriveBreadcrumbRoundTrip(omni.kit.test.AsyncTestCase):
         from pxr import PhysxSchema
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/Robot")
         stage.SetDefaultPrim(robot.GetPrim())
 

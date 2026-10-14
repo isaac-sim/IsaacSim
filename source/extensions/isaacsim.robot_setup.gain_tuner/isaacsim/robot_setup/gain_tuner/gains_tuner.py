@@ -32,7 +32,7 @@ import usd.schema.isaac.robot_schema as robot_schema
 import usd.schema.isaac.robot_schema.utils as rs_utils
 from isaacsim.core.experimental.prims import Articulation
 from omni.physics.tensors import DofType
-from pxr import Gf, Sdf, Usd, UsdPhysics
+from pxr import Gf, PhysxSchema, Sdf, Tf, Usd, UsdPhysics
 
 from .base import RobotTest, TestResult
 from .gain_save_targets import build_mjc_gain_map
@@ -44,6 +44,30 @@ from .gain_sources import (
     mjc_params_to_drive_gains,
     newton_mujoco_solver_active,
 )
+
+_SELF_COLLISION_ATTR = "physxArticulation:enabledSelfCollisions"
+"""Cook-time PhysX property the "disable self collisions" test option overrides."""
+
+_NEWTON_SELF_COLLISION_ATTR = "newton:selfCollisionEnabled"
+"""Newton's equivalent, read at model build time and leading the resolver chain."""
+
+_NEWTON_ARTICULATION_ROOT_API = "NewtonArticulationRootAPI"
+"""Codeless schema defining `newton:selfCollisionEnabled`, applied by name."""
+
+
+def _apply_newton_articulation_root_api(prim: pxr.Usd.Prim) -> bool:
+    """Apply `NewtonArticulationRootAPI` to a prim.
+
+    The schema is codeless, so it has no ``pxr`` Python class and is applied by
+    name. Its registration comes from the ``omni.usd.schema.newton`` extension.
+
+    Args:
+        prim: The articulation root to apply the schema to.
+
+    Returns:
+        True when the schema was applied.
+    """
+    return prim.ApplyAPI(_NEWTON_ARTICULATION_ROOT_API)
 
 
 class GainsTestMode(IntEnum):
@@ -566,6 +590,107 @@ def find_articulation_root(stage: pxr.Usd.Stage, robot_path: str) -> str:
     return find_articulation_root(stage, pxr.Sdf.Path(robot_path).GetParentPath())
 
 
+def _schema_relationship_prims(
+    stage: pxr.Usd.Stage,
+    prim: pxr.Usd.Prim,
+    relation: robot_schema.Relations,
+    api: str,
+    visited: set[str] | None = None,
+) -> list[pxr.Usd.Prim]:
+    """Return prims named by a robot-schema relationship.
+
+    A target that carries ``api`` is included. A target that carries ``IsaacRobotAPI``
+    is walked the same way, so a nested robot contributes the prims named by its own
+    relationship.
+
+    Args:
+        stage: The USD stage containing the robot.
+        prim: The robot prim whose relationship is read.
+        relation: ``robotLinks`` or ``robotJoints``.
+        api: Schema API a target must carry to be included.
+        visited: Paths already walked, for cycles in the relationships.
+
+    Returns:
+        Prims in relationship order. Empty when the prim or the relationship is absent.
+    """
+    if not stage or not prim:
+        return []
+    if visited is None:
+        visited = set()
+    path = str(prim.GetPath())
+    if path in visited:
+        return []
+    visited.add(path)
+
+    if prim.HasAPI(api):
+        return [prim]
+    if not prim.HasAPI(robot_schema.Classes.ROBOT_API.value):
+        return []
+    relationship = prim.GetRelationship(relation.name)
+    if not relationship:
+        return []
+
+    collected: list[pxr.Usd.Prim] = []
+    for target in relationship.GetTargets():
+        child = stage.GetPrimAtPath(target)
+        if not child:
+            continue
+        if child.HasAPI(api):
+            collected.append(child)
+            continue
+        if child.HasAPI(robot_schema.Classes.ROBOT_API.value):
+            collected.extend(_schema_relationship_prims(stage, child, relation, api, visited))
+    return collected
+
+
+def _schema_link_tree(stage: pxr.Usd.Stage, robot_prim: pxr.Usd.Prim) -> rs_utils.RobotLinkNode | None:
+    """Build the kinematic tree from the robot's schema links and joints.
+
+    Args:
+        stage: The USD stage containing the robot.
+        robot_prim: The robot prim whose ``robotLinks`` and ``robotJoints`` are read.
+
+    Returns:
+        The tree rooted at the first schema link, or None when the robot names no links.
+    """
+    links = _schema_relationship_prims(
+        stage, robot_prim, robot_schema.Relations.ROBOT_LINKS, robot_schema.Classes.LINK_API.value
+    )
+    joints = _schema_relationship_prims(
+        stage, robot_prim, robot_schema.Relations.ROBOT_JOINTS, robot_schema.Classes.JOINT_API.value
+    )
+    if not links:
+        return None
+
+    root = rs_utils.RobotLinkNode(links[0])
+    joints_per_body: list[dict[pxr.Sdf.Path, list[pxr.Usd.Prim]]] = [
+        {link.GetPath(): [] for link in links} for _ in range(2)
+    ]
+    for joint in joints:
+        for body_index in (0, 1):
+            body = rs_utils.GetJointBodyRelationship(joint, body_index)
+            if body and body in joints_per_body[body_index]:
+                joints_per_body[body_index][body].append(joint)
+
+    stack = [root]
+    processed: list[pxr.Usd.Prim] = []
+    while stack:
+        current = stack.pop()
+        current_path = current.prim.GetPath()
+        for side in range(2):
+            for joint in joints_per_body[side].get(current_path, []):
+                if joint in processed:
+                    continue
+                processed.append(joint)
+                other = rs_utils.GetJointBodyRelationship(joint, 1 - side)
+                if other and (current.parent is None or current.parent.path != other):
+                    child = rs_utils.RobotLinkNode(stage.GetPrimAtPath(other), current, joint)
+                    current._joints.append(joint)
+                    current.add_child(child)
+                    stack.append(child)
+    return root
+
+
 class SinusoidalTest(RobotTest):
     """Registry adapter for the built-in sinusoidal test.
 
@@ -604,6 +729,11 @@ class GainTuner:
 
     def __init__(self) -> None:
         self._timeline = timeline.get_timeline_interface()
+        self._self_collision_override_stage: pxr.Usd.Stage | None = None
+        self._self_collision_override_layer: pxr.Sdf.Layer | None = None
+        # Robot paths already warned about for DOFs the robot schema does not list.
+        # Deliberately survives reset() so a re-bind does not repeat the warning.
+        self._warned_skipped_dofs: set[str] = set()
         self._test_duration = 5.0
         self._test_registry: dict[int, RobotTest] = {}
         self._active_test: RobotTest = None
@@ -616,6 +746,10 @@ class GainTuner:
         The test registry is intentionally preserved across resets so that
         tests registered at startup remain available.
         """
+        # Drop the override before the articulation goes, or a stage close or hot
+        # reload mid-test leaves it applied and the state armed for a later
+        # restore onto whatever robot is bound by then.
+        self.restore_self_collision_override()
         self._initialized = False
         self._articulation = None
         self._articulation_root = None
@@ -760,7 +894,7 @@ class GainTuner:
                 self._timeline.stop()
 
         asyncio.ensure_future(update_link_mass())
-        self._robot_tree = rs_utils.GenerateRobotLinkTree(stage, self._robot)
+        self._robot_tree = _schema_link_tree(stage, self._robot)
 
     def _setup_articulation(self, stage: pxr.Usd.Stage) -> None:
         """Set up the articulation wrapper.
@@ -777,7 +911,9 @@ class GainTuner:
         Args:
             stage: The USD stage.
         """
-        robot_joints = rs_utils.GetAllRobotJoints(stage, self._robot, True)
+        robot_joints = _schema_relationship_prims(
+            stage, self._robot, robot_schema.Relations.ROBOT_JOINTS, robot_schema.Classes.JOINT_API.value
+        )
 
         # Find fixed joints with one body connected to world (None)
         fixed_joint_candidates = [
@@ -820,9 +956,15 @@ class GainTuner:
         self._joint_entries = []
         dof_offset = 0
         dof_index = 0
+        skipped_joint_paths = []
 
         for joint in joints:
             if joint not in self._robot_joints:
+                # `joints` is DOF-indexed, so the counter has to advance past a
+                # dropped DOF as well. Skipping the increment leaves every later
+                # entry reading its name and type from the wrong DOF.
+                skipped_joint_paths.append(str(joint.GetPath()))
+                dof_index += 1
                 continue
 
             display_name = self._articulation.dof_names[dof_index]
@@ -835,6 +977,18 @@ class GainTuner:
             # Handle multi-axis (D6) joints
             dof_offset = self._add_multi_axis_joint_entries(joint, dof_index, dof_offset)
             dof_index += 1
+
+        if skipped_joint_paths and self._robot_prim_path not in self._warned_skipped_dofs:
+            # Warn once per robot: setup() re-runs on every robot re-bind, and the
+            # deferred joint retry runs it twice for a single selection.
+            self._warned_skipped_dofs.add(self._robot_prim_path)
+            unique_paths = list(dict.fromkeys(skipped_joint_paths))
+            carb.log_warn(
+                f"GainTuner: {len(skipped_joint_paths)} of {len(joints)} articulation DOFs on "
+                f"'{self._robot_prim_path}' have no joint in the robot schema and are missing from the "
+                f"joint table: {unique_paths}. Re-run the robot schema population on this asset so the "
+                "joints appear in the Gain Tuner."
+            )
 
     def _add_single_axis_joint_entry(self, joint: pxr.Usd.Prim, display_name: str, dof_index: int) -> None:
         """Add a single-axis joint to the entries list.
@@ -1209,7 +1363,7 @@ class GainTuner:
             This computation is dependent on the initial position of the robot.
             Natural frequency will be heavily biased by the initial position.
         """
-        if not self._robot or not self._articulation:
+        if not self._robot or not self._articulation or self._robot_tree is None:
             return
 
         # Build link path -> link index mapping
@@ -1302,6 +1456,180 @@ class GainTuner:
             return inertia_backward
 
         return (inertia_forward * inertia_backward) / (inertia_forward + inertia_backward)
+
+    @staticmethod
+    def _detach_override_layer(stage: pxr.Usd.Stage, layer: pxr.Sdf.Layer) -> None:
+        """Detach a temporary override sublayer from the stage's session layer.
+
+        Args:
+            stage: The stage the sublayer was attached to.
+            layer: The anonymous layer to detach.
+        """
+        session = stage.GetSessionLayer()
+        if layer.identifier in session.subLayerPaths:
+            session.subLayerPaths.remove(layer.identifier)
+
+    @staticmethod
+    def _disable_self_collision_attr(
+        prim: pxr.Usd.Prim, attr_name: str, apply_api: Callable[[pxr.Usd.Prim], object]
+    ) -> bool:
+        """Author one self-collision property to False, applying its API schema if absent.
+
+        Args:
+            prim: The articulation root to author on.
+            attr_name: Property to author.
+            apply_api: Callable applying the API schema that defines `attr_name`.
+
+        Returns:
+            True when the property was authored, False when it could not be.
+        """
+        attr = prim.GetAttribute(attr_name)
+        if not attr:
+            # A robot carrying only the other engine's schema does not have the
+            # property, and `GetAttribute` answers that with an invalid attribute
+            # rather than raising, so a bare `Set` on it would silently do nothing.
+            try:
+                apply_api(prim)
+            except Tf.ErrorException:
+                # Applying an unregistered schema raises rather than returning
+                # False, which is how a missing schema extension shows up. The
+                # other engine's property still carries the override.
+                return False
+            attr = prim.GetAttribute(attr_name)
+        if not attr:
+            return False
+        attr.Set(False)
+        return True
+
+    def apply_self_collision_override(self) -> str | None:
+        """Disable articulation self-collisions for the duration of a test.
+
+        Both engines read their property when the scene is cooked, so the caller
+        is responsible for restarting the timeline after this returns.
+
+        `physxArticulation:enabledSelfCollisions` and `newton:selfCollisionEnabled`
+        are both authored, so the override holds whichever engine runs and does not
+        depend on the Newton resolver falling back to the PhysX property.
+
+        The opinions are authored on an anonymous sublayer of the **session layer**,
+        which is stronger than the root layer and is never saved. The engine
+        therefore composes the disabled value while the user's asset stays exactly
+        as it shipped -- no API schema applied to it, no value authored, and no
+        unsaved edits to prompt about. :meth:`restore_self_collision_override`
+        detaches that sublayer, removing every trace of the override in one step.
+
+        Calling this while an override is already active is a no-op, so a second
+        run cannot mistake the override for the robot's own setting.
+
+        Returns:
+            None when the override is active, or a human-readable reason it could
+            not be applied, for the caller to surface.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> reason = gains_tuner.apply_self_collision_override()  # doctest: +NO_CHECK
+            >>> print(reason)  # doctest: +NO_CHECK
+            None
+            >>> gains_tuner.self_collision_override_active()  # doctest: +NO_CHECK
+            True
+        """
+        if self._self_collision_override_layer is not None:
+            return None
+        if self._articulation is None:
+            return "no robot is loaded"
+
+        prim = self._articulation.prims[0]
+        stage = prim.GetStage() if prim else None
+        if stage is None:
+            return "the robot is not on an open stage"
+
+        override_layer = Sdf.Layer.CreateAnonymous("gain_tuner_self_collision.usda")
+        session_layer = stage.GetSessionLayer()
+        session_layer.subLayerPaths.insert(0, override_layer.identifier)
+
+        # Anything that goes wrong from here on has to take the sublayer with it,
+        # or the stage keeps composing a disabled value nothing knows how to undo.
+        applied = False
+        try:
+            with Usd.EditContext(stage, override_layer):
+                authored = [
+                    attr_name
+                    for attr_name, apply_api in (
+                        (_SELF_COLLISION_ATTR, PhysxSchema.PhysxArticulationAPI.Apply),
+                        (_NEWTON_SELF_COLLISION_ATTR, _apply_newton_articulation_root_api),
+                    )
+                    if self._disable_self_collision_attr(prim, attr_name, apply_api)
+                ]
+
+            if not authored:
+                return (
+                    f"neither '{_SELF_COLLISION_ATTR}' nor '{_NEWTON_SELF_COLLISION_ATTR}' "
+                    "could be authored on the articulation root"
+                )
+
+            # A stronger opinion elsewhere in the session layer outranks this
+            # sublayer, so authoring is not the same as taking effect. Read the
+            # composed value back rather than reporting a success the engine
+            # will not honour.
+            still_enabled = [name for name in authored if prim.GetAttribute(name).Get()]
+            if still_enabled:
+                return f"a stronger opinion on the stage keeps {' and '.join(sorted(still_enabled))} enabled"
+
+            applied = True
+        finally:
+            if not applied:
+                self._detach_override_layer(stage, override_layer)
+
+        self._self_collision_override_stage = stage
+        self._self_collision_override_layer = override_layer
+        return None
+
+    def restore_self_collision_override(self) -> None:
+        """Drop a self-collision override applied by :meth:`apply_self_collision_override`.
+
+        Detaches the override from the stage it was applied to, not from whichever
+        robot is bound now, so a robot swap, an engine switch, or deleting the
+        robot mid-test cannot leave the override stranded on the stage. Safe to
+        call when no override is active.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> gains_tuner.restore_self_collision_override()  # doctest: +NO_CHECK
+            >>> gains_tuner.self_collision_override_active()  # doctest: +NO_CHECK
+            False
+        """
+        stage = self._self_collision_override_stage
+        layer = self._self_collision_override_layer
+        self._self_collision_override_stage = None
+        self._self_collision_override_layer = None
+
+        if layer is None or stage is None:
+            return
+        try:
+            self._detach_override_layer(stage, layer)
+        except Tf.ErrorException:
+            # The stage was closed, and the session layer went with it.
+            return
+
+    def self_collision_override_active(self) -> bool:
+        """Return whether a self-collision override is currently applied.
+
+        Returns:
+            True when :meth:`apply_self_collision_override` succeeded and has not
+            been restored yet.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> gains_tuner.self_collision_override_active()  # doctest: +NO_CHECK
+            False
+        """
+        return self._self_collision_override_layer is not None
 
     def get_articulation(self) -> Articulation:
         """Get the articulation wrapper.

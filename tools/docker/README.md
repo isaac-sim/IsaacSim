@@ -197,6 +197,7 @@ You can pass these environment variables when running the container (e.g. `docke
 | Variable                 | Required? | Description                                                                                                                 |
 | ------------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------- |
 | **ACCEPT_EULA**          | **Yes**   | Accept the license agreement (required to run; set e.g. to `Y`).                                                            |
+| **ISAACSIM_PHYSICS_ENGINE** | No     | Streaming physics backend: `physx` (default) or `newton`. Newton requires an image containing `isaac-sim.newton.streaming.sh` and this entrypoint option. |
 | **OMNI_SERVER**          | No        | Override the default asset root (passed as `--/persistent/isaac/asset_root/default`).                                       |
 | **ISAACSIM_HOST**        | No        | Public or private IP of the host for livestream (passed as livestream `publicIp`). Default: `127.0.0.1`. See [Cloud Deployment](#cloud-deployment-aws-gcp-azure) for cloud VMs. |
 | **ISAACSIM_SIGNAL_PORT** | No        | Signal port for WebRTC streaming. Default: `49100`.                                                                         |
@@ -323,7 +324,7 @@ docker compose -p isim -f tools/docker/docker-compose.yml up --build -d
 
 Running without `-d` (foreground) streams combined logs from both containers to your terminal, which is useful for debugging. Press `Ctrl+C` to stop all services. Running with `-d` (detached) starts everything in the background.
 
-On first run, Docker Compose will build the `web-viewer` image automatically. The web viewer waits for the Isaac Sim healthcheck (`AppReady` in logs) before starting.
+On first run, Docker Compose will build the `web-viewer` image automatically. The web viewer waits for the Isaac Sim health check (`App is loaded.` in logs) before starting.
 
 > **Single browser connection:** Only one browser tab/window can be connected to Isaac Sim at a time. If a browser is already connected to the streaming session, other browsers or tabs will not be able to connect until that session is closed.
 
@@ -354,6 +355,7 @@ Override any variable via the shell or a `.env` file next to `docker-compose.yml
 | Variable                 | Default                      | Description                                                              |
 | ------------------------ | ---------------------------- | ------------------------------------------------------------------------ |
 | **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.0.1`) to skip local build steps. |
+| **ISAACSIM_PHYSICS_ENGINE** | `physx`                  | Streaming physics backend: `physx` or `newton`. Requires an image supporting this entrypoint option. |
 | **ISAACSIM_HOST**        | `127.0.0.1`                  | Host IP for WebRTC streaming (used by both services). See [Cloud Deployment](#cloud-deployment-aws-gcp-azure) for cloud VMs. |
 | **ISAACSIM_SIGNAL_PORT** | `49100`                      | WebRTC signaling port (TCP)                                              |
 | **ISAACSIM_STREAM_PORT** | `47998`                      | WebRTC media port (UDP)                                                  |
@@ -361,6 +363,35 @@ Override any variable via the shell or a `.env` file next to `docker-compose.yml
 | **GPU_DEVICE**           | `all`                        | GPU index to pin the Isaac Sim container to (e.g. `0`, `1`)             |
 | **ISAAC_SIM_DATA**       | `~/docker/isaac-sim`         | Host path for persistent cache, config, logs, and data. Use a full absolute path in `.env` files (`~` is not expanded by Docker Compose). |
 
+
+### Newton streaming
+
+Build the Isaac Sim image from a package containing `isaac-sim.newton.streaming.sh`
+and the entrypoint that supports `ISAACSIM_PHYSICS_ENGINE`. Then select Newton when
+starting the stack from the repository root:
+
+```bash
+ISAACSIM_PHYSICS_ENGINE=newton ISAACSIM_HOST=<host-ip> \
+  docker compose -p isim -f tools/docker/docker-compose.yml up --build -d
+```
+
+For `docker run`, pass `-e ISAACSIM_PHYSICS_ENGINE=newton` with the other streaming
+options. The default remains PhysX. Both engines use the same browser viewer and
+streaming ports; no viewer code change is required. Older images that do not
+support the selector must be rebuilt before using this option.
+
+Before connecting the browser viewer or native streaming client, wait for this
+message in the Isaac Sim container logs:
+
+```text
+Isaac Sim Streaming (Newton Physics) App is loaded.
+```
+
+The earlier `Started primary stream server` message confirms that the server is
+listening, not that the application has finished loading. The first time you play
+a Newton scene, GPU kernel compilation can take several minutes and temporarily
+freeze the stream. Check the container logs for compilation progress and wait for
+compilation to finish. Compiled kernels are cached for reuse.
 
 ### Rebuilding the web viewer
 

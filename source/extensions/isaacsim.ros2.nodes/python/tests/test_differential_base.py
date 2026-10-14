@@ -18,6 +18,7 @@
 Covers Carter, Nova Carter, and scratch-built differential-drive setups.
 """
 
+import time
 from copy import deepcopy
 from typing import Any
 
@@ -92,14 +93,24 @@ class TestRos2DifferentialBase(ROS2TestCase):
         await super().tearDown()
 
     def spin(self) -> None:
-        """Spin the ROS2 node once with a timeout."""
+        """Process one ready ROS 2 callback without blocking the simulation loop."""
         import rclpy
 
-        rclpy.spin_once(self.node, timeout_sec=0.1)
+        rclpy.spin_once(self.node, timeout_sec=0.0)
 
     async def wait_for_cmd_vel_subscriber(self, publisher: Any) -> None:
         """Wait for the graph-side cmd_vel subscriber before publishing one-shot commands."""
         await self.wait_for_subscribers_on_topic(publisher, timeout_sec=10.0, per_frame_callback=self.spin)
+
+    async def simulate_for_duration(self, duration: float) -> None:
+        """Advance until the requested simulation duration has elapsed."""
+        start_time = SimulationManager.get_simulation_time()
+        await self.simulate_until_condition(
+            lambda: SimulationManager.get_simulation_time() - start_time >= duration,
+            max_frames=max(240, int(duration * 240)),
+            per_frame_callback=self.spin,
+            failure_message=f"Simulation did not advance by {duration} seconds",
+        )
 
     def tf_callback(self, data: Any) -> None:
         """Handle tf callback.
@@ -217,9 +228,9 @@ class TestRos2DifferentialBase(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
-        # wait for physics to settle (60 frames = original simulate_async(1,60) duration),
-        # then wait for subscriber data — odom.z reflects settling at this timing
-        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
+        # Wait for one second of simulated physics to settle, then wait for subscriber data.
+        # App updates are not guaranteed to map one-to-one to physics steps.
+        await self.simulate_for_duration(1.0)
         await self.simulate_until_condition(
             lambda: self._world_to_odom is not None
             and self._odom_to_base_link is not None
@@ -242,7 +253,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
         # straight forward for 3s at 0.1 m/s → ~0.3m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
-        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
+        await self.simulate_for_duration(3.0)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -275,8 +286,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.play()
 
-        # fixed 60 frames to let physics settle before reading subscriber data
-        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
+        # Let one second of simulated physics settle before reading subscriber data.
+        await self.simulate_for_duration(1.0)
         await self.simulate_until_condition(
             lambda: self._world_to_odom is not None
             and self._odom_to_base_link is not None
@@ -298,7 +309,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
         # straight forward for 3s at 0.1 m/s (odometry units, new wheel params) → ~0.7m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
-        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
+        await self.simulate_for_duration(3.0)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -342,8 +353,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        # fixed 60 frames: match original simulate_async(1, 60) settle before checking data
-        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
+        # Let one second of simulated physics settle before checking data.
+        await self.simulate_for_duration(1.0)
         await self.wait_for_cmd_vel_subscriber(cmd_vel_pub)
 
         # check 0: is carter initially stationary
@@ -357,14 +368,14 @@ class TestRos2DifferentialBase(ROS2TestCase):
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: False, max_frames=120, per_frame_callback=self.spin)
+        await self.simulate_for_duration(2.0)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
+        await self.simulate_for_duration(1.0)
 
         # check 1: location using default param
         odom_data = deepcopy(self._odom_data)
@@ -376,6 +387,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
         self.assertAlmostEqual(odom_data.orientation.w, 0.916, 1)
 
         # change wheel rotation and wheel base
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
         omni.kit.commands.execute("DeletePrims", paths=[graph_path])
 
         graph_id, created_nodes = self.add_differential_drive(graph_path, "/Carter")
@@ -384,23 +397,36 @@ class TestRos2DifferentialBase(ROS2TestCase):
 
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        # fixed 60 frames: match original simulate_async(1, 60) settle before issuing rotation command
-        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
-        await self.wait_for_cmd_vel_subscriber(cmd_vel_pub)
+        # Let one second of simulated physics settle before issuing the rotation command.
+        await self.simulate_for_duration(1.0)
 
         # rotate back for 2s at angular_z=-0.2 rad/s (wider wheelbase → faster rotation) → orientation.z ~-0.61
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, -0.2)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: False, max_frames=120, per_frame_callback=self.spin)
+        angular_velocity = og.Controller.attribute(graph_path + "/subscribeTwist.outputs:angularVelocity")
+        deadline = time.monotonic() + 10.0
+        last_publish = time.monotonic()
+        while time.monotonic() < deadline:
+            await omni.kit.app.get_app().next_update_async()
+            self.spin()
+            received_velocity = angular_velocity.get()
+            if received_velocity is not None and abs(received_velocity[2] - move_cmd.angular.z) < 1e-3:
+                break
+            if time.monotonic() - last_publish >= 0.1:
+                cmd_vel_pub.publish(move_cmd)
+                last_publish = time.monotonic()
+        else:
+            self.fail("Recreated differential drive graph did not receive reverse cmd_vel")
+        await self.simulate_for_duration(2.0)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: False, max_frames=60, per_frame_callback=self.spin)
+        await self.simulate_for_duration(1.0)
 
         # check 3: location after change radius
         odom_data = deepcopy(self._odom_data)
@@ -462,8 +488,8 @@ class TestRos2DifferentialBase(ROS2TestCase):
         set_rotate(carter_prim, new_rotate)
         await omni.kit.app.get_app().next_update_async()
 
-        tf_sub = self.create_subscription(self.node, TFMessage, "tf_test", self.tf_callback, get_qos_profile())
-        odom_sub = self.create_subscription(self.node, Odometry, "chassis/odom", self.odom_callback, get_qos_profile())
+        self.create_subscription(self.node, TFMessage, "tf_test", self.tf_callback, get_qos_profile())
+        self.create_subscription(self.node, Odometry, "chassis/odom", self.odom_callback, get_qos_profile())
         cmd_vel_pub = self.create_publisher(self.node, Twist, "cmd_vel", 1)
 
         await omni.kit.app.get_app().next_update_async()
@@ -490,7 +516,7 @@ class TestRos2DifferentialBase(ROS2TestCase):
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
+        await self.simulate_for_duration(3.0)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -514,8 +540,6 @@ class TestRos2DifferentialBase(ROS2TestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
         self.spin()
-        self._trans = None
-        self._odom_data = None
 
         # change wheel rotation and wheel base
         og.Controller.set(
@@ -526,12 +550,19 @@ class TestRos2DifferentialBase(ROS2TestCase):
         )
 
         self._timeline.play()
-        await self.simulate_until_condition(
-            lambda: self._trans is not None and self._odom_data is not None,
-            max_frames=240,
-            per_frame_callback=self.spin,
-        )
-        await self.wait_for_cmd_vel_subscriber(cmd_vel_pub)
+        await self.simulate_for_duration(1.0)
+        # Drain callbacks from before the stop, then wait for the reset pose from the replayed graph.
+        self._trans = None
+        self._odom_data = None
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            await omni.kit.app.get_app().next_update_async()
+            self.spin()
+            if self._trans is not None and self._odom_data is not None and abs(self._odom_data.position.x) <= 0.1:
+                break
+        else:
+            last_position = None if self._odom_data is None else self._odom_data.position.x
+            self.fail(f"Nova Carter odometry did not reset after timeline restart (last x={last_position})")
 
         # check 3: is carter initial tf position and odometry position
         # [tx, ty, tz, rx, ry, rz, rw]
@@ -539,13 +570,14 @@ class TestRos2DifferentialBase(ROS2TestCase):
         # [px, py, pz, ox, oy, oz, ow]
         expected_odom = [0, 0, 0, 0, 0, 0, 1]
         self.check_pose(expected_trans, expected_odom, delta=0.1)
+        await self.wait_for_cmd_vel_subscriber(cmd_vel_pub)
 
         # straight forward for 3s at 0.1 m/s (odometry units, new wheel params) → ~0.43m accumulated
         move_cmd = self.move_cmd_msg(0.1, 0.0, 0.0, 0.0, 0.0, 0.0)
         cmd_vel_pub.publish(move_cmd)
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
-        await self.simulate_until_condition(lambda: False, max_frames=180, per_frame_callback=self.spin)
+        await self.simulate_for_duration(3.0)
 
         # stop
         move_cmd = self.move_cmd_msg(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)

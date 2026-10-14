@@ -1,5 +1,9 @@
 # Changelog
 
+## [5.4.1] - 2026-10-06
+### Fixed
+- Prevent charset-normalizer import failures caused by mixed native and Python module implementations during startup.
+
 ## [5.4.0] - 2026-07-07
 ### Added
 - Add py_trees, pydot, and transitions for the state-machine tutorials.

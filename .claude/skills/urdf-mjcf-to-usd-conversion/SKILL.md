@@ -14,9 +14,10 @@ Import URDF and MJCF robot descriptions to USD with modern importer APIs, instan
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For importer commands and UI: built Isaac Sim and the environment from
+  `isaac-sim-orchestrator`.
+- For migrated transformer/schema APIs: a completed `source/libraries` build or
+  matching installed wheels; rendering requires a GPU, conversion alone does not.
 
 ## Limitations
 
@@ -27,9 +28,18 @@ Import URDF and MJCF robot descriptions to USD with modern importer APIs, instan
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Importer, library, and Kit extension ownership
+
+URDF/MJCF command dispatch, importer UI, extension settings, and Kit lifecycle
+remain extension work. The migrated Asset Transformer implementation and robot
+schema packages are owned under `source/libraries/isaacsim/asset/transformer`
+and `source/libraries/isaacsim_usd_schemas/`; their Kit extensions stage the built
+wheels and SDKs without duplicating the implementation.
+
+For an existing PhysX-authored USD (not a URDF/MJCF), use `physx-to-newton-conversion` instead.
 
 Two conversion paths and one export path.
 
@@ -308,17 +318,18 @@ CLI: `source/standalone_examples/api/isaacsim.asset.exporter.urdf/urdf_export.py
 | MJCF actuators behave wrong | gain/bias type left at MJCF default | set `override_gain_type` / `override_bias_type` / `override_gain_prm` / `override_bias_prm` |
 | Transformer output ignored | running an old test asset | delete `usd_path` and re-import with `run_asset_transformer=True` |
 
-## Pip-wheel availability (standalone usage)
+## Wheel ownership
 
-Each importer/exporter is also published as a standalone pip wheel for non-Kit consumers. See `.cursor/rules/pip_packaging.mdc` for the design.
+Do not treat every extension-local wheel as a canonical standalone library. The
+migrated `isaacsim.asset.transformer` module ships in the `isaacsim-asset`
+distribution, and the `usd.schema.isaac` module, including the modern
+`usd.schema.isaac.robot_schema` import, ships in `isaacsim-robot-schema`.
+`isaacsim.robot.schema` is the Kit extension name. Build the
+distributions through `source/libraries/build.sh -r --wheel` (or the Windows
+equivalent).
 
-| Extension | Wheel |
-|---|---|
-| `isaacsim.asset.importer.urdf` | `isaacsim-asset-importer-urdf` (deps: `isaacsim-asset-transformer`, `isaacsim-asset-transformer-rules`, `urdf-usd-converter`) |
-| `isaacsim.asset.importer.mjcf` | `isaacsim-asset-importer-mjcf` (deps: `mujoco-usd-converter`) |
-| `isaacsim.asset.exporter.urdf` | `isaacsim-asset-exporter-urdf` |
-| `isaacsim.asset.transformer` | `isaacsim-asset-transformer` |
-| `isaacsim.asset.transformer.rules` | `isaacsim-asset-transformer-rules` |
-| `isaacsim.robot.schema` | `isaacsim-robot-schema` |
-
-Build via `./repo.sh build_standalone_wheels --ext <name>`.
+The URDF/MJCF importer, URDF exporter, and transformer-rules wheels remain on
+the legacy extension packaging route. Build them with
+`./repo.sh build_standalone_wheels --ext <name>` only when maintaining that
+route, and preserve any required Kit bootstrap instead of presenting the wheel
+name as proof of Kit independence.

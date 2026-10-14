@@ -1,14 +1,28 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 include "time.fbs";
 
-namespace isaac;
+namespace holoscan.schema;
 
-// Header message.
+// Shared sensor frame, capture time, and device sequence. Publication time belongs to the
+// transport envelope.
 table Header {
-  // The timestamp of the header.
+  // Deprecated; new producers must use capture_timestamp_ns instead.
   stamp: Time (id: 0);
 
-  // The frame id of the header.
+  // Name of the coordinate frame in which the payload is expressed.
   frame_id: string (id: 1);
+
+  // Measurement time in nanoseconds; the clock domain is specified out of band. Zero means absent;
+  // do not substitute arrival or publication time. For integrating sensors, this is the START of
+  // integration. Derive the midpoint using half of Image.exposure_time_ns.
+  capture_timestamp_ns: int64 (id: 2);
+
+  // Monotonic per-source sample number reported by the device, or zero if unavailable. Distinct
+  // from the runtime publication sequence; gaps can reveal device-side sample loss.
+  device_sequence: uint64 (id: 3);
 }
 
 root_type Header;
+file_identifier "HSHD";

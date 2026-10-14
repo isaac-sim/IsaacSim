@@ -50,7 +50,7 @@ includedirs {
     "%{root}/_build/target-deps/usd_ext_physics/%{cfg.buildcfg}/include",
     extsbuild_dir .. "/omni.syntheticdata/include",
     extsbuild_dir .. "/usdrt.scenegraph/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     "%{root}/_build/target-deps/generic_model_output/%{platform}/%{config}/include",
     "%{root}/source/extensions/isaacsim.ros2.nodes/include",
     "%{root}/_build/target-deps/generic_model_output/%{platform}/%{cfg.buildcfg}/include",

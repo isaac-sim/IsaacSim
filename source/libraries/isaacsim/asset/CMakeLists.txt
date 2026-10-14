@@ -16,9 +16,15 @@
 isaacsim_add_group(
     NAME isaacsim_asset
     MODULES
+        isaacsim.asset.exporter.urdf
         isaacsim.asset.transformer
+        isaacsim.asset.importer.mjcf
+        isaacsim.asset.importer.urdf
         isaacsim.asset.importer.utils
 )
 
+add_subdirectory(exporter/urdf)
 add_subdirectory(transformer)
+add_subdirectory(importer/mjcf)
+add_subdirectory(importer/urdf)
 add_subdirectory(importer/utils)

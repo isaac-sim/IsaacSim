@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "benchmark.ovrtx.radar"
+title = "RTX Radar Benchmark"
+summary = "Measure ovrtx frame times for a ring of RTX radars reading their detections back."
+owners = ["isaacsim.performance.benchmarking"]
+topics = ["benchmark", "profiling", "python", "radar", "sensors"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+python_packages = [
+    "numpy==2.5.2",
+    "ovrtx==0.5.0.377615",
+    "ovstage==0.2.0.377349",
+    "warp-lang==1.17.0",
+]
+system = ["gpu", "python"]
+modules = [
+    { name = "isaacsim_performance", surfaces = ["python"] },
+]
+
+[[test]]
+name = "smoke"
+path = "test.py"
+timeout_seconds = 600
+stdout_contains = ["Benchmark smoke test passed."]

@@ -15,6 +15,7 @@
 
 """Tests for the deprecated URDFImportFromROS2Node command."""
 
+import asyncio
 import shutil
 import tempfile
 import threading
@@ -23,6 +24,7 @@ import omni.kit.commands
 import omni.kit.test
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
+from isaacsim.ros2.urdf.robot_definition_reader import RobotDefinitionReader
 from omni.client import Result
 
 
@@ -43,6 +45,7 @@ class TestURDFImportFromROS2NodeCommand(ROS2TestCase):
         """Clean up ROS 2 resources."""
         import rclpy
 
+        RobotDefinitionReader().cancel()
         if hasattr(self, "_server_stop_event"):
             self._server_stop_event.set()
         if hasattr(self, "_server_thread") and self._server_thread.is_alive():
@@ -80,7 +83,9 @@ class TestURDFImportFromROS2NodeCommand(ROS2TestCase):
             self._server_context = Context()
             rclpy.init(context=self._server_context)
             self._server_node = rclpy.create_node("robot_state_publisher", context=self._server_context)
-            self._server_node.declare_parameter("robot_description", "<robot name='test'/>")
+            self._server_node.declare_parameter(
+                "robot_description", "<robot name='test'><link name='base_link'/></robot>"
+            )
             self._executor = MultiThreadedExecutor(context=self._server_context)
             self._executor.add_node(self._server_node)
             server_ready.set()
@@ -98,4 +103,13 @@ class TestURDFImportFromROS2NodeCommand(ROS2TestCase):
         )
         self.assertTrue(status)
         self.assertEqual(result, Result.OK)
+
+        # `execute()` returns before the asynchronous parameter request completes.
+        # Let the client receive the response before teardown destroys it; otherwise
+        # the service logs a failed-to-send-response error that fails the test process.
+        request_thread = RobotDefinitionReader()._request_thread
+        self.assertIsNotNone(request_thread, "Robot description request did not start")
+        await asyncio.to_thread(request_thread.join, 5.0)
+        self.assertFalse(request_thread.is_alive(), "Robot description request did not finish")
+        await omni.kit.app.get_app().next_update_async()
         self._success = True

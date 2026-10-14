@@ -128,6 +128,9 @@ class TestAdvanceTimelineAndPhysics(omni.kit.test.AsyncTestCase):
         if stage_fps is not None:
             timeline.set_time_codes_per_second(stage_fps)
             timeline.commit()
+            # The timeline -> stage time-code write-back is deferred to the main-thread update loop,
+            # so the stage metadata only reflects the new rate after the next app update.
+            await omni.kit.app.get_app().next_update_async()
             self.assertEqual(timeline.get_time_codes_per_second(), stage_fps)
             self.assertEqual(omni.usd.get_context().get_stage().GetTimeCodesPerSecond(), stage_fps)
             print(f"  Stage FPS: timeline.get_time_codes_per_second(): {timeline.get_time_codes_per_second()}")

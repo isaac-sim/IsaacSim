@@ -19,6 +19,7 @@ This file intentionally keeps the assertion minimal; its purpose is to confirm
 that Kit can collect and execute the extension's async Python test case.
 """
 
+import isaacsim.robot_motion.experimental.motion_generation as motion_generation
 import omni.kit.test
 from isaacsim.robot_motion.experimental.motion_generation.impl._logging import get_logger
 
@@ -49,7 +50,8 @@ class TestExtension(omni.kit.test.AsyncTestCase):
 
     async def test_extension(self) -> None:
         """Test case for the extension functionality."""
-        # Kit extension system test for Python is based on the unittest module.
-        # Visit https://docs.python.org/3/library/unittest.html to see the
-        # available assert methods to check for and report failures.
         self.assertEqual(get_logger().channel, "isaacsim.robot_motion.experimental.motion_generation")
+        module_path = getattr(motion_generation, "__file__", None)
+        self.assertIsNotNone(module_path)
+        print(f"Motion generation module: {module_path}")
+        self.assertIn("pip_prebundle", module_path)

@@ -1,5 +1,5 @@
 [package]
-version = "1.1.4"
+version = "1.1.5"
 category = "Simulation"
 title = "Robot Poser"
 description = "Create, manage, and export mimic training points for an active robot using an IK goal workflow."

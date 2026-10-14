@@ -1,30 +1,28 @@
 # Shared module testing infrastructure
 
-This directory contains reusable support for module tests. It does not contain module-specific test suites. Put C API,
-C++ API, and Python tests in `<module>/tests/c`, `<module>/tests/cpp`, and `<module>/tests/python`, respectively. Both
-native unit-test suites use doctest and are authored as C++ so they can list and filter individual test cases. C API
-tests include only the public C headers and call only C symbols; the install contract separately compiles an actual C
-consumer to enforce C language compatibility.
-Terminology in this document follows the canonical definitions of
-[carrier, adapter, and wrapper](../README.md#terminology).
+This directory provides reusable test support. Module-specific tests belong under each module: put C API tests in
+`tests/c`, C++ tests in `tests/cpp`, and Python tests in `tests/python`.
+
+Both native test suites use doctest and are written in C++ so individual cases can be listed and filtered. C API tests
+include only public C headers and call only C symbols. A separate installation test compiles a real C consumer to
+verify C compatibility. This document uses the [terminology from the main libraries README](../README.md#terminology).
 
 ## Unit tests and install-contract tests
 
 Module unit tests exercise code directly from the build tree and answer: "Does this API behave correctly?"
 
-Python unit tests run from an isolated build-tree path that symlinks to each module's `tests/python/` directory. This
-keeps test edits live without putting tests in the staged import package. If directory symlinks are unavailable, the
-staging helper uses a dependency-tracked copy instead. Neither form is installed. Pytest bytecode and cache writes are
-disabled; tests must use pytest temporary-directory fixtures rather than write beside their source files. Set
-`TIMEOUT <seconds>` on `isaacsim_add_python_tests` only when a suite needs a positive per-test CTest timeout.
+Python tests run from an isolated build directory linked to the module's `tests/python/` directory. This makes edits
+available immediately without putting tests in the import package. Platforms without directory symlinks use a tracked
+copy. Neither form is installed. Tests must use pytest temporary-directory fixtures instead of writing beside their
+source files. Use `TIMEOUT <seconds>` only when a suite needs its own positive CTest timeout.
 
-When multiple module suites share domain-specific test helpers, one module owns those helpers under its
-`tests/python/` tree and consumers name that module with `isaacsim_add_python_tests(TEST_SUPPORT ...)`. The consuming
-suite's own tests appear first on its isolated `PYTHONPATH`, followed by the declared support modules. This mechanism
-does not install test code and does not make module-specific helpers part of this generic `testing/` directory.
+When several modules share domain-specific test helpers, keep those helpers in one module's `tests/python/` directory.
+Other modules reference it with `isaacsim_add_python_tests(TEST_SUPPORT ...)`. The current suite appears first on
+`PYTHONPATH`, followed by the declared support modules. This does not install test code or move module-specific helpers
+into this shared directory.
 
-An install-contract test exercises the assembled package from outside the source tree and answers: "Can another
-project actually use what we ship?" It catches errors that build-tree unit tests cannot detect, such as:
+An *installation contract test* uses the assembled package from outside the source tree. It answers: "Can another
+project use what we ship?" It catches problems that build-tree unit tests cannot, such as:
 
 - A public header or shared library was not installed.
 - An installed header depends on an undeclared include path or on another header being included first.
@@ -35,13 +33,13 @@ project actually use what we ship?" It catches errors that build-tree unit tests
 - Source tests or cache files were accidentally included in the Python package.
 - The shared `VERSION` or a module `CHANGELOG.md` was omitted from the documentation component.
 
-Files under `install_contract/` are generic input templates, not tests that module authors customize. CMake fills them
-with the registered package name, exported targets, public headers, Python imports, and dependency metadata. Adding a
-module normally requires no changes in this directory.
+Files under `install_contract/` are shared templates, not tests for module authors to customize. CMake fills in the
+package name, targets, public headers, Python imports, and dependencies. Adding a module normally requires no changes
+here.
 
-Pure-Python and compatibility modules that require a native binding during module import declare
-`REQUIRES_BINDINGS`. Their imports are skipped only by binding-disabled install contracts; binding-enabled contracts
-still import the complete registered surface. The files and dependency closure remain installed in both profiles.
+Pure Python and compatibility modules declare `REQUIRES_BINDINGS` when importing them requires a native binding.
+Installation tests without bindings skip these imports; tests with bindings still import every registered module. Both
+profiles install the module files and dependencies.
 
 ## Install-contract lifecycle
 
@@ -57,8 +55,8 @@ For every complete distribution group, the test performs these steps:
 7. Start a fresh Python process and import every installed Python module.
 8. Verify native package identity, versions, dependencies, typing markers, changelogs, and package-content exclusions.
 
-The important boundary is the temporary install prefix: consumers do not use module source directories, build-tree
-include paths, or the staged Python package.
+The temporary installation directory is the key boundary. Consumers cannot use module source directories, build-tree
+include paths, or the staged development package.
 
 ## Files
 
@@ -90,8 +88,8 @@ template.
 Provide minimal `main` functions for the generated native executables. CMake also generates one source file per public
 header. Keeping headers in separate translation units proves that each installed header is self-contained.
 
-The executables are deliberately small. Their purpose is to prove that package discovery, header compilation, target
-linking, runtime loading, and relocation work; behavioral coverage belongs in module unit tests.
+These executables stay small because they verify packaging, not behavior. Module unit tests provide behavioral
+coverage.
 
 ### `install_contract/test_python.py.in`
 
@@ -111,11 +109,10 @@ native graph and use the exact shared version.
 synthetic registered package identities in memory and checks exact shared-version derivation plus self, unknown,
 duplicate, explicit-version, and mismatched-version failures before a second production package exists.
 
-External Python build/test compatibility uses two profiles. `locked` exercises the concrete versions chosen for
-ordinary builds, while `minimum` pins each directly declared tool to its supported lower bound. Newer versions enter
-only through a reviewed `pixi.lock` update. Profile-specific dependency and CMake build directories prevent one run
-from leaving files that influence another. Internal package exactness remains an install-contract concern; Python
-tool profiles do not alter internal requirements or the external dependency ranges published in an artifact.
+Python build and test compatibility uses two profiles. `locked` uses the versions selected for normal builds;
+`minimum` uses each direct tool's lowest supported version. New versions enter only through a reviewed `pixi.lock`
+update. Each profile has separate dependency and build directories. These profiles do not change package requirements
+published in an artifact.
 
 ### `python/conftest.py`
 
@@ -155,14 +152,14 @@ consumer project for each complete distribution group. `cmake/tests/Testing.cmak
 the installed manifest, shared version, and module changelogs. The nested consumer reuses the parent build's CMake
 generator and build program, so the test does not introduce an undeclared Make or MSBuild dependency.
 
-Change the templates only when the downstream package contract changes for every module. Fix a module's own headers,
-dependencies, packaging declarations, or tests in that module rather than adding a module-specific exception here.
+Change these templates only when the package contract changes for every module. Fix module-specific headers,
+dependencies, packaging, or tests in the module itself instead of adding exceptions here.
 
-## Related tooling and Kit carrier tests
+## Related tooling and Kit extension tests
 
 Tests for the standalone orchestration and artifact tools live under `source/libraries/tools/tests`, not in this shared
 template directory. They cover supported host selection, pinned build tools, effective root-build environment
-selection, root-build argument translation, generic carrier discovery, deterministic artifact selection, pip
+selection, root-build argument translation, wheel-staging manifest discovery, deterministic artifact selection, pip
 installation semantics, and direct SDK-component staging.
 Tests for wheel orchestration live under `source/libraries/packaging/tests`.
 
@@ -177,11 +174,11 @@ PYTHONPATH=<python-test-deps> <module-python> -m unittest discover -s packaging/
 `<module-python>` is the locked build-driver interpreter. `<python-test-deps>` is the selected locked or minimum test
 environment's site-packages directory; it supplies the packaging parser used by the wheel-tool tests.
 
-Those tests verify orchestration without starting Kit. A carrier extension owns its Kit startup and backend
-integration tests under that extension's source tree. Together, the layers answer different questions:
+Those tests verify orchestration without starting Kit. An extension that stages a library wheel owns its Kit startup
+and backend integration tests under that extension's source tree. Together, the layers answer different questions:
 
 - Module unit tests verify API behavior against the standalone runtime.
 - Install-contract tests verify relocated native and Python package consumption, including exact dependency closure.
-- Packaging and carrier-tool tests verify artifact construction and staging rules.
-- Carrier extension tests verify extension dependency ordering and the contained adapter's attachment to the
-  host-owned runtime. Compatibility wrappers, when present, own separate API-behavior tests.
+- Packaging and staging-tool tests verify artifact construction and staging rules.
+- Kit extension tests verify extension dependency order and confirm that the host adapter connects to the
+  host-owned runtime. Compatibility wrappers have their own API behavior tests.

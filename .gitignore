@@ -260,3 +260,6 @@ skills/**/evals/results/**
 # not consumed by CI, so treat as derived artifacts (do not commit).
 /skills/evals/
 /skills/_internal/evals/
+
+# Library wheel build artifacts (never commit; use CMake/wheel build output)
+source/libraries/dist/

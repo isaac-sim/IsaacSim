@@ -19,10 +19,13 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib.machinery
 import importlib.util
 import json
 import os
+import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -57,6 +60,336 @@ if sys.version_info >= (3, 11):
     EXAMPLES_INTEGRATION_SPEC.loader.exec_module(examples_integration)
 
 
+class ExamplesCommandTests(unittest.TestCase):
+    """Test machine-readable discovery and execution commands."""
+
+    @unittest.skipUnless(
+        os.name != "nt" and all(shutil.which(tool) for tool in ("cmake", "cc", "make")),
+        "Requires a POSIX CMake/C toolchain",
+    )
+    def test_readiness_recovers_after_successful_incremental_build(self) -> None:
+        """Accept no-op rebuilds while rejecting edits, failed builds, and missing outputs."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            script = source / "main.c"
+            script.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+            readme = source / "README.md"
+            readme.write_text("Documentation\n", encoding="utf-8")
+            (source / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.16)\nproject(probe C)\n"
+                'set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")\n'
+                "add_executable(demo main.c)\n",
+                encoding="utf-8",
+            )
+            example = SimpleNamespace(
+                id="demo",
+                root=source,
+                requirements=SimpleNamespace(python_packages=(), cpp_packages=(), system=()),
+                build=SimpleNamespace(adapter="cmake", targets=("demo",)),
+                run=SimpleNamespace(adapter="executable", target="demo", path=None),
+            )
+            requirements = SimpleNamespace(
+                cmake_minimum_version="3.16",
+                cmake_policy_maximum_version="3.30",
+                c_standard="11",
+                cpp_standard="17",
+                python_version="3.11",
+            )
+            build_root = root / "build"
+            library_build = root / "library-build"
+            library_build.mkdir()
+            (library_build / "CMakeCache.txt").write_text(
+                f"CMAKE_C_COMPILER:FILEPATH={shutil.which('cc')}\n"
+                f"CMAKE_CXX_COMPILER:FILEPATH={shutil.which('c++')}\n",
+                encoding="utf-8",
+            )
+
+            def build(sdk_digest: str = "sdk-one") -> Path:
+                return examples_runner._build_example(
+                    example,
+                    None,
+                    None,
+                    requirements,
+                    build_root,
+                    shutil.which("cmake"),
+                    "Release",
+                    "Unix Makefiles",
+                    None,
+                    None,
+                    None,
+                    developer_build=SimpleNamespace(library_build_dir=library_build, artifact_digest=sdk_digest),
+                )
+
+            def check(sdk_digest: str = "sdk-one") -> list[str]:
+                return examples_runner._find_runnable_examples((example,), build_root, "Release", sdk_digest=sdk_digest)
+
+            build_dir = build()
+            executable = build_dir / "bin/demo"
+            self.assertEqual(check(), ["demo"])
+            self.assertEqual(check("sdk-two"), [])
+            build("sdk-two")
+            self.assertEqual(check("sdk-two"), ["demo"])
+            build()
+            original_time = executable.stat().st_mtime_ns
+            readme.write_text("Updated documentation\n", encoding="utf-8")
+            os.utime(readme, ns=(original_time + 1_000_000, original_time + 1_000_000))
+            self.assertEqual(check(), [])
+            build()
+            self.assertEqual(executable.stat().st_mtime_ns, original_time)
+            self.assertEqual(check(), ["demo"])
+
+            # Input contents, rather than timestamps alone, invalidate the record.
+            script.write_text("int main(void) { return 1; }\n", encoding="utf-8")
+            self.assertEqual(check(), [])
+            build()
+            self.assertEqual(check(), ["demo"])
+            with mock.patch.object(
+                examples_runner, "_run_checked", side_effect=[None, examples_runner.ExampleError("failed")]
+            ):
+                with self.assertRaisesRegex(examples_runner.ExampleError, "failed"):
+                    build()
+            self.assertEqual(check(), [])
+            build()
+            self.assertEqual(check(), ["demo"])
+
+            # An edit during compilation must not certify the changed inputs.
+            run_checked = examples_runner._run_checked
+
+            def change_during_build(command: list[str], working_directory: Path, environment: dict[str, str]) -> None:
+                run_checked(command, working_directory, environment)
+                if "--build" in command:
+                    readme.write_text("Changed while building\n", encoding="utf-8")
+
+            with mock.patch.object(examples_runner, "_run_checked", side_effect=change_during_build):
+                build()
+            self.assertEqual(check(), [])
+            build()
+            self.assertEqual(check(), ["demo"])
+            executable.unlink()
+            self.assertEqual(check(), [])
+
+    def test_readiness_reuses_existing_outputs_and_rejects_stale_or_missing_builds(self) -> None:
+        """Discover disk builds without an in-memory record or running build tools."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            script = source / "main.py"
+            script.write_text("print('hello')", encoding="utf-8")
+            example = SimpleNamespace(
+                id="demo",
+                requirements=SimpleNamespace(cpp_packages=()),
+                root=source,
+                build=SimpleNamespace(adapter="cmake", targets=("demo",)),
+                run=SimpleNamespace(adapter="executable", target="demo", path=None),
+            )
+            build_root = root / "build"
+            build_dir = build_root / "demo"
+            (build_dir / "bin").mkdir(parents=True)
+            cache = build_dir / "CMakeCache.txt"
+            cache.write_text(
+                f"CMAKE_BUILD_TYPE:STRING=Release\nCMAKE_HOME_DIRECTORY:INTERNAL={source}\n",
+                encoding="utf-8",
+            )
+            executable = build_dir / "bin" / ("demo.exe" if os.name == "nt" else "demo")
+            with (
+                mock.patch.object(examples_runner, "_require_python_dependencies"),
+                mock.patch.object(
+                    examples_runner, "_run_checked", side_effect=AssertionError("Readiness must not build")
+                ),
+            ):
+                check = lambda config="Release": examples_runner._find_runnable_examples((example,), build_root, config)
+                self.assertEqual(check(), [])
+                executable.touch()
+                os.utime(script, ns=(1, 1))
+                self.assertEqual(check(), ["demo"])
+                self.assertEqual(
+                    examples_runner._find_runnable_examples(
+                        (example,),
+                        build_root,
+                        "Release",
+                        sdk_digest="sdk",
+                        sdk_mtime_ns=executable.stat().st_mtime_ns + 1,
+                    ),
+                    [],
+                )
+                self.assertEqual(check("Debug"), [])
+                newer = executable.stat().st_mtime_ns + 1_000_000
+                os.utime(script, ns=(newer, newer))
+                self.assertEqual(check(), [])
+                os.utime(script, ns=(1, 1))
+                executable.unlink()
+                self.assertEqual(check(), [])
+                example.run.adapter = "python"
+                example.run.path = script
+                self.assertEqual(check(), [])
+                (build_dir / "python").mkdir()
+                (build_dir / "python" / f"demo.incompatible{'.pyd' if os.name == 'nt' else '.so'}").touch()
+                self.assertEqual(check(), [])
+                (build_dir / "python" / f"demo{importlib.machinery.EXTENSION_SUFFIXES[0]}").touch()
+                self.assertEqual(check(), ["demo"])
+                example.build.targets = ("demo", "support")
+                self.assertEqual(check(), [])
+                (build_dir / "python" / f"support{importlib.machinery.EXTENSION_SUFFIXES[0]}").touch()
+                self.assertEqual(check(), ["demo"])
+                example.build.adapter = "none"
+                self.assertEqual(check(), ["demo"])
+                script.unlink()
+                self.assertEqual(check(), [])
+            with mock.patch.object(
+                examples_runner, "_require_python_dependencies", side_effect=examples_runner.ExampleError("Missing")
+            ):
+                self.assertEqual(examples_runner._find_runnable_examples((example,), build_root, "Release"), [])
+
+    def test_readiness_requires_existing_cpp_dependencies(self) -> None:
+        """Require a matching on-disk C++ environment before offering an otherwise runnable example."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            script = source / "main.cpp"
+            script.write_text("int main() { return 0; }", encoding="utf-8")
+            os.utime(script, ns=(1, 1))
+            packages = (examples_runner._CppPackageRequirement("fmt", "11.1.4"),)
+            example = SimpleNamespace(
+                id="demo",
+                root=source,
+                requirements=SimpleNamespace(python_packages=(), cpp_packages=packages),
+                build=SimpleNamespace(adapter="cmake", targets=("demo",)),
+                run=SimpleNamespace(adapter="executable", path=None, target="demo", arguments=()),
+            )
+            build_root = root / "build"
+            build_dir = build_root / "demo"
+            (build_dir / "bin").mkdir(parents=True)
+            (build_dir / "bin" / ("demo.exe" if os.name == "nt" else "demo")).touch()
+            (build_dir / "CMakeCache.txt").write_text(
+                f"CMAKE_BUILD_TYPE:STRING=Release\nCMAKE_HOME_DIRECTORY:INTERNAL={source}\n", encoding="utf-8"
+            )
+            workspace = build_root / examples_runner.CPP_DEPENDENCY_DIRECTORY
+            with mock.patch.object(examples_runner, "_find_pixi", return_value=Path(sys.executable)):
+                self.assertEqual(examples_runner._find_runnable_examples((example,), build_root, "Release"), [])
+                (workspace / ".pixi/envs/default").mkdir(parents=True)
+                (workspace / "pixi.toml").write_text(
+                    examples_runner._cpp_dependency_manifest(packages), encoding="utf-8"
+                )
+                (workspace / "pixi.lock").touch()
+                (workspace / examples_runner.DEPENDENCY_STATE_FILE).write_text(
+                    json.dumps(examples_runner._cpp_dependency_state(packages)), encoding="utf-8"
+                )
+                self.assertEqual(examples_runner._find_runnable_examples((example,), build_root, "Release"), ["demo"])
+                example.requirements.cpp_packages = (examples_runner._CppPackageRequirement("fmt", "12.0.0"),)
+                self.assertEqual(examples_runner._find_runnable_examples((example,), build_root, "Release"), [])
+
+    def test_run_no_build_skips_compilation_and_preserves_arguments(self) -> None:
+        """Keep ordinary Run behavior while allowing frontends to reuse prior outputs."""
+        example = SimpleNamespace(id="demo", requirements=SimpleNamespace(cpp_packages=()))
+        for no_build in (False, True):
+            with self.subTest(no_build=no_build):
+                arguments = ["examples.py", "--installed", "run"]
+                arguments.extend(["--no-build"] if no_build else [])
+                arguments.extend(["demo", "--", "--name", "two words"])
+                with (
+                    mock.patch.object(sys, "argv", arguments),
+                    mock.patch.object(examples_runner, "_load_examples", return_value=(example,)),
+                    mock.patch.object(examples_runner, "_select_run_example", return_value=example),
+                    mock.patch.object(examples_runner, "_load_system_requirements"),
+                    mock.patch.object(examples_runner, "_validate_python_version"),
+                    mock.patch.object(examples_runner, "_collect_python_packages", return_value=()),
+                    mock.patch.object(examples_runner, "_require_python_dependencies", return_value=None),
+                    mock.patch.object(examples_runner, "_build_example") as build,
+                    mock.patch.object(examples_runner, "_find_runnable_examples", return_value=["demo"]) as find,
+                    mock.patch.object(examples_runner, "_run_example", return_value=0) as run,
+                ):
+                    self.assertEqual(examples_runner._main(), 0)
+                    self.assertEqual(build.call_count, 0 if no_build else 1)
+                    self.assertEqual(find.call_count, 1 if no_build else 0)
+                    self.assertEqual(run.call_args.args[2], ("--name", "two words"))
+
+    def test_run_no_build_rejects_stale_selected_example(self) -> None:
+        """Recheck the selected artifact in the execution process before launching it."""
+        example = SimpleNamespace(id="demo", requirements=SimpleNamespace(cpp_packages=()))
+        with (
+            mock.patch.object(sys, "argv", ["examples.py", "--installed", "run", "--no-build", "demo"]),
+            mock.patch.object(examples_runner, "_load_examples", return_value=(example,)),
+            mock.patch.object(examples_runner, "_select_run_example", return_value=example),
+            mock.patch.object(examples_runner, "_load_system_requirements"),
+            mock.patch.object(examples_runner, "_validate_python_version"),
+            mock.patch.object(examples_runner, "_collect_python_packages", return_value=()),
+            mock.patch.object(examples_runner, "_require_python_dependencies", return_value=None),
+            mock.patch.object(examples_runner, "_find_runnable_examples", return_value=[]) as find,
+            mock.patch.object(examples_runner, "_run_example") as run,
+            mock.patch("builtins.print"),
+        ):
+            self.assertEqual(examples_runner._main(), 1)
+        find.assert_called_once()
+        self.assertEqual(find.call_args.kwargs["selected_examples"], (example,))
+        run.assert_not_called()
+
+    def test_structured_listing_needs_no_built_library_catalog(self) -> None:
+        """Expose validated local examples and ordered series without SDK output."""
+        with mock.patch.object(
+            examples_runner, "_load_library_catalog", side_effect=AssertionError("SDK catalog read")
+        ):
+            listing = examples_runner._serialize_listing(EXAMPLES_RUNNER_PATH.parent)
+        self.assertEqual(listing["schema_version"], 1)
+        example_ids = {item["id"] for item in listing["examples"]}
+        self.assertIn("hello_world.python", example_ids)
+        self.assertTrue(listing["series"])
+        for series in listing["series"]:
+            self.assertTrue(all(step["example"] in example_ids for step in series["steps"]))
+
+    def test_check_validates_sdk_once_in_each_environment(self) -> None:
+        """Defer source hashing until the selected interpreter and retain shared locks."""
+        repository_root = EXAMPLES_RUNNER_PATH.parents[2]
+        library_build_dir = repository_root / "_cmake_build" / "isaacsim-libraries-release"
+        build = SimpleNamespace(
+            library_build_dir=library_build_dir,
+            python=Path(sys.executable),
+            artifact_digest="sdk-digest",
+            artifact_mtime_ns=1,
+        )
+        for active in (False, True):
+            with (
+                self.subTest(active=active),
+                mock.patch.object(sys, "argv", ["examples.py", "check"]),
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        examples_runner.DEVELOPER_ENVIRONMENT_VARIABLE: (
+                            str(library_build_dir.resolve()) if active else ""
+                        )
+                    },
+                ),
+                mock.patch.object(examples_runner, "_developer_environment_lock") as sdk_lock,
+                mock.patch.object(examples_runner, "_python_dependency_lock") as python_lock,
+                mock.patch.object(examples_runner, "_cpp_dependency_lock") as cpp_lock,
+                mock.patch.object(examples_runner, "_read_developer_build", return_value=build) as read,
+                mock.patch.object(examples_runner, "_create_developer_environment", return_value={}),
+                mock.patch.object(examples_runner, "_restart_in_environment", return_value=0) as restart,
+                mock.patch.object(examples_runner, "_load_collection", return_value=((), ())),
+                mock.patch.object(examples_runner, "_collect_python_packages", return_value=("package",)),
+                mock.patch.object(examples_runner, "_collect_cpp_packages", return_value=("package",)),
+                mock.patch.object(examples_runner, "_find_runnable_examples", return_value=["demo"]) as find,
+                mock.patch("builtins.print") as output,
+            ):
+                self.assertEqual(examples_runner._main(), 0)
+                read.assert_called_once_with(repository_root, "Release", validate_sources=active)
+                sdk_lock.assert_called_once_with(library_build_dir, exclusive=False)
+                if active:
+                    restart.assert_not_called()
+                    self.assertEqual(json.loads(output.call_args.args[0])["runnable_examples"], ["demo"])
+                    for lock in (python_lock, cpp_lock):
+                        lock.assert_called_once_with(find.call_args.args[1], exclusive=False)
+                        lock.return_value.__enter__.assert_called_once()
+                        lock.return_value.__exit__.assert_called_once()
+                else:
+                    restart.assert_called_once_with(build.python, {})
+                    find.assert_not_called()
+                    output.assert_not_called()
+
+
 class ExamplesListFormattingTests(unittest.TestCase):
     """Test user-facing example list formatting."""
 
@@ -80,6 +413,27 @@ class ExamplesListFormattingTests(unittest.TestCase):
                 )
             ),
         )
+
+
+@unittest.skipIf(examples_integration is None, "Examples integration requires Python 3.11 or newer")
+class ExamplesBuildMetricsTests(unittest.TestCase):
+    """Test example build storage measurements."""
+
+    @unittest.skipIf(os.name == "nt", "Symlink identity test requires Unix filesystem semantics")
+    def test_directory_storage_counts_unique_regular_files(self) -> None:
+        """Exclude symlinks and count hard-linked content once."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            original = root / "original.bin"
+            original.write_bytes(b"x" * 100)
+            os.link(original, root / "hard-link.bin")
+            (root / "symbolic-link.bin").symlink_to(original)
+
+            metrics = examples_integration._directory_storage(root)
+
+        self.assertEqual(metrics["logical_size_bytes"], 100)
+        self.assertGreaterEqual(metrics["disk_size_bytes"], 100)
+        self.assertEqual(metrics["file_count"], 1)
 
 
 class PythonExampleInterruptHandlingTests(unittest.TestCase):
@@ -169,7 +523,11 @@ class PythonExampleInterruptHandlingTests(unittest.TestCase):
                 ]
                 self.assertEqual(len(handlers), 1)
                 self.assertEqual(len(handlers[0].body), 1)
-                self.assertIsInstance(handlers[0].body[0], ast.Pass)
+                handler = handlers[0].body[0]
+                if example.id.startswith("benchmarks."):
+                    self.assertEqual(ast.unparse(handler), "raise SystemExit(130)")
+                else:
+                    self.assertIsInstance(handler, ast.Pass)
 
 
 class RuntimeEnvironmentTests(unittest.TestCase):
@@ -185,6 +543,7 @@ class RuntimeEnvironmentTests(unittest.TestCase):
             plugins = prefix / "bin" / "plugins"
             prefix_paths = (
                 prefix / "bin",
+                prefix / "plugins",
                 plugins,
                 plugins / "omni.client.lib",
                 plugins / "omni.usd_resolver",
@@ -240,6 +599,195 @@ class RuntimeEnvironmentTests(unittest.TestCase):
                 actual["LD_LIBRARY_PATH"].split(os.pathsep),
                 [str(python.parent.parent / "lib"), str(prefix_a / "lib"), str(prefix_b / "lib"), str(inherited)],
             )
+
+
+class NamedRunCommandTests(unittest.TestCase):
+    """Test compatible default runs and foreground named commands."""
+
+    def setUp(self) -> None:
+        """Load the gRPC example with a default client and named server."""
+        self.example = examples_runner._load_example(
+            EXAMPLES_RUNNER_PATH.parent / "series" / "falling_cube_ovsim" / "simulate_cube_grpc"
+        )
+
+    def test_bare_run_and_named_server_select_independently(self) -> None:
+        """Keep the client as the default without mutating its loaded configuration."""
+        default = examples_runner._select_run_example((self.example,), self.example.id, EXAMPLES_RUNNER_PATH.parent)
+        server = examples_runner._select_run_example(
+            (self.example,), self.example.id + ":server", EXAMPLES_RUNNER_PATH.parent
+        )
+        self.assertIs(default, self.example)
+        self.assertEqual(default.run.adapter, "python")
+        self.assertEqual(server.run.adapter, "command")
+        self.assertEqual(server.run.command, "isaacsim-ovsim-grpc-server")
+        self.assertEqual(server.run.arguments, ("--listen-address", "127.0.0.1:50051"))
+        self.assertEqual(server.id, default.id)
+        self.assertEqual(server.tests, default.tests)
+        for name in ("", "missing", "server:other"):
+            with self.subTest(name=name), self.assertRaisesRegex(examples_runner.ExampleError, "Unknown run command"):
+                examples_runner._select_run_example(
+                    (self.example,), self.example.id + ":" + name, EXAMPLES_RUNNER_PATH.parent
+                )
+
+    def test_legacy_relative_run_selectors_still_work(self) -> None:
+        """Preserve root and script path selection alongside named commands."""
+        for path in (self.example.root, self.example.run.path):
+            relative = path.relative_to(EXAMPLES_RUNNER_PATH.parent).as_posix()
+            self.assertIs(
+                examples_runner._select_run_example((self.example,), relative, EXAMPLES_RUNNER_PATH.parent),
+                self.example,
+            )
+            selected = examples_runner._select_run_example(
+                (self.example,), relative + ":server", EXAMPLES_RUNNER_PATH.parent
+            )
+            self.assertEqual(selected.run.command, "isaacsim-ovsim-grpc-server")
+
+    def test_named_python_run_has_its_own_arguments(self) -> None:
+        """Named commands use independent configurations and validated local scripts."""
+        run, named = examples_runner._load_run_configurations(
+            {
+                "adapter": "python",
+                "path": "main.py",
+                "arguments": ["default"],
+                "alternate": {"adapter": "python", "path": "test.py", "arguments": ["alternate"]},
+            },
+            self.example.root,
+            "run",
+        )
+        self.assertEqual(run.arguments, ("default",))
+        self.assertEqual(named[0][1].arguments, ("alternate",))
+        self.assertEqual(named[0][1].path, self.example.root / "test.py")
+        selected = replace(self.example, run=named[0][1])
+        self.assertEqual(
+            examples_runner._create_run_command(selected, Path("build"), ("one",)),
+            [sys.executable, str(self.example.root / "test.py"), "one"],
+        )
+
+    def test_rejects_malformed_runs_and_command_names(self) -> None:
+        """Reject unknown fields, shell fragments, paths, and named-only manifests."""
+        for command in ("../server", "/bin/server", "server --flag", "a;b", "$(server)", "-server", "C:\\server.exe"):
+            with self.subTest(command=command), self.assertRaisesRegex(examples_runner.ExampleError, "executable name"):
+                examples_runner._load_run_configuration(
+                    {"adapter": "command", "command": command}, self.example.root, "run"
+                )
+        default = {"adapter": "python", "path": "main.py"}
+        bad_tables = (
+            {**default, "typo": "ignored"},
+            {**default, "bad-name": {"adapter": "command", "command": "server"}},
+            {**default, "server": {"adapter": "command", "command": "server", "background": True}},
+            {"server": {"adapter": "command", "command": "server"}},
+            {**default, "server": {"adapter": "python", "path": "../main.py"}},
+            {**default, "server": {"adapter": "python", "path": "missing.py"}},
+        )
+        for table in bad_tables:
+            with self.subTest(table=table), self.assertRaises(examples_runner.ExampleError):
+                examples_runner._load_run_configurations(table, self.example.root, "run")
+
+    def test_command_lookup_uses_prepared_environment(self) -> None:
+        """Resolve an installed executable even when it is absent from the parent PATH."""
+        selected = replace(
+            self.example, run=examples_runner._RunConfiguration("command", command=Path(sys.executable).name)
+        )
+        with mock.patch.dict(os.environ, {"PATH": ""}):
+            command = examples_runner._create_run_command(
+                selected, Path("build"), ("--version",), environment={"PATH": str(Path(sys.executable).parent)}
+            )
+        self.assertEqual(Path(command[0]), Path(sys.executable).absolute())
+        self.assertEqual(command[1:], ["--version"])
+        with (
+            tempfile.TemporaryDirectory() as empty_path,
+            self.assertRaisesRegex(examples_runner.ExampleError, "unavailable in the prepared environment"),
+        ):
+            examples_runner._create_run_command(selected, Path("build"), (), environment={"PATH": empty_path})
+
+    @unittest.skipIf(os.name == "nt", "Creating executable symlinks requires Windows privileges")
+    def test_command_lookup_preserves_environment_symlinks(self) -> None:
+        """Keep the selected executable path so virtual environments remain active."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            executable = Path(temporary_directory) / "environment-python"
+            executable.symlink_to(sys.executable)
+            selected = replace(self.example, run=examples_runner._RunConfiguration("command", command=executable.name))
+            actual = examples_runner._create_run_command(
+                selected, Path("build"), (), environment={"PATH": temporary_directory}
+            )
+            self.assertEqual(actual, [str(executable)])
+
+    def test_named_command_runs_in_foreground_and_preserves_arguments(self) -> None:
+        """Wait for a real child, preserve literal arguments, and return its exit status."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            script = root / "record.py"
+            script.write_text(
+                'import json, pathlib, sys\npathlib.Path("result.json").write_text(json.dumps(sys.argv[1:]))\nsys.exit(7)\n',
+                encoding="utf-8",
+            )
+            selected = replace(
+                self.example,
+                root=root,
+                run=examples_runner._RunConfiguration(
+                    "command", command=Path(sys.executable).name, arguments=(str(script), "default argument")
+                ),
+            )
+            environment = dict(os.environ, PATH=str(Path(sys.executable).parent))
+            with mock.patch.object(examples_runner, "_create_runtime_environment", return_value=environment):
+                result = examples_runner._run_example(selected, root / "build", ("two words", "$(not-a-shell)", "--"))
+            self.assertEqual(result, 7)
+            self.assertEqual(
+                json.loads((root / "result.json").read_text()),
+                ["default argument", "two words", "$(not-a-shell)", "--"],
+            )
+
+    def test_default_command_adapter_and_named_python_share_requirements(self) -> None:
+        """Allow shared Python dependencies when a named Python run consumes them."""
+        command = examples_runner._RunConfiguration("command", command="server")
+        requirements = replace(
+            self.example.requirements, python_packages=(examples_runner._PythonPackageRequirement("demo", "1.0"),)
+        )
+        examples_runner._validate_requirement_coherence(
+            self.example.build, command, requirements, "example", (self.example.run,)
+        )
+        with self.assertRaisesRegex(examples_runner.ExampleError, "without a Python run adapter"):
+            examples_runner._validate_requirement_coherence(self.example.build, command, requirements, "example")
+
+    def test_named_executable_must_match_build_targets(self) -> None:
+        """Reject invalid native targets before invoking CMake or launching a process."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "main.py").touch()
+            (root / "README.md").write_text("# Fixture\n")
+            manifest = (
+                (self.example.root / "example.toml")
+                .read_text()
+                .replace(
+                    'adapter = "command"\ncommand = "isaacsim-ovsim-grpc-server"',
+                    'adapter = "executable"\ntarget = "server"',
+                )
+            )
+            # This fixture has no tests; only native command validation should fail.
+            (root / "example.toml").write_text(manifest.split("[[test]]")[0], encoding="utf-8")
+            with self.assertRaisesRegex(
+                examples_runner.ExampleError, "run.server.target must name a declared CMake build target"
+            ):
+                examples_runner._load_example(root)
+
+    def test_cli_selects_named_command_without_changing_default(self) -> None:
+        """Exercise selection through the real CLI flow in installed mode."""
+        for suffix, adapter in (("", "python"), (":server", "command")):
+            with (
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    ["examples.py", "--installed", "run", self.example.id + suffix, "--", "literal argument"],
+                ),
+                mock.patch.object(examples_runner, "_load_system_requirements"),
+                mock.patch.object(examples_runner, "_validate_python_version"),
+                mock.patch.object(examples_runner, "_load_examples", return_value=(self.example,)),
+                mock.patch.object(examples_runner, "_build_example"),
+                mock.patch.object(examples_runner, "_run_example", return_value=9) as run,
+            ):
+                self.assertEqual(examples_runner._main(), 9)
+            self.assertEqual(run.call_args.args[0].run.adapter, adapter)
+            self.assertEqual(run.call_args.args[2], ("literal argument",))
 
 
 class PythonTestEntryPointTests(unittest.TestCase):
@@ -327,7 +875,7 @@ class ExamplesIntegrationPackageRequirementTests(unittest.TestCase):
                     "version": "1.0.0",
                     "version_scheme": "pep440",
                     "complete": True,
-                    "dependencies": {dependency: "==1.0.0" for dependency in dependencies},
+                    "dependencies": dict.fromkeys(dependencies, "==1.0.0"),
                     "modules": [f"isaacsim.{name}"],
                     "python_imports": [],
                     "components": {
@@ -613,7 +1161,7 @@ class DeveloperArtifactStateTests(unittest.TestCase):
             for candidate in (root, Path(os.path.relpath(root))):
                 with self.subTest(root=candidate):
                     self.assertEqual(original_digest(candidate), expected)
-                    self.assertEqual(examples_runner._library_source_digest(candidate), expected)
+                    self.assertEqual(examples_runner._source_digest(candidate), expected)
 
     def _write_state(self, repository_root: Path, build_dir: Path, *, targets: list[str]) -> Path:
         """Write matching completed-build state and return its tracked input.
@@ -640,7 +1188,7 @@ class DeveloperArtifactStateTests(unittest.TestCase):
                     "profile": "standard",
                     "dependency_profile": "locked",
                     "inputs": {"pixi.toml": hashlib.sha256(manifest.read_bytes()).hexdigest()},
-                    "source_digest": examples_runner._library_source_digest(source_root),
+                    "source_digest": examples_runner._source_digest(source_root),
                     "targets": targets,
                     "developer_environment": {
                         "path": examples_runner.DEVELOPER_ENVIRONMENT_DIRECTORY,
@@ -665,6 +1213,23 @@ class DeveloperArtifactStateTests(unittest.TestCase):
             )
 
             self.assertEqual(actual_environment, build_dir / examples_runner.DEVELOPER_ENVIRONMENT_DIRECTORY)
+
+    def test_artifact_state_digest_tracks_sdk_identity_without_build_time(self) -> None:
+        """Invalidate examples for changed SDK inputs without invalidating identical rebuilds."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = Path(temporary_directory)
+            build_dir = repository_root / "build"
+            build_dir.mkdir()
+            self._write_state(repository_root, build_dir, targets=["all"])
+            artifact_path = build_dir / "artifact-state.json"
+            original = examples_runner._artifact_state_digest(artifact_path)
+            state = json.loads(artifact_path.read_text(encoding="utf-8"))
+            state["completed_at"] = "later"
+            artifact_path.write_text(json.dumps(state), encoding="utf-8")
+            self.assertEqual(examples_runner._artifact_state_digest(artifact_path), original)
+            state["source_digest"] = "0" * 64
+            artifact_path.write_text(json.dumps(state), encoding="utf-8")
+            self.assertNotEqual(examples_runner._artifact_state_digest(artifact_path), original)
 
     def test_validate_developer_artifact_state_rejects_changed_input(self) -> None:
         """Require a rebuild after a locked manifest changes."""
@@ -771,6 +1336,8 @@ class DeveloperRunnerStartupTests(unittest.TestCase):
             python_install_dir="python",
             python_runtime_dependencies=Path("/tools/dependencies"),
             developer_environment=build_dir / "developer-environment",
+            artifact_digest="sdk-digest",
+            artifact_mtime_ns=1,
             generator="Ninja",
             generator_platform=None,
             generator_toolset=None,
@@ -802,7 +1369,15 @@ class DeveloperRunnerStartupTests(unittest.TestCase):
                 executable, environment = restart.call_args.args
                 self.assertEqual(executable, developer_build.python)
                 self.assertEqual(environment[examples_runner.DEVELOPER_ENVIRONMENT_VARIABLE], str(build_dir))
-                self.assertEqual(environment["CMAKE_PREFIX_PATH"], str(developer_build.developer_environment))
+                self.assertEqual(
+                    environment["CMAKE_PREFIX_PATH"],
+                    os.pathsep.join(
+                        (
+                            str(developer_build.developer_environment),
+                            str(developer_build.python_runtime_dependencies),
+                        )
+                    ),
+                )
                 self.assertEqual(
                     environment["PYTHONPATH"],
                     os.pathsep.join(
@@ -838,7 +1413,12 @@ class DeveloperRunnerStartupTests(unittest.TestCase):
         """Continue to manifest parsing after validating an already selected environment."""
         root = EXAMPLES_RUNNER_PATH.parents[2]
         build_dir = root / "_cmake_build" / "isaacsim-libraries-release"
-        build = SimpleNamespace(library_build_dir=build_dir, python=Path(sys.executable))
+        build = SimpleNamespace(
+            library_build_dir=build_dir,
+            python=Path(sys.executable),
+            artifact_digest="sdk-digest",
+            artifact_mtime_ns=1,
+        )
         with (
             mock.patch.dict(os.environ, {examples_runner.DEVELOPER_ENVIRONMENT_VARIABLE: str(build_dir)}),
             mock.patch.object(sys, "argv", [str(EXAMPLES_RUNNER_PATH), "--dev", "run", "hello_world.c"]),
@@ -901,6 +1481,7 @@ class DeveloperEnvironmentTests(unittest.TestCase):
             plugins = prefix / "bin" / "plugins"
             prefix_paths = (
                 prefix / "bin",
+                prefix / "plugins",
                 plugins,
                 plugins / "omni.client.lib",
                 plugins / "omni.usd_resolver",
@@ -917,6 +1498,8 @@ class DeveloperEnvironmentTests(unittest.TestCase):
                 python_install_dir="python",
                 python_runtime_dependencies=runtime_dependencies,
                 developer_environment=prefix,
+                artifact_digest="sdk-digest",
+                artifact_mtime_ns=1,
                 generator="Ninja",
                 generator_platform=None,
                 generator_toolset=None,
@@ -959,6 +1542,8 @@ class DeveloperEnvironmentTests(unittest.TestCase):
                 python_install_dir="python",
                 python_runtime_dependencies=runtime_dependencies,
                 developer_environment=prefix,
+                artifact_digest="sdk-digest",
+                artifact_mtime_ns=1,
                 generator="Ninja",
                 generator_platform=None,
                 generator_toolset=None,
@@ -969,7 +1554,10 @@ class DeveloperEnvironmentTests(unittest.TestCase):
                 first = examples_runner._create_developer_environment(developer_build)
                 second = examples_runner._create_developer_environment(developer_build)
 
-            self.assertEqual(first["CMAKE_PREFIX_PATH"], str(prefix))
+            self.assertEqual(
+                first["CMAKE_PREFIX_PATH"].split(examples_runner.os.pathsep),
+                [str(prefix), str(runtime_dependencies)],
+            )
             self.assertEqual(first["PYTHONPATH"].split(examples_runner.os.pathsep)[0], str(prefix / "python"))
             if os.name != "nt":
                 self.assertEqual(
@@ -1011,6 +1599,46 @@ class DeveloperEnvironmentTests(unittest.TestCase):
 
             with self.assertRaisesRegex(examples_runner.ExampleError, "missing or redirected"):
                 examples_runner._validate_developer_artifact_state(repository_root, build_dir, "Release")
+
+
+class ModuleRequirementTests(unittest.TestCase):
+    """Test manifest syntax compatibility for module requirements."""
+
+    def test_load_requirements_accepts_equivalent_module_table_syntaxes(self) -> None:
+        """Preserve module names and surfaces in inline records and array tables."""
+        manifests = (
+            """[requirements]
+system = ["python"]
+modules = [
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+    { name = "isaacsim_ovsim", surfaces = ["native_sdk", "python"] },
+]
+""",
+            """[requirements]
+system = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["python"]
+
+[[requirements.modules]]
+name = "isaacsim_ovsim"
+surfaces = ["native_sdk", "python"]
+""",
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            manifest_path = Path(temporary_directory) / "example.toml"
+            requirements = []
+            for manifest in manifests:
+                manifest_path.write_text(manifest, encoding="utf-8")
+                table = examples_runner._read_toml(manifest_path)
+                requirements.append(examples_runner._load_requirements(table["requirements"], "requirements"))
+
+        self.assertEqual(requirements[0], requirements[1])
+        self.assertEqual(
+            [(module.name, module.surfaces) for module in requirements[0].modules],
+            [("isaacsim_foundation", ("python",)), ("isaacsim_ovsim", ("native_sdk", "python"))],
+        )
 
 
 class PythonPackageRequirementTests(unittest.TestCase):
@@ -1754,6 +2382,113 @@ class CppPackageRequirementTests(unittest.TestCase):
             self.assertEqual(command[-2:], ["--", "demo"])
 
 
+class LinuxCompilerTests(unittest.TestCase):
+    """Reuse the library compiler when building examples from source."""
+
+    def test_developer_example_refreshes_only_mismatched_compiler_cache(self) -> None:
+        """Migrate old host-compiler caches without discarding matching caches."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            gcc, gxx = root / "gcc", root / "g++"
+            (root / "CMakeCache.txt").write_text(
+                f"CMAKE_C_COMPILER:FILEPATH={gcc}\nCMAKE_CXX_COMPILER:FILEPATH={gxx}\n"
+            )
+            developer = SimpleNamespace(library_build_dir=root, artifact_digest="sdk-one")
+            source = root / "source"
+            source.mkdir()
+            example = SimpleNamespace(
+                id="demo",
+                root=source,
+                build=SimpleNamespace(adapter="cmake", targets=("demo",)),
+                requirements=SimpleNamespace(cpp_packages=(), system=()),
+            )
+            requirements = SimpleNamespace(
+                cmake_minimum_version="3.26",
+                cmake_policy_maximum_version="4.3",
+                c_standard=11,
+                cpp_standard=17,
+                python_version="3.12",
+            )
+            build_dir = root / "demo"
+            build_dir.mkdir()
+            for cached, fresh in (("/usr/bin/gcc", True), (str(gcc), False)):
+                with self.subTest(cached=cached):
+                    (build_dir / "CMakeCache.txt").write_text(f"CMAKE_C_COMPILER:FILEPATH={cached}\n")
+                    with (
+                        mock.patch.object(examples_runner.sys, "platform", "linux"),
+                        mock.patch.object(examples_runner, "_run_checked") as run,
+                    ):
+                        examples_runner._build_example(
+                            example,
+                            None,
+                            None,
+                            requirements,
+                            root,
+                            "cmake",
+                            "Release",
+                            "Ninja",
+                            None,
+                            None,
+                            "ninja",
+                            developer,
+                        )
+                    command = run.call_args_list[0].args[0]
+                    self.assertEqual("--fresh" in command, fresh)
+                    self.assertIn(f"-DCMAKE_C_COMPILER={gcc}", command)
+                    self.assertIn(f"-DCMAKE_CXX_COMPILER={gxx}", command)
+                    self.assertEqual(
+                        json.loads((build_dir / ".example-build-state.json").read_text())["sdk_digest"], "sdk-one"
+                    )
+
+
+class GpuProbeTests(unittest.TestCase):
+    """Test the host GPU probe that decides whether a GPU example's tests can run."""
+
+    def setUp(self) -> None:
+        """Start each case without an answer cached from the host or another case."""
+        examples_runner._has_gpu.cache_clear()
+        self.addCleanup(examples_runner._has_gpu.cache_clear)
+
+    def test_probe_reports_a_gpu_when_the_driver_lists_one(self) -> None:
+        """Report a GPU when the driver utility lists a device."""
+        listed = subprocess.CompletedProcess([], 0, stdout="GPU 0: NVIDIA GeForce RTX 5080 (UUID: GPU-0)\n", stderr="")
+
+        with (
+            mock.patch.object(examples_runner.shutil, "which", return_value="/usr/bin/nvidia-smi"),
+            mock.patch.object(examples_runner.subprocess, "run", return_value=listed),
+        ):
+            self.assertTrue(examples_runner._has_gpu())
+
+    def test_probe_reports_no_gpu_without_a_driver(self) -> None:
+        """Report no GPU when the driver utility is not installed."""
+        with mock.patch.object(examples_runner.shutil, "which", return_value=None):
+            self.assertFalse(examples_runner._has_gpu())
+
+    def test_probe_reports_no_gpu_when_the_driver_lists_none(self) -> None:
+        """Report no GPU when the driver is installed but reports no device."""
+        empty = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        with (
+            mock.patch.object(examples_runner.shutil, "which", return_value="/usr/bin/nvidia-smi"),
+            mock.patch.object(examples_runner.subprocess, "run", return_value=empty),
+        ):
+            self.assertFalse(examples_runner._has_gpu())
+
+    def test_probe_reports_no_gpu_when_the_driver_is_unusable(self) -> None:
+        """Report no GPU when the driver utility is present but fails or hangs."""
+        failed = subprocess.CompletedProcess([], 9, stdout="", stderr="couldn't communicate with the driver\n")
+        expired = subprocess.TimeoutExpired("nvidia-smi", examples_runner.GPU_PROBE_TIMEOUT_SECONDS)
+
+        for outcome in ({"return_value": failed}, {"side_effect": expired}, {"side_effect": OSError()}):
+            with self.subTest(outcome=outcome):
+                examples_runner._has_gpu.cache_clear()
+                with (
+                    mock.patch.object(examples_runner.shutil, "which", return_value="/usr/bin/nvidia-smi"),
+                    mock.patch.object(examples_runner.subprocess, "run", **outcome),
+                ):
+                    self.assertFalse(examples_runner._has_gpu())
+
+
 class DocumentationCatalogTests(unittest.TestCase):
     """Test documentation catalog generation through the real examples parser."""
 
@@ -1854,6 +2589,15 @@ level = "beginner"
         self.assertEqual([entry["id"] for entry in first["examples"]], ["alpha", "zeta"])
         self.assertEqual(first["examples"][0]["languages"], ["python"])
 
+    def test_catalog_discovers_benchmarks(self) -> None:
+        """Discover nested benchmark workloads without a teaching series."""
+        self._write_example("benchmarks/physics/manager/cube", "benchmarks.physics.manager.cube")
+        catalog = examples_runner._build_catalog(self.root, self.library_catalog)
+        entry = catalog["examples"][0]
+        self.assertEqual(entry["group"], "benchmark")
+        self.assertIsNone(entry["series_id"])
+        self.assertEqual(entry["source_path"], "benchmarks/physics/manager/cube")
+
     def test_catalog_exposes_external_python_packages(self) -> None:
         """Publish normalized external package requirements for inspection."""
         self._write_example("libraries/demo/packages", "packages")
@@ -1889,6 +2633,20 @@ level = "beginner"
 
         self.assertEqual(catalog["schema_version"], 4)
         self.assertEqual(catalog["examples"][0]["requirements"]["cpp_packages"], ["fmt==7.0.3"])
+
+    def test_catalog_includes_named_commands_without_changing_default(self) -> None:
+        """Publish named launch commands while retaining schema and default commands."""
+        self._write_example("libraries/demo/named", "named")
+        manifest = self.root / "libraries" / "demo" / "named" / "example.toml"
+        manifest.write_text(
+            manifest.read_text() + '\n[run.server]\nadapter="command"\ncommand="server"\n', encoding="utf-8"
+        )
+        catalog = examples_runner._build_catalog(self.root, self.library_catalog)
+        self.assertEqual(catalog["schema_version"], 4)
+        self.assertEqual(catalog["examples"][0]["entry_point"], "main.py")
+        commands = catalog["examples"][0]["commands"]
+        self.assertEqual(commands["run"], "python source/examples/examples.py run named")
+        self.assertEqual(commands["run:server"], "python source/examples/examples.py run named:server")
 
     def test_catalog_preserves_nested_entry_point(self) -> None:
         """Test catalog preserves nested entry point."""
@@ -1985,6 +2743,27 @@ level = "intermediate"
         with self.assertRaisesRegex(examples_runner.ExampleError, "conflicting Python package requirements"):
             examples_runner._build_catalog(self.root, self.library_catalog)
 
+    def test_catalog_groups_a_benchmark_example(self) -> None:
+        """Assign the benchmark group to an example beneath a benchmarks category directory."""
+        self._write_example("benchmarks/ovrtx/camera", "benchmark.ovrtx.camera")
+
+        catalog = examples_runner._build_catalog(self.root, self.library_catalog)
+
+        self.assertEqual(catalog["examples"][0]["group"], "benchmark")
+
+    def test_catalog_reports_a_gpu_capability(self) -> None:
+        """Carry a declared GPU requirement through to the catalog's capabilities."""
+        self._write_example("benchmarks/ovrtx/camera", "benchmark.ovrtx.camera")
+        manifest = self.root / "benchmarks" / "ovrtx" / "camera" / "example.toml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace('system = ["python"]', 'system = ["gpu", "python"]'),
+            encoding="utf-8",
+        )
+
+        catalog = examples_runner._build_catalog(self.root, self.library_catalog)
+
+        self.assertEqual(catalog["examples"][0]["requirements"]["capabilities"], ["gpu", "python"])
+
     def test_catalog_rejects_unknown_library_cross_references(self) -> None:
         """Test catalog rejects unknown library cross references."""
         self._write_example("libraries/demo/invalid", "invalid")
@@ -2028,6 +2807,171 @@ level = "intermediate"
 
         with self.assertRaisesRegex(examples_runner.ExampleError, "Unsupported library documentation catalog schema"):
             examples_runner._build_catalog(self.root, self.library_catalog)
+
+
+class NsysTests(unittest.TestCase):
+    """Check profiling through the existing runner without Nsight or a GPU."""
+
+    def setUp(self) -> None:
+        """Load the command helper independently of workload dependencies."""
+        spec = importlib.util.spec_from_file_location("nsys", EXAMPLES_RUNNER_PATH.parent / "nsys.py")
+        self.nsys = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "dont_write_bytecode", True):
+            spec.loader.exec_module(self.nsys)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.dict(sys.modules, {"nsys": self.nsys}).start()
+
+    def test_scopes_preserve_arguments_and_prepared_environment(self) -> None:
+        """Capture the measured range only when requested, keeping workload arguments verbatim."""
+        with tempfile.TemporaryDirectory() as directory:
+            for scope in ("benchmark", "full"):
+                with self.subTest(scope=scope):
+                    environment = {"PATH": directory, "PYTHONPATH": "prepared dependencies"}
+                    command = ["python", "a benchmark.py", "--output", "result with spaces.json"]
+                    profiler_options = ("sample=none", "session-new=session with spaces")
+                    with mock.patch.object(self.nsys.shutil, "which", return_value="/tools/nsys") as which:
+                        launched, report = self.nsys.prepare_nsys_command(
+                            command,
+                            environment,
+                            scope=scope,
+                            output=Path(directory) / "profile.v1",
+                            options=profiler_options,
+                        )
+                    which.assert_called_once_with("nsys", path=directory)
+                    expected_tail = [*(f"--{option}" for option in profiler_options), *command]
+                    self.assertEqual(launched[-len(expected_tail) :], expected_tail)
+                    self.assertEqual(report, Path(directory) / "profile.v1.nsys-rep")
+                    self.assertEqual(environment["PYTHONPATH"], "prepared dependencies")
+                    self.assertEqual("--capture-range=nvtx" in launched, scope == "benchmark")
+                    if scope == "benchmark":
+                        self.assertIn("--nvtx-capture=MEASURE@isaacsim.performance.benchmarking", launched)
+                        self.assertEqual(environment["NSYS_NVTX_PROFILER_REGISTER_ONLY"], "0")
+                    else:
+                        self.assertNotIn("NSYS_NVTX_PROFILER_REGISTER_ONLY", environment)
+
+    def test_custom_trace_replaces_default(self) -> None:
+        """Emit exactly one trace option so Nsight accepts custom trace selection."""
+        with tempfile.TemporaryDirectory() as directory:
+            for options, expected in (
+                ((), "--trace=nvtx,cuda"),
+                (("trace=nvtx,cuda,vulkan",), "--trace=nvtx,cuda,vulkan"),
+            ):
+                with (
+                    self.subTest(options=options),
+                    mock.patch.object(self.nsys.shutil, "which", return_value="/tools/nsys"),
+                ):
+                    command, _ = self.nsys.prepare_nsys_command(
+                        ["workload"], {}, scope="full", output=Path(directory) / "report", options=options
+                    )
+                self.assertEqual([arg for arg in command if arg.startswith("--trace=")], [expected])
+
+    def test_missing_profiler_and_existing_report_fail_before_launch(self) -> None:
+        """Give actionable failures and preserve an existing report."""
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "capture.nsys-rep"
+            with mock.patch.object(self.nsys.shutil, "which", return_value=None):
+                with self.assertRaises(FileNotFoundError):
+                    self.nsys.prepare_nsys_command(["workload"], {}, scope="full", output=report)
+            report.write_text("previous report", encoding="utf-8")
+            with mock.patch.object(self.nsys.shutil, "which", return_value="/tools/nsys"):
+                with self.assertRaises(FileExistsError):
+                    self.nsys.prepare_nsys_command(["workload"], {}, scope="full", output=report)
+            self.assertEqual(report.read_text(encoding="utf-8"), "previous report")
+
+    def test_runner_profiles_inside_pixi_and_preserves_exit_status(self) -> None:
+        """Use the existing child process, working directory, dependency wrapper, and exit handling."""
+        cases = ((0, True, False), (0, True, True), (7, False, False), (0, False, False))
+        for returncode, produces_report, default_output in cases:
+            with (
+                self.subTest(returncode=returncode, report=produces_report, default_output=default_output),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                output = None if default_output else root / "profile"
+                build_dir = root / "build"
+                example = SimpleNamespace(
+                    id="demo",
+                    root=root,
+                    run=SimpleNamespace(arguments=()),
+                    requirements=SimpleNamespace(cpp_packages=("dependency",)),
+                )
+                dependencies = SimpleNamespace(pixi=Path("/tools/pixi"), manifest=root / "pixi.toml")
+                environment = {"PATH": directory, "PYTHONPATH": "prepared dependencies"}
+                process = mock.Mock()
+                process.wait.return_value = returncode
+
+                def launch(command: list[str], **kwargs: object) -> mock.Mock:
+                    if produces_report:
+                        report = Path(
+                            next(value.removeprefix("--output=") for value in command if value.startswith("--output="))
+                        )
+                        report.write_text("recorded timeline", encoding="utf-8")
+                    return process
+
+                with (
+                    mock.patch.object(examples_runner, "_create_runtime_environment", return_value=environment),
+                    mock.patch.object(examples_runner, "_create_run_command", return_value=["workload", "two words"]),
+                    mock.patch.object(self.nsys.shutil, "which", return_value="/tools/nsys"),
+                    mock.patch.object(examples_runner.subprocess, "Popen", side_effect=launch) as popen,
+                ):
+                    if returncode == 0 and not produces_report:
+                        with self.assertRaises(examples_runner.ExampleError):
+                            examples_runner._run_example(
+                                example,
+                                build_dir,
+                                (),
+                                cpp_dependencies=dependencies,
+                                nsys_scope="benchmark",
+                                nsys_output=output,
+                                nsys_options=("sample=none", "cpuctxsw=none"),
+                            )
+                    else:
+                        self.assertEqual(
+                            examples_runner._run_example(
+                                example,
+                                build_dir,
+                                (),
+                                cpp_dependencies=dependencies,
+                                nsys_scope="benchmark",
+                                nsys_output=output,
+                                nsys_options=("sample=none", "cpuctxsw=none"),
+                            ),
+                            returncode,
+                        )
+                popen.assert_called_once()
+                launched = popen.call_args.args[0]
+                self.assertEqual(launched[0], str(dependencies.pixi))
+                self.assertEqual(launched[launched.index("--") + 1], str(Path("/tools/nsys").absolute()))
+                self.assertEqual(launched[-4:], ["--sample=none", "--cpuctxsw=none", "workload", "two words"])
+                self.assertEqual(popen.call_args.kwargs["cwd"], root)
+                self.assertEqual(popen.call_args.kwargs["env"]["PYTHONPATH"], "prepared dependencies")
+                process.wait.assert_called_once_with()
+
+    def test_runner_parser_keeps_workload_options_after_separator(self) -> None:
+        """Runner flags precede the example; everything after it remains workload input."""
+        parser = examples_runner._create_argument_parser(Path.cwd() / "build")
+        arguments = parser.parse_args(
+            [
+                "run",
+                "--nsys",
+                "--nsys-scope",
+                "full",
+                "--nsys-output",
+                "trace.v1",
+                "--nsys-option",
+                "sample=none",
+                "--nsys-option",
+                "session-new=session with spaces",
+                "demo",
+                "--",
+                "--nsys",
+            ]
+        )
+        self.assertTrue(arguments.nsys)
+        self.assertEqual(arguments.nsys_scope, "full")
+        self.assertEqual(arguments.nsys_output, Path("trace.v1"))
+        self.assertEqual(arguments.nsys_option, ["sample=none", "session-new=session with spaces"])
+        self.assertEqual(arguments.arguments, ["--nsys"])
 
 
 if __name__ == "__main__":

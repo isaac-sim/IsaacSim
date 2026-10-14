@@ -377,13 +377,22 @@ class TestNewtonArticulationView(omni.kit.test.AsyncTestCase):
             f"Position targets shape should be ({articulations.count}, {articulations.max_dofs})",
         )
 
-        # Modify all position targets
+        # Use distinct values so a one-coordinate shift cannot pass accidentally.
         modified_targets = initial_targets_np.copy()
-        modified_targets[0, :] = 0.1
+        modified_targets[0, :] = np.arange(articulations.max_dofs, dtype=np.float32) + 0.25
 
-        # Set modified values into simulator
+        # Set modified values into simulator.
         targets_wp = wp.from_numpy(modified_targets, dtype=wp.float32, device=self.wp_device)
         articulations.set_dof_position_targets(targets_wp, indices)
+
+        # Newton 1.6 position targets use joint-coordinate layout. Inspect the
+        # underlying buffer because a set/get round trip alone could share the
+        # same incorrect velocity-DOF map on both paths.
+        position_indices = articulations._backend.dof_position_indices.numpy()
+        axis_indices = articulations._backend.dof_axis_indices.numpy()
+        self.assertFalse(np.array_equal(position_indices, axis_indices))
+        target_buffer = self.newton_stage.control.joint_target_q.numpy()
+        np.testing.assert_allclose(target_buffer[position_indices], modified_targets.reshape(-1), atol=1e-5)
 
         # Check immediately before step - should match exactly (strict tolerance)
         immediate_targets = articulations.get_dof_position_targets().numpy()

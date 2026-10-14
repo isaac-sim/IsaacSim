@@ -643,6 +643,12 @@ public:
     void release() override;
 
 protected:
+    /// Returns preallocated device storage for mask-to-index conversion, or null for CPU views.
+    virtual int* _getDeviceIndexScratch() const
+    {
+        return nullptr;
+    }
+
     /// Notifies the Newton model that joint DOF properties have been modified externally.
     void _notifyJointDofPropertiesChanged();
     /// Syncs CTRL_DIRECT actuator gains from the cached stiffness/damping arrays.
@@ -657,6 +663,10 @@ protected:
     void _updateInverseMasses();
     /// Recomputes inverse inertia array from the forward inertia array.
     void _updateInverseInertias();
+    /// Return whether incoming joint force data was enabled before state creation.
+    bool _hasJointForceOutput() const;
+    /// Evaluate and cache the motion-subspace columns used to project joint wrenches.
+    bool _evaluateMotionSubspaces() const;
 
     /// Resolves an index tensor to a list of articulation indices, writing into the
     /// pre-allocated m_scratchViewIndices member to avoid per-call allocation.
@@ -710,8 +720,18 @@ protected:
                                    std::vector<int>& srcOffsets,
                                    std::vector<int>& dstIndices) const;
 
+    /**
+     * @brief Checks that the cached Warp pointers still address the Newton stage's current model and state.
+     * @details The Newton stage rebuilds ``model``, ``control`` and ``state_0`` whenever it re-initializes (for example
+     *          after a USD change). The view is bound to the objects it was created against; once the stage holds
+     *          different ones the view is invalidated for good and has to be recreated.
+     * @return True while the view is bound to the stage's current model and state.
+     */
+    bool _checkBinding() const;
+
     py::object m_newtonStage; ///< Newton stage object backing the view.
-    py::object m_model; ///< Newton model object backing the view.
+    mutable py::object m_model; ///< Newton model object the view is bound to; released once invalidated.
+    mutable py::object m_boundState; ///< Newton ``state_0`` object the view is bound to; released once invalidated.
 
     uint32_t m_count; ///< Number of articulations in the view.
     uint32_t m_maxLinks; ///< Maximum link count across all articulations.
@@ -723,6 +743,7 @@ protected:
     std::vector<int> m_dofPosIndices; ///< [count * maxDofs] → model.joint_q index, -1 = padding.
     std::vector<int> m_dofVelIndices; ///< [count * maxDofs] → model.joint_qd index, -1 = padding.
     std::vector<int> m_dofAxisIndices; ///< [count * maxDofs] → model.joint_axis index, -1 = padding.
+    std::vector<int> m_dofBodyIndices; ///< [count * maxDofs] → child body index, -1 = padding.
     std::vector<int> m_rootBodyIndices; ///< [count] → model body index for each root body.
     std::vector<int> m_rootJointIndices; ///< [count] → model joint index for each root joint.
     std::vector<int> m_rootJointQStartIndices; ///< [count] → joint_q_start offset for root joint.
@@ -730,6 +751,7 @@ protected:
     std::vector<std::vector<int>> m_linkIndicesPerArticulation; ///< Model body indices for each link, grouped per
                                                                 ///< articulation.
     std::vector<int> m_linkFlatIndices; ///< [count * maxLinks] → model body index, -1 = padding.
+    std::vector<int> m_linkJointFlatIndices; ///< [count * maxLinks] → inbound model joint index, -1 = root/padding.
 
     std::vector<std::string> m_articulationPrimPaths; ///< USD prim path of each articulation.
     std::vector<std::vector<std::string>> m_articulationPaths; ///< USD prim paths associated with each articulation.
@@ -745,8 +767,9 @@ protected:
 
     mutable std::vector<uint32_t> m_scratchViewIndices; ///< Scratch buffer reused to resolve view indices without
                                                         ///< per-call allocation.
+    std::vector<uint32_t> m_scratchMaskIndices; ///< Scratch buffer reused to resolve masks to view indices.
 
-    bool m_cacheValid = false; ///< True after _cacheWarpPointers() succeeds.
+    mutable bool m_cacheValid = false; ///< True after _cacheWarpPointers() succeeds, until the view is invalidated.
     int m_modelDeviceOrdinal = -1; ///< Device of the Newton model's Warp arrays.
     std::string m_modelDeviceString; ///< Canonical Warp device string for the Newton model.
     size_t m_totalBodyCount = 0; ///< Total body count in the Newton model.
@@ -757,6 +780,8 @@ protected:
     mutable float* m_cachedBodyQ = nullptr; ///< Cached pointer to the body q data.
     mutable float* m_cachedBodyQd = nullptr; ///< Cached pointer to the body qd data.
     mutable float* m_cachedBodyF = nullptr; ///< Cached pointer to the body f data.
+    mutable float* m_cachedBodyParentForce = nullptr; ///< Nullable pointer to optional incoming joint wrenches.
+    mutable float* m_cachedMotionSubspaces = nullptr; ///< Cached motion-subspace columns indexed by model DOF.
     float* m_cachedJointTargetKe = nullptr; ///< Cached pointer to the joint target ke data.
     float* m_cachedJointTargetKd = nullptr; ///< Cached pointer to the joint target kd data.
     float* m_cachedJointEffortLimit = nullptr; ///< Cached pointer to the joint effort limit data.
@@ -773,6 +798,12 @@ protected:
     float* m_cachedBodyInverseInertia = nullptr; ///< Cached pointer to the body inverse inertia data.
     float* m_cachedBodyCenterOfMass = nullptr; ///< Cached pointer to the body center of mass data.
     float* m_cachedJointXp = nullptr; ///< model.joint_X_p — parent transform per joint (7 floats each).
+    float* m_cachedJointXc = nullptr; ///< model.joint_X_c — child transform per joint (7 floats each).
+    float* m_cachedJointFriction = nullptr; ///< model.joint_friction — dry friction effort per joint.
+
+    /// Computes generalized compensation forces, including the floating-root wrench when present.
+    bool _getCompensationForces(const TensorDesc* dstTensor, bool gravity) const;
+    mutable py::object m_compensationBuffer = py::none(); ///< Owns inverse-dynamics scratch state and output arrays.
 
     /// python buffers, cached for performance
     mutable py::object m_jacobianBuffer = py::none();

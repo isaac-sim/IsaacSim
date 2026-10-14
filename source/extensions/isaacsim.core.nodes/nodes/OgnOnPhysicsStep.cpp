@@ -45,15 +45,16 @@ namespace nodes
 omni::graph::core::INode* g_iNode;
 omni::physics::IPhysicsSimulation* g_physicsSimulationInterface;
 omni::physics::IPhysics* g_physicsInterface;
+struct HandleIdPair
+{
+    GraphHandle graphHandle{};
+    GraphInstanceID instanceId{};
+};
 struct PhysicsStepData
 {
     std::vector<NodeHandle> nodes;
     omni::physics::SubscriptionId stepSubscription = omni::physics::kInvalidSubscriptionId;
-};
-struct HandleIdPair
-{
-    GraphHandle graphHandle;
-    GraphInstanceID instanceId;
+    HandleIdPair graphHandlePair;
 };
 namespace
 {
@@ -82,16 +83,18 @@ public:
 
         state.m_startTime = std::chrono::high_resolution_clock::now();
     }
-    static void subscribeGraphToStepEvents(PhysicsStepData& data, HandleIdPair* graphHandlePairPtr)
+    static void subscribeGraphToStepEvents(PhysicsStepData& data)
     {
         if (data.stepSubscription != omni::physics::kInvalidSubscriptionId)
         {
             g_physicsSimulationInterface->unsubscribePhysicsOnStepEvents(data.stepSubscription);
         }
+        // A graph subscription can outlive the node that first created it, so capture its identifiers by value.
+        const HandleIdPair graphHandlePair = data.graphHandlePair;
         data.stepSubscription = g_physicsSimulationInterface->subscribePhysicsOnStepEvents(
             false, 0,
-            [graphHandlePairPtr](float dt, const omni::physics::PhysicsStepContext&)
-            { onPhysicsStep(dt, graphHandlePairPtr); });
+            [graphHandlePair](float dt, const omni::physics::PhysicsStepContext&)
+            { onPhysicsStep(dt, graphHandlePair); });
     }
 
     static void onSimulationRegistryEvent(omni::physics::SimulationRegistryEventType::Enum eventType,
@@ -107,9 +110,7 @@ public:
         {
             if (!entry.second.nodes.empty())
             {
-                NodeObj node = g_iNode->getNodeFromHandle(entry.second.nodes[0]);
-                auto& state = OgnOnPhysicsStepDatabase::sSharedState<OgnOnPhysicsStep>(node);
-                subscribeGraphToStepEvents(entry.second, &state.m_graphHandlePair);
+                subscribeGraphToStepEvents(entry.second);
             }
         }
     }
@@ -157,8 +158,9 @@ public:
             if (g_graphsWithStepNode.find(graphObj.graphHandle) == g_graphsWithStepNode.end())
             {
                 g_graphsWithStepNode[graphObj.graphHandle] = PhysicsStepData();
-                state.m_graphHandlePair = HandleIdPair{ graphObj.graphHandle, instanceId };
-                subscribeGraphToStepEvents(g_graphsWithStepNode[graphObj.graphHandle], &state.m_graphHandlePair);
+                g_graphsWithStepNode[graphObj.graphHandle].graphHandlePair =
+                    HandleIdPair{ graphObj.graphHandle, instanceId };
+                subscribeGraphToStepEvents(g_graphsWithStepNode[graphObj.graphHandle]);
             }
             g_graphsWithStepNode[graphObj.graphHandle].nodes.push_back(nodeObj.nodeHandle);
             state.m_initialized = true;
@@ -208,12 +210,10 @@ public:
     }
 
 
-    static void onPhysicsStep(float timeElapsed, HandleIdPair* idpair)
+    static void onPhysicsStep(float timeElapsed, const HandleIdPair& graphHandlePair)
     {
         CARB_PROFILE_ZONE(0, "[IsaacSim] OgnOnPhysicsStep::onPhysicsStep");
-        auto graphHandle = idpair->graphHandle;
-        auto instanceId = idpair->instanceId;
-        auto graphData = g_graphsWithStepNode.find(graphHandle);
+        auto graphData = g_graphsWithStepNode.find(graphHandlePair.graphHandle);
         // Sanity check if graph exists
         if (graphData != g_graphsWithStepNode.end())
         {
@@ -226,7 +226,8 @@ public:
                 for (auto handle : graphData->second.nodes)
                 {
                     NodeObj currentNode = g_iNode->getNodeFromHandle(handle);
-                    auto& state = OgnOnPhysicsStepDatabase::sPerInstanceState<OgnOnPhysicsStep>(currentNode, instanceId);
+                    auto& state = OgnOnPhysicsStepDatabase::sPerInstanceState<OgnOnPhysicsStep>(
+                        currentNode, graphHandlePair.instanceId);
                     state.m_dt = timeElapsed;
                     state.m_isSet = true;
                 }
@@ -264,7 +265,6 @@ private:
     bool m_initialized = false;
     bool m_isSet = false;
     std::chrono::time_point<std::chrono::high_resolution_clock> m_startTime;
-    HandleIdPair m_graphHandlePair;
     carb::eventdispatcher::ObserverGuard m_timelineEventSub;
 };
 

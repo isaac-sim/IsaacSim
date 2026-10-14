@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -28,18 +29,34 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
+import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+_STAGING_MANIFEST_SPEC = importlib.util.spec_from_file_location(
+    "isaacsim_wheel_staging_manifest", Path(__file__).with_name("wheel_staging_manifest.py")
+)
+if _STAGING_MANIFEST_SPEC is None or _STAGING_MANIFEST_SPEC.loader is None:
+    raise RuntimeError("Cannot load wheel staging manifest helpers")
+_STAGING_MANIFEST = importlib.util.module_from_spec(_STAGING_MANIFEST_SPEC)
+_STAGING_MANIFEST_SPEC.loader.exec_module(_STAGING_MANIFEST)
+
+_PATHS_SPEC = importlib.util.spec_from_file_location(
+    "isaacsim_wheel_staging_paths", Path(__file__).with_name("wheel_staging_paths.py")
+)
+if _PATHS_SPEC is None or _PATHS_SPEC.loader is None:
+    raise RuntimeError("Cannot load wheel staging path helpers")
+_PATHS = importlib.util.module_from_spec(_PATHS_SPEC)
+_PATHS_SPEC.loader.exec_module(_PATHS)
 
 LIBRARIES_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = LIBRARIES_DIRECTORY.parents[1]
 LIBRARY_BUILD_ROOT = REPOSITORY_ROOT / "_cmake_build"
 LIBRARY_ARTIFACT_ROOT = LIBRARY_BUILD_ROOT / "isaacsim-libraries-artifacts"
 WINDOWS_TOOLCHAIN_DIRECTORY = REPOSITORY_ROOT / "_build" / "host-deps"
-CARRIER_ARTIFACT_ROOT = LIBRARY_BUILD_ROOT / "module-carrier-artifacts"
+EXTENSION_WHEEL_ARTIFACT_ROOT = LIBRARY_BUILD_ROOT / "extension-wheel-artifacts"
 DEPENDENCY_MANIFEST = REPOSITORY_ROOT / "deps" / "isaacsim-libraries.packman.xml"
 _EXTENSION_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
 _DISTRIBUTION_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -82,6 +99,7 @@ CONFIGURE_CONTEXT_FILE = "configure-context.json"
 DEVELOPER_ENVIRONMENT_DIRECTORY = "developer-environment"
 DEVELOPER_ENVIRONMENT_LOCK_SUFFIX = "developer-environment.lock"
 DEVELOPER_ENVIRONMENT_SURFACES = ("runtime", "development", "python")
+SOURCE_BUILD_METRICS_FILE = "source-build-metrics.json"
 ARTIFACT_INPUT_PATHS = (
     Path("pixi.toml"),
     Path("pixi.lock"),
@@ -110,6 +128,37 @@ class _BuildProfile:
     python_enabled: bool
     bindings_enabled: bool
     warnings_as_errors: bool = False
+
+
+def _directory_storage(path: Path) -> dict[str, int]:
+    """Measure unique regular files in a directory tree.
+
+    Args:
+        path: Directory to measure.
+
+    Returns:
+        Logical size, allocated disk size, and unique file count.
+    """
+    logical_size = 0
+    disk_size = 0
+    file_count = 0
+    seen_files: set[tuple[int, int]] = set()
+    for candidate in path.rglob("*"):
+        if not candidate.is_file() or candidate.is_symlink():
+            continue
+        stat = candidate.stat()
+        identity = (stat.st_dev, stat.st_ino)
+        if identity in seen_files:
+            continue
+        seen_files.add(identity)
+        logical_size += stat.st_size
+        disk_size += getattr(stat, "st_blocks", 0) * 512 or stat.st_size
+        file_count += 1
+    return {
+        "logical_size_bytes": logical_size,
+        "disk_size_bytes": disk_size,
+        "file_count": file_count,
+    }
 
 
 _BUILD_PROFILES = {
@@ -153,7 +202,11 @@ def _activate_packaged_windows_sdk(sdk_root: Path) -> None:
         library_root /= version
         binary_root /= version
 
-    include_paths = (include_root / "ucrt", include_root / "um", include_root / "shared")
+    include_paths = (
+        include_root / "ucrt",
+        include_root / "um",
+        include_root / "shared",
+    )
     library_paths = (library_root / "ucrt" / "x64", library_root / "um" / "x64")
     binary_path = binary_root / "x64"
     required_paths = (
@@ -219,7 +272,10 @@ def _windows_environment_value(environment: dict[str, str], variable: str) -> st
         The resulting value.
     """
     variable = variable.casefold()
-    return next((value for name, value in environment.items() if name.casefold() == variable), "")
+    return next(
+        (value for name, value in environment.items() if name.casefold() == variable),
+        "",
+    )
 
 
 def activate_packaged_windows_debug_runtime(toolchain_root: Path, sdk_root: Path) -> None:
@@ -598,9 +654,13 @@ def _configure_context(environment: dict[str, str] | None = None) -> dict[str, o
     effective_environment = os.environ if environment is None else environment
     return {
         "schema_version": 1,
-        "execution_environment": "linbuild" if "LINBUILD_EMBEDDED" in effective_environment else "host",
+        "execution_environment": ("linbuild" if "LINBUILD_EMBEDDED" in effective_environment else "host"),
         "platform": sys.platform,
         "machine": platform.machine().lower(),
+        "linux_toolchain": (
+            effective_environment.get("ISAACSIM_PIXI_BUILD_PREFIX") if sys.platform == "linux" else None
+        ),
+        "linux_toolchain_lock": (_file_digest(REPOSITORY_ROOT / "pixi.lock") if sys.platform == "linux" else None),
     }
 
 
@@ -998,7 +1058,11 @@ def _relocate_cmake_metadata(
     cache = build_directory / "CMakeCache.txt"
     metadata_files = ((cache,) if cache.is_file() else ()) + tuple(
         path
-        for filename in ("CTestTestfile.cmake", "cmake_install.cmake", "InstallScripts.json")
+        for filename in (
+            "CTestTestfile.cmake",
+            "cmake_install.cmake",
+            "InstallScripts.json",
+        )
         for path in build_directory.rglob(filename)
     )
     if not metadata_files:
@@ -1009,7 +1073,12 @@ def _relocate_cmake_metadata(
     for path in metadata_files:
         content = path.read_text(encoding="utf-8")
         already_relocated = already_relocated or any(
-            prefix in content for prefix in (destination_prefix, native_destination_prefix, escaped_destination_prefix)
+            prefix in content
+            for prefix in (
+                destination_prefix,
+                native_destination_prefix,
+                escaped_destination_prefix,
+            )
         )
         updated = content.replace(source_prefix, destination_prefix)
         updated = updated.replace(native_source_prefix, native_destination_prefix)
@@ -1095,6 +1164,15 @@ def _configure(
                 f"-DCMAKE_CXX_COMPILER={msvc_compiler}",
             )
         )
+    elif sys.platform == "linux":
+        compiler = pixi_build_prefix / "bin" / f"{platform.machine().lower()}-conda-linux-gnu"
+        command.extend(
+            (
+                f"-DCMAKE_C_COMPILER={compiler}-gcc",
+                f"-DCMAKE_CXX_COMPILER={compiler}-g++",
+                f"-DCMAKE_CUDA_HOST_COMPILER={compiler}-g++",
+            )
+        )
     command.append(
         "-DISAACSIM_EXTENSION_USD_ROOT="
         if extension_usd_root is None
@@ -1149,6 +1227,7 @@ def _run_tests(
     configuration: str,
     junit_output: Path | None,
     timeout: int | None,
+    test_jobs: int | None,
     test_regex: str | None,
     exclude_test_regex: str | None,
 ) -> None:
@@ -1160,6 +1239,7 @@ def _run_tests(
         configuration: CMake build type.
         junit_output: Optional JUnit report path.
         timeout: Optional per-test timeout in seconds.
+        test_jobs: Optional parallel test job count.
         test_regex: Optional regular expression selecting CTest tests by name.
         exclude_test_regex: Optional regular expression excluding CTest tests by name.
 
@@ -1190,6 +1270,8 @@ def _run_tests(
         command.extend(("--output-junit", junit_output))
     if timeout is not None:
         command.extend(("--timeout", timeout))
+    if test_jobs is not None:
+        command.extend(("--parallel", test_jobs))
     if test_regex is not None:
         command.extend(("-R", test_regex))
     if exclude_test_regex is not None:
@@ -1232,7 +1314,7 @@ def _build_wheels(
         "--cmake",
         cmake,
         "--output-dir",
-        output_directory.resolve() if output_directory else LIBRARY_ARTIFACT_ROOT / configuration.lower(),
+        (output_directory.resolve() if output_directory else LIBRARY_ARTIFACT_ROOT / configuration.lower()),
         "--build-deps-dir",
         python_build_dependencies,
     ]
@@ -1243,8 +1325,38 @@ def _build_wheels(
     _run(command, environment={"PYTHONPATH": str(python_build_dependencies)})
 
 
-def _load_carrier_distribution(extension: str) -> str:
-    """Read the module distribution carried by one Kit extension.
+def _validate_wheelhouse(
+    python: Path,
+    wheel_directory: Path,
+    metrics_output: Path,
+    runtime_dependencies: Path,
+    schema_dependencies: Path,
+) -> None:
+    """Install and validate a wheelhouse with the pinned module interpreter.
+
+    Args:
+        python: Module Python executable.
+        wheel_directory: Directory containing wheel artifacts.
+        metrics_output: Install metrics output path.
+        runtime_dependencies: Locked runtime dependency site-packages.
+        schema_dependencies: Locked schema dependency site-packages.
+    """
+    python_path = os.pathsep.join((str(runtime_dependencies), str(schema_dependencies)))
+    _run(
+        [
+            python,
+            "-s",
+            LIBRARIES_DIRECTORY / "packaging" / "validate_wheelhouse.py",
+            wheel_directory.resolve(),
+            "--metrics-output",
+            metrics_output.resolve(),
+        ],
+        environment={"PYTHONPATH": python_path},
+    )
+
+
+def _load_wheel_distribution(extension: str) -> str:
+    """Read the module distribution staged in one Kit extension.
 
     Args:
         extension: Extension directory name below ``source/extensions``.
@@ -1253,21 +1365,18 @@ def _load_carrier_distribution(extension: str) -> str:
         Registered module distribution name.
     """
     if _EXTENSION_NAME_PATTERN.fullmatch(extension) is None:
-        raise RuntimeError(f"Invalid carrier extension name: {extension}")
-    path = REPOSITORY_ROOT / "source" / "extensions" / extension / "module-carrier.toml"
-    if not path.is_file():
-        raise RuntimeError(f"Carrier manifest is missing: {path}")
-    with path.open("rb") as stream:
-        document = tomllib.load(stream)
-    carrier = document.get("carrier")
-    distribution = carrier.get("distribution") if isinstance(carrier, dict) else None
+        raise RuntimeError(f"Invalid extension name: {extension}")
+    path = REPOSITORY_ROOT / "source" / "extensions" / extension / "wheel-staging.toml"
+    document = _STAGING_MANIFEST.read_manifest(path)
+    wheel = document.get("wheel")
+    distribution = wheel.get("distribution") if isinstance(wheel, dict) else None
     if not isinstance(distribution, str) or _DISTRIBUTION_NAME_PATTERN.fullmatch(distribution) is None:
-        raise RuntimeError(f"{path} must define a lowercase underscore-separated [carrier].distribution")
+        raise RuntimeError(f"{path} must define a lowercase underscore-separated [wheel].distribution")
     return distribution
 
 
-def _load_carrier_wheel_variant(extension: str) -> str | None:
-    """Read the optional wheel payload variant carried by one Kit extension.
+def _load_wheel_variant(extension: str) -> str | None:
+    """Read the optional wheel payload variant selected by one Kit extension.
 
     Args:
         extension: Extension values.
@@ -1275,17 +1384,16 @@ def _load_carrier_wheel_variant(extension: str) -> str | None:
     Returns:
         The resulting value.
     """
-    path = REPOSITORY_ROOT / "source" / "extensions" / extension / "module-carrier.toml"
-    with path.open("rb") as stream:
-        document = tomllib.load(stream)
-    carrier = document.get("carrier")
-    variant = carrier.get("wheel-variant") if isinstance(carrier, dict) else None
+    path = REPOSITORY_ROOT / "source" / "extensions" / extension / "wheel-staging.toml"
+    document = _STAGING_MANIFEST.read_manifest(path)
+    wheel = document.get("wheel")
+    variant = wheel.get("wheel-variant") if isinstance(wheel, dict) else None
     if variant is not None and (not isinstance(variant, str) or re.fullmatch(r"[a-z][a-z0-9]*", variant) is None):
-        raise RuntimeError(f"{path} [carrier].wheel-variant must be a lowercase identifier")
+        raise RuntimeError(f"{path} [wheel].wheel-variant must be a lowercase identifier")
     return variant
 
 
-def _stage_carrier(
+def _stage_extension_wheel(
     cmake: Path,
     python: Path,
     build_directory: Path,
@@ -1307,7 +1415,7 @@ def _stage_carrier(
         [
             python,
             "-s",
-            LIBRARIES_DIRECTORY / "tools" / "stage_carrier.py",
+            LIBRARIES_DIRECTORY / "tools" / "stage_extension_wheel.py",
             "--repo-root",
             REPOSITORY_ROOT,
             "--extension",
@@ -1360,7 +1468,11 @@ def _parse_arguments() -> argparse.Namespace:
         help="Feature profile to configure.",
     )
     parser.add_argument("--test", action="store_true", help="Run CTest after building.")
-    parser.add_argument("--coverage", action="store_true", help="Instrument supported native targets for coverage.")
+    parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help="Instrument supported native targets for coverage.",
+    )
     parser.add_argument(
         "--test-only",
         action="store_true",
@@ -1377,6 +1489,11 @@ def _parse_arguments() -> argparse.Namespace:
         help="Maximum seconds for each CTest test; requires --test or --test-only.",
     )
     parser.add_argument(
+        "--test-jobs",
+        type=int,
+        help="Maximum parallel CTest jobs; requires --test or --test-only.",
+    )
+    parser.add_argument(
         "--test-regex",
         help="Run only CTest tests whose names match this regular expression; requires --test or --test-only.",
     )
@@ -1387,6 +1504,16 @@ def _parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--wheel", action="store_true", help="Assemble Python wheels after building.")
     parser.add_argument(
+        "--validate-wheelhouse",
+        type=Path,
+        help="Install and validate an existing wheelhouse without configuring or building libraries.",
+    )
+    parser.add_argument(
+        "--install-metrics-output",
+        type=Path,
+        help="Write metrics from --validate-wheelhouse to this JSON path.",
+    )
+    parser.add_argument(
         "--group",
         action="append",
         default=[],
@@ -1394,10 +1521,11 @@ def _parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", type=Path, help="Wheel output directory.")
     parser.add_argument(
+        "--stage-wheel",
         "--carrier",
         action="append",
         default=[],
-        help="Build and stage a module carrier extension; repeat as needed.",
+        help="Build and stage a library wheel in a Kit extension; repeat as needed.",
     )
     parser.add_argument(
         "--pull-only",
@@ -1416,9 +1544,11 @@ def _parse_arguments() -> argparse.Namespace:
         help="Select locked or minimum Python build/test dependencies.",
     )
     arguments = parser.parse_args()
-    packaging_requested = bool(arguments.wheel or arguments.carrier)
+    packaging_requested = bool(arguments.wheel or arguments.stage_wheel)
     if arguments.jobs is not None and arguments.jobs < 1:
         parser.error("--jobs must be greater than zero")
+    if arguments.test_jobs is not None and arguments.test_jobs < 1:
+        parser.error("--test-jobs must be greater than zero")
     if arguments.test_timeout is not None and arguments.test_timeout < 1:
         parser.error("--test-timeout must be greater than zero")
     if arguments.test and arguments.test_only:
@@ -1436,14 +1566,17 @@ def _parse_arguments() -> argparse.Namespace:
         or arguments.output_dir
         or arguments.junit_output
         or arguments.test_timeout
+        or arguments.test_jobs
         or arguments.test_regex
         or arguments.exclude_test_regex
         or arguments.jobs
         or arguments.no_pull
+        or arguments.validate_wheelhouse
+        or arguments.install_metrics_output
     ):
         parser.error("--pull-only cannot be combined with build, clean, packaging, or --no-pull options")
     if arguments.generate and (arguments.test or arguments.test_only or packaging_requested):
-        parser.error("--generate cannot be combined with --test, --test-only, --wheel, or --carrier")
+        parser.error("--generate cannot be combined with --test, --test-only, --wheel, or --stage-wheel")
     if arguments.clean and (
         arguments.generate
         or arguments.test
@@ -1459,21 +1592,47 @@ def _parse_arguments() -> argparse.Namespace:
         parser.error("--test-only cannot be combined with --rebuild, --target, --coverage, packaging, or --jobs")
     if arguments.group and not arguments.wheel:
         parser.error("--group requires --wheel")
+    if arguments.install_metrics_output is not None and arguments.validate_wheelhouse is None:
+        parser.error("--install-metrics-output requires --validate-wheelhouse")
+    if arguments.validate_wheelhouse is not None and (
+        arguments.clean
+        or arguments.rebuild
+        or arguments.generate
+        or arguments.target
+        or arguments.test
+        or arguments.test_only
+        or arguments.coverage
+        or packaging_requested
+        or arguments.group
+        or arguments.output_dir
+        or arguments.junit_output
+        or arguments.test_timeout
+        or arguments.test_jobs
+        or arguments.test_regex
+        or arguments.exclude_test_regex
+        or arguments.jobs
+    ):
+        parser.error("--validate-wheelhouse cannot be combined with build, test, or packaging actions")
     if arguments.output_dir and not packaging_requested:
-        parser.error("--output-dir requires --wheel or --carrier")
+        parser.error("--output-dir requires --wheel or --stage-wheel")
     if arguments.release and arguments.debug and packaging_requested:
-        parser.error("--wheel and --carrier accept one configuration at a time")
+        parser.error("--wheel and --stage-wheel accept one configuration at a time")
     if arguments.target and packaging_requested:
-        parser.error("--target cannot be combined with --wheel or --carrier")
+        parser.error("--target cannot be combined with --wheel or --stage-wheel")
     if packaging_requested and arguments.profile != "standard":
-        parser.error("--wheel and --carrier require --profile standard")
+        parser.error("--wheel and --stage-wheel require --profile standard")
     if (arguments.test or arguments.test_only) and not _BUILD_PROFILES[arguments.profile].testing_enabled:
         parser.error(f"--test is unavailable for the {arguments.profile} profile")
     if (
-        arguments.junit_output or arguments.test_timeout or arguments.test_regex or arguments.exclude_test_regex
+        arguments.junit_output
+        or arguments.test_timeout
+        or arguments.test_jobs
+        or arguments.test_regex
+        or arguments.exclude_test_regex
     ) and not (arguments.test or arguments.test_only):
         parser.error(
-            "--junit-output, --test-timeout, --test-regex, and --exclude-test-regex require --test or --test-only"
+            "--junit-output, --test-timeout, --test-jobs, --test-regex, and --exclude-test-regex require "
+            "--test or --test-only"
         )
     if arguments.dependency_profile != "locked" and not _BUILD_PROFILES[arguments.profile].python_enabled:
         parser.error("--dependency-profile minimum requires a Python-enabled build profile")
@@ -1510,7 +1669,7 @@ def _main() -> int:
         The resulting value.
     """
     arguments = _parse_arguments()
-    packaging_requested = bool(arguments.wheel or arguments.carrier)
+    packaging_requested = bool(arguments.wheel or arguments.stage_wheel)
     exclude_test_regex = None
     if arguments.exclude_test_regex:
         exclude_test_regex = arguments.exclude_test_regex[0]
@@ -1548,13 +1707,13 @@ def _main() -> int:
                     print(f"Removing {build_directory}")
                     shutil.rmtree(build_directory)
 
-    carrier_distributions = {extension: _load_carrier_distribution(extension) for extension in arguments.carrier}
-    carrier_variants = {
-        carrier_distributions[extension]: variant
-        for extension in arguments.carrier
-        if (variant := _load_carrier_wheel_variant(extension)) is not None
+    extension_distributions = {extension: _load_wheel_distribution(extension) for extension in arguments.stage_wheel}
+    staged_wheel_variants = {
+        extension_distributions[extension]: variant
+        for extension in arguments.stage_wheel
+        if (variant := _load_wheel_variant(extension)) is not None
     }
-    wheel_groups = list(dict.fromkeys((*arguments.group, *carrier_distributions.values())))
+    wheel_groups = list(dict.fromkeys((*arguments.group, *extension_distributions.values())))
     pixi_build_prefix = _read_pixi_dependency_path(PIXI_BUILD_PREFIX_VARIABLE)
     cmake = _find_build_tool(pixi_build_prefix, host, "cmake")
 
@@ -1570,6 +1729,21 @@ def _main() -> int:
         python_runtime_dependencies = None
         python_schema_build_dependencies = None
         python_test_dependencies = None
+
+    if arguments.validate_wheelhouse is not None:
+        if python is None or python_runtime_dependencies is None or python_schema_build_dependencies is None:
+            raise RuntimeError("Wheelhouse validation requires the module Python dependency environments")
+        metrics_output = arguments.install_metrics_output or (
+            arguments.validate_wheelhouse / "wheel_install_metrics.json"
+        )
+        _validate_wheelhouse(
+            python,
+            arguments.validate_wheelhouse,
+            metrics_output,
+            python_runtime_dependencies,
+            python_schema_build_dependencies,
+        )
+        return 0
 
     python_build_dependencies = None
     if packaging_requested:
@@ -1605,6 +1779,7 @@ def _main() -> int:
                 configuration,
                 junit_output,
                 arguments.test_timeout,
+                arguments.test_jobs,
                 arguments.test_regex,
                 exclude_test_regex,
             )
@@ -1616,23 +1791,25 @@ def _main() -> int:
     for configuration, build_directory in build_directories.items():
         if arguments.output_dir:
             artifact_directory = arguments.output_dir.resolve()
-        elif arguments.carrier:
-            artifact_directory = CARRIER_ARTIFACT_ROOT / configuration.lower()
+        elif arguments.stage_wheel:
+            artifact_directory = EXTENSION_WHEEL_ARTIFACT_ROOT / configuration.lower()
         else:
             artifact_directory = LIBRARY_ARTIFACT_ROOT / configuration.lower()
         extension_usd_root = None
-        if "usd2511" in carrier_variants.values():
+        if "usd2511" in staged_wheel_variants.values():
             extension_usd_root = REPOSITORY_ROOT / "_build" / "target-deps" / "usd" / configuration.lower()
             if not (extension_usd_root / "lib" / "python" / "pxr" / "Usd" / "usdGenSchema.py").is_file():
                 raise RuntimeError(
                     f"Kit OpenUSD schema generator is missing: {extension_usd_root}. "
-                    "Run the repository dependency pull before preparing schema carriers."
+                    "Run the repository dependency pull before preparing schema wheels."
                 )
         context = _configure_context()
         refresh_reason = _configuration_refresh_reason(build_directory, context)
         if refresh_reason:
             print(f"Refreshing CMake configuration because {refresh_reason}.")
         (build_directory / ARTIFACT_STATE_FILE).unlink(missing_ok=True)
+        build_started = time.perf_counter()
+        configure_started = build_started
         _configure(
             cmake,
             ninja,
@@ -1651,17 +1828,22 @@ def _main() -> int:
             extension_usd_root=extension_usd_root,
             fresh=refresh_reason is not None,
         )
+        configure_duration = time.perf_counter() - configure_started
         _write_json_atomically(build_directory / CONFIGURE_CONTEXT_FILE, context)
         if arguments.generate:
             continue
+        compile_started = time.perf_counter()
         _build(cmake, build_directory, configuration, arguments.target, arguments.jobs)
+        compile_duration = time.perf_counter() - compile_started
         developer_environment_components = None
+        materialize_started = time.perf_counter()
         if arguments.profile == "standard" and arguments.dependency_profile == "locked" and arguments.target is None:
             developer_environment_components = _materialize_developer_environment(
                 cmake,
                 build_directory,
                 configuration,
             )
+        materialize_duration = time.perf_counter() - materialize_started
         _write_artifact_state(
             build_directory,
             configuration=configuration,
@@ -1669,6 +1851,22 @@ def _main() -> int:
             dependency_profile=arguments.dependency_profile,
             target=arguments.target,
             developer_environment_components=developer_environment_components,
+        )
+        source_build_metrics = {
+            "schema_version": 1,
+            "configuration": configuration,
+            "profile": arguments.profile,
+            "rebuild": arguments.rebuild,
+            "configure_duration_seconds": round(configure_duration, 6),
+            "compile_duration_seconds": round(compile_duration, 6),
+            "materialize_duration_seconds": round(materialize_duration, 6),
+            "total_duration_seconds": round(time.perf_counter() - build_started, 6),
+            **_directory_storage(build_directory),
+        }
+        _write_json_atomically(build_directory / SOURCE_BUILD_METRICS_FILE, source_build_metrics)
+        print(
+            f"Source library build: {source_build_metrics['total_duration_seconds']:.2f} seconds, "
+            f"{source_build_metrics['disk_size_bytes'] / (1024 * 1024 * 1024):.2f} GiB on disk"
         )
         if arguments.test:
             junit_output = arguments.junit_output
@@ -1682,12 +1880,19 @@ def _main() -> int:
                 configuration,
                 junit_output,
                 arguments.test_timeout,
+                arguments.test_jobs,
                 arguments.test_regex,
                 exclude_test_regex,
             )
         if packaging_requested:
             if python is None or python_build_dependencies is None:
                 raise RuntimeError("Wheel assembly requires the module Python dependency environment")
+            if arguments.stage_wheel and arguments.output_dir is None:
+                # Wheel artifacts are an internal handoff to `stage_extension_wheel.py`, not a persistent wheel index.
+                # Remove outputs from earlier package shapes so a newly pure-Python (or newly native) wheel cannot
+                # be mistaken for an ambiguous current build. Explicit output directories may intentionally collect
+                # wheels across invocations and remain caller-owned.
+                _PATHS.remove_generated_path(artifact_directory)
             _build_wheels(
                 cmake,
                 python,
@@ -1696,13 +1901,16 @@ def _main() -> int:
                 wheel_groups,
                 artifact_directory,
                 python_build_dependencies,
-                carrier_variants,
+                staged_wheel_variants,
             )
-        if arguments.carrier:
+            if arguments.stage_wheel and arguments.output_dir is None:
+                legacy_artifacts = LIBRARY_BUILD_ROOT / "module-carrier-artifacts" / configuration.lower()
+                _PATHS.ensure_directory_alias(legacy_artifacts, artifact_directory)
+        if arguments.stage_wheel:
             if python is None:
-                raise RuntimeError("Carrier staging requires the module Python executable")
-            for extension in arguments.carrier:
-                _stage_carrier(
+                raise RuntimeError("Wheel staging requires the module Python executable")
+            for extension in arguments.stage_wheel:
+                _stage_extension_wheel(
                     cmake,
                     python,
                     build_directory,

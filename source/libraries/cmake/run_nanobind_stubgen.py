@@ -21,19 +21,77 @@ import argparse
 import importlib
 import os
 import runpy
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
+from typing import BinaryIO, TextIO
 
 WINDOWS_DEBUG_RUNTIME_PATH_VARIABLE = "ISAACSIM_WINDOWS_DEBUG_RUNTIME_PATH"
+WINDOWS_ISOLATED_FLAG = "--windows-isolated-handles"
+
+
+def _run_with_isolated_handles(launcher_arguments: list[str]) -> int:
+    """Run stubgen in a child process that owns its standard handles.
+
+    Importing a binding starts the Omniverse runtime, which spawns the shared Hub
+    daemon. That daemon outlives stubgen and keeps every handle it inherited open,
+    so a build system reading this process' output pipe never observes end of file
+    and stalls after the stub is written. Giving the child temporary files as its
+    output leaves the daemon holding those files instead of the caller's pipes.
+
+    Args:
+        launcher_arguments: Arguments to forward to the isolated child.
+
+    Returns:
+        Exit status of the child process.
+    """
+    command = [sys.executable, "-I", str(Path(__file__).resolve()), WINDOWS_ISOLATED_FLAG, *launcher_arguments]
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=errors,
+            check=False,
+        )
+        _relay_output(output, sys.stdout)
+        _relay_output(errors, sys.stderr)
+    return completed.returncode
+
+
+def _relay_output(source: BinaryIO, stream: TextIO | None) -> None:
+    """Copy captured child output to a standard stream.
+
+    Args:
+        source: Binary file holding the captured output.
+        stream: Destination stream, or None when the process has no such stream.
+    """
+    source.seek(0)
+    data = source.read()
+    if not data or stream is None:
+        return
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        stream.write(data.decode(errors="replace"))
+    else:
+        buffer.write(data)
+    stream.flush()
 
 
 def main() -> None:
     """Configure the import environment and run nanobind stubgen."""
+    launcher_arguments = sys.argv[1:]
+    if launcher_arguments[:1] == [WINDOWS_ISOLATED_FLAG]:
+        launcher_arguments = launcher_arguments[1:]
+    elif sys.platform == "win32":
+        sys.exit(_run_with_isolated_handles(launcher_arguments))
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--binding-dir", type=Path)
     parser.add_argument("--preload-module", action="append", default=[])
     parser.add_argument("stubgen", type=Path)
-    arguments, stubgen_arguments = parser.parse_known_args()
+    arguments, stubgen_arguments = parser.parse_known_args(launcher_arguments)
 
     dll_directory_handles = []
     if sys.platform == "win32":

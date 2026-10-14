@@ -36,7 +36,7 @@ MAX_RENDER_RETRIES = 3
 # Rendered-sensor state subdirs a replay (re)generates. state/common (recorded poses) is not one of
 # them: an in-place replay reads it as its input. clear_replay_outputs() adds it back when the
 # output is a separate directory, where it is regenerated step by step.
-_RENDERED_STATE_DIRS = ("rgb", "segmentation", "depth", "normals")
+_RENDERED_STATE_DIRS = ("rgb", "segmentation", "instance_id_segmentation", "depth", "normals")
 
 
 def replay_config_from_args(source_recording: str, args: argparse.Namespace) -> dict[str, Any]:
@@ -49,10 +49,11 @@ def replay_config_from_args(source_recording: str, args: argparse.Namespace) -> 
     Returns:
         Replay settings manifest dictionary.
     """
-    return {
+    config = {
         "source_recording": os.path.abspath(source_recording),
         "self_contained": args.self_contained,
         "render_interval": args.render_interval,
+        "write_interval": args.write_interval,
         "render_rt_subframes": args.render_rt_subframes,
         "warmup_frames": args.warmup_frames,
         "max_frames": args.max_frames,
@@ -62,6 +63,7 @@ def replay_config_from_args(source_recording: str, args: argparse.Namespace) -> 
         "instance_id_segmentation_enabled": args.instance_id_segmentation_enabled,
         "normals_enabled": args.normals_enabled,
     }
+    return config
 
 
 def write_replay_config(output_path: str, replay_config: dict[str, Any]) -> None:
@@ -90,16 +92,18 @@ def _read_replay_config(output_path: str) -> dict[str, Any] | None:
     return config
 
 
-def mark_replay_complete(output_path: str, frames_rendered: int) -> None:
+def mark_replay_complete(output_path: str, frames_rendered: int, *, frames_written: int | None = None) -> None:
     """Write the replay completion marker.
 
     Args:
         output_path: Replay output directory.
         frames_rendered: Number of frames rendered during replay.
+        frames_written: Number of frames written to disk. Defaults to the rendered count.
     """
     os.makedirs(output_path, exist_ok=True)
     with open(os.path.join(output_path, COMPLETE_MARKER_NAME), "w") as f:
         f.write(f"frames_rendered: {frames_rendered}\n")
+        f.write(f"frames_written: {frames_rendered if frames_written is None else frames_written}\n")
 
 
 def is_complete(

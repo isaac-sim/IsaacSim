@@ -91,7 +91,8 @@ images = robot.state_dict_rgb()
 The UI recording callback writes **pose/state only** — no sensor readings.
 Sensor data is generated at **replay time** by `replay_scenario()` in `build.py`, which restores
 recorded poses to the stage, steps the renderer, and writes annotator outputs.  Render modalities
-(RGB, depth, segmentation, normals) are selected at replay time via `ReplayConfig`.
+(RGB, depth, semantic and instance ID segmentation, and normals) are selected at replay time via
+`ReplayConfig`.
 
 Multi-sensor output is automatic: `state_dict_rgb()` traverses the Module tree recursively,
 keying each sensor buffer by its full dotted path.  The writer uses the key as a folder name;

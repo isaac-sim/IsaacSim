@@ -29,7 +29,7 @@ add_ogn_dependencies(ogn)
 include_physx()
 includedirs {
     "%{root}/source/extensions/isaacsim.core.includes/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     "%{root}/_build/target-deps/gsl/include",
     "%{root}/_build/target-deps/usd/%{cfg.buildcfg}/include",
     "%{root}/_build/target-deps/usd_ext_physics/%{cfg.buildcfg}/include",

@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import builtins
 from collections.abc import Callable
 
 import omni.kit.app
@@ -24,7 +26,11 @@ import omni.timeline
 
 
 def update_app(*, steps: int = 1, callback: Callable[[int, int], bool | None] | None = None) -> None:
-    """Perform one or more update steps of the application.
+    """Synchronously perform one or more update steps of the application.
+
+    This function is intended for standalone workflows that own the application update loop. Use
+    :py:func:`update_app_async` from asynchronous code or the Script Editor, and schedule it with
+    :py:func:`omni.kit.async_engine.run_coroutine` from a UI callback.
 
     Args:
         steps: Number of update steps to perform.
@@ -32,6 +38,9 @@ def update_app(*, steps: int = 1, callback: Callable[[int, int], bool | None] | 
             The function should take two arguments: the current step number and the total number of steps.
             If no return value is provided, the update loop will run for the specified number of steps.
             However, if the function returns ``False``, no more update steps will be performed.
+
+    Raises:
+        RuntimeError: If the current execution context cannot safely perform a synchronous update.
 
     Example:
 
@@ -55,6 +64,25 @@ def update_app(*, steps: int = 1, callback: Callable[[int, int], bool | None] | 
         update step 2/10
         update step 3/10
     """
+    try:
+        current_task = asyncio.current_task()
+    except RuntimeError:
+        current_task = None
+        is_asyncio_loop_running = False
+    else:
+        is_asyncio_loop_running = True
+
+    # A standalone app owns its update loop. Synchronous remote execution is also safe because it runs as an
+    # event-loop callback without a current Task; that path intentionally relies on update_app() to advance Kit.
+    if current_task is not None or (
+        getattr(builtins, "ISAAC_LAUNCHED_FROM_TERMINAL", True) and not is_asyncio_loop_running
+    ):
+        raise RuntimeError(
+            "update_app() cannot safely re-enter Kit's update loop from this execution context. "
+            "Use `await update_app_async()` in asynchronous code, or schedule update_app_async() with "
+            "`omni.kit.async_engine.run_coroutine()` from synchronous UI code."
+        )
+
     for step in range(steps):
         omni.kit.app.get_app().update()
         if callback is not None:
@@ -65,7 +93,8 @@ def update_app(*, steps: int = 1, callback: Callable[[int, int], bool | None] | 
 async def update_app_async(*, steps: int = 1, callback: Callable[[int, int], bool | None] | None = None) -> None:
     """Perform one or more update steps of the application.
 
-    This function is the asynchronous version of :py:func:`update_app`.
+    This function is the asynchronous version of :py:func:`update_app`. Use it from asynchronous code,
+    the Script Editor, or schedule it with :py:func:`omni.kit.async_engine.run_coroutine` from a UI callback.
 
     Args:
         steps: Number of update steps to perform.

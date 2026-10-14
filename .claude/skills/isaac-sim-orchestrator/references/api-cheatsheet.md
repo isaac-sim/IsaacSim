@@ -3,12 +3,17 @@
 Modern public API surface for orchestrating sims. Pair with the skill files
 referenced at the end for full context.
 
-## Bootstrap
+## Standalone library process
+
+Installed `source/libraries` APIs import in a normal Python or native process;
+the `isaacsim` package prefix alone does not require Kit or `SimulationApp`.
+
+## Kit bootstrap
 
 ```python
 from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": True})
-# ALL isaacsim.* / omni.* imports MUST come after this line.
+# Kit- and extension-dependent imports come after this line.
 ```
 
 ## Stage / app utilities

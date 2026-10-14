@@ -12,7 +12,7 @@ from typing import Any
 from isaacsim.performance.benchmarking.impl.model import _BenchmarkResult
 from isaacsim.performance.benchmarking.impl.statistics import summarize_samples
 
-RESULT_SCHEMA = "isaacsim.performance.benchmarking.result.v2"
+RESULT_SCHEMA = "isaacsim.performance.benchmarking.result.v3"
 
 
 def _metric_documents(result: _BenchmarkResult) -> dict[str, Any]:

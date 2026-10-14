@@ -22,6 +22,21 @@ from .solver_config import MuJoCoSolverConfig, NewtonSolverConfig
 
 
 @dataclass
+class NewtonSolverOutputConfig:
+    """Optional outputs computed by the Newton solver during simulation steps.
+
+    Enabling an output can add state storage and per-step computation. Configure
+    the required outputs before initializing physics.
+    """
+
+    contact_forces: bool = True
+    """Whether to compute contact forces for contact tensor queries."""
+
+    link_incoming_joint_force: bool = False
+    """Whether to compute joint wrenches used by incoming-link and projected-DOF-force queries."""
+
+
+@dataclass
 class NewtonConfig:
     """Configuration for Newton physics simulation in Isaac Sim.
 
@@ -119,6 +134,9 @@ class NewtonConfig:
     # It need to be properly initialized with the correct newton solver in newton_stage's initialization
     solver_cfg: NewtonSolverConfig = field(default_factory=NewtonSolverConfig)
     """Solver-specific configuration."""
+
+    solver_outputs: NewtonSolverOutputConfig = field(default_factory=NewtonSolverOutputConfig)
+    """Optional solver-computed outputs."""
 
     # ========== Collision Pipeline Configuration ==========
 

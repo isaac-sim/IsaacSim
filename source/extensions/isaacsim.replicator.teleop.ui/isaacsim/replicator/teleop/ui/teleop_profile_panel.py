@@ -21,8 +21,11 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+import carb.eventdispatcher
 import carb.settings
+import isaacsim.core.experimental.utils.app as app_utils
 import omni.kit.window.popup_dialog
+import omni.timeline
 import omni.ui as ui
 from isaacsim.gui.components.ui_utils import get_style
 from isaacsim.replicator.teleop import (
@@ -92,6 +95,7 @@ class TeleopProfilePanel:
         self._profiles: list[tuple[str, str]] = []
         self._dir_field: ui.StringField | None = None
         self._profile_combo: ui.ComboBox | None = None
+        self._load_button: ui.Button | None = None
         self._status_label: ui.Label | None = None
         self._save_row: ui.HStack | None = None
         self._save_name_field: ui.StringField | None = None
@@ -99,6 +103,17 @@ class TeleopProfilePanel:
         self._confirm_dialog: omni.kit.window.popup_dialog.MessageDialog | None = None
         self._pending_overwrite_path: str = ""
         self._pending_delete_path: str = ""
+        event_dispatcher = carb.eventdispatcher.get_eventdispatcher()
+        self._timeline_play_sub = event_dispatcher.observe_event(
+            event_name=omni.timeline.GLOBAL_EVENT_PLAY,
+            on_event=self._on_timeline_changed,
+            observer_name="TeleopProfilePanel._on_timeline_play",
+        )
+        self._timeline_stop_sub = event_dispatcher.observe_event(
+            event_name=omni.timeline.GLOBAL_EVENT_STOP,
+            on_event=self._on_timeline_changed,
+            observer_name="TeleopProfilePanel._on_timeline_stop",
+        )
 
         self._settings.set_default_string(f"{_SETTINGS_PREFIX}/directory", "")
         self._settings.set_default_string(f"{_SETTINGS_PREFIX}/last_profile", "")
@@ -140,11 +155,11 @@ class TeleopProfilePanel:
                         width=ui.Fraction(1),
                         tooltip="Select a unified teleop profile to load",
                     )
-                    ui.Button(
+                    self._load_button = ui.Button(
                         "Load",
                         width=45,
                         clicked_fn=self._on_load_clicked,
-                        tooltip="Load the selected teleop profile into all panels and apply it to the current stage",
+                        tooltip="Stop the timeline before loading a profile into all panels and the current stage",
                     )
                     ui.Button(
                         "Save",
@@ -185,6 +200,19 @@ class TeleopProfilePanel:
                     self._status_label = ui.Label("", style={"color": CLR_DIM}, word_wrap=True)
 
         self._rescan_profiles()
+        self._sync_load_button()
+
+    def _on_timeline_changed(self, _event: object) -> None:
+        self._sync_load_button()
+
+    def on_stage_closed(self) -> None:
+        """Clear validation status tied to the previous stage while retaining profile selection."""
+        if self._status_label and self._status_label.text:
+            set_status(self._status_label, "Stage changed - revalidate profile", CLR_YELLOW)
+
+    def _sync_load_button(self) -> None:
+        if self._load_button is not None:
+            self._load_button.enabled = app_utils.is_stopped()
 
     def _rescan_profiles(self) -> None:
         if self._dir_field is None or self._profile_combo is None:
@@ -251,6 +279,10 @@ class TeleopProfilePanel:
         self._rescan_profiles()
 
     def _on_load_clicked(self) -> None:
+        if not app_utils.is_stopped():
+            set_status(self._status_label, "Stop the timeline before loading a profile", CLR_YELLOW)
+            self._sync_load_button()
+            return
         if not self._profiles or self._profile_combo is None:
             set_status(self._status_label, "No profiles available", CLR_YELLOW)
             return
@@ -385,6 +417,8 @@ class TeleopProfilePanel:
         self._dismiss_confirm_dialog()
         self._pending_overwrite_path = ""
         self._pending_delete_path = ""
+        self._timeline_play_sub = None
+        self._timeline_stop_sub = None
 
     def _dismiss_confirm_dialog(self) -> None:
         """Hide and forget any currently displayed confirmation dialog."""

@@ -1,6 +1,6 @@
 {
     "UCXPublishJointState":{
-        "version": 1,
+        "version": 2,
         "icon": "icons/isaac-sim.svg",
         "description": [
             "This node publishes joint states via UCX communication. Connect joint data from upstream nodes (e.g. Isaac Read Joint State)."
@@ -33,9 +33,9 @@
             },
             "timeoutMs": {
                 "type": "uint",
-                "description": "Timeout in milliseconds for UCX send requests. If 0, waits indefinitely.",
+                "description": "How long the node waits for a UCX send request to complete, in milliseconds. Waiting blocks graph evaluation, so 0 is not an unbounded wait: it is treated as 100 ms and reported once.",
                 "uiName": "Timeout (ms)",
-                "default": 0
+                "default": 100
             },
             "jointPositions": {
                 "type": "double[]",

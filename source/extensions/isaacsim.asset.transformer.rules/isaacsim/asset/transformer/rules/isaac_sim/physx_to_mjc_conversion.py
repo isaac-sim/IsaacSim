@@ -55,6 +55,33 @@ class PhysxToMjcConversionRule(RuleInterface):
         """
         return []
 
+    def _log_actuator_readiness(self, stage: Usd.Stage, existing_paths: set[str]) -> None:
+        """Distinguish newly generated actuators without gains from existing motors.
+
+        Args:
+            stage: Converted stage containing MuJoCo actuators.
+            existing_paths: Actuator paths present before this conversion.
+        """
+        actuators = [prim for prim in stage.Traverse() if prim.GetTypeName() == "MjcActuator"]
+        generated = [prim for prim in actuators if str(prim.GetPath()) not in existing_paths]
+        missing = [
+            prim
+            for prim in generated
+            if not prim.GetAttribute("mjc:gainPrm").HasAuthoredValue()
+            or not prim.GetAttribute("mjc:biasPrm").HasAuthoredValue()
+        ]
+        self.log_operation(
+            f"MuJoCo actuators generated: {len(generated)}; new actuators without authored gain/bias: {len(missing)}"
+        )
+        if missing:
+            examples = ", ".join(str(prim.GetPath()) for prim in missing[:3])
+            self.log_operation(
+                f"Control readiness warning: {len(missing)} new actuator(s) lack authored gain/bias "
+                f"parameters (for example, {examples}). The PhysX source drives supplied no convertible gains. "
+                "Author mjc:gainPrm and mjc:biasPrm for the intended controller and validate commanded motion. "
+                "Structural conversion completed."
+            )
+
     def process_rule(self) -> str | None:
         """Convert PhysX joints and articulation schemas to MuJoCo/Newton.
 
@@ -77,9 +104,14 @@ class PhysxToMjcConversionRule(RuleInterface):
             os.path.splitext(self.destination_path)[1].lower() in utils.USD_EXTENSIONS
         )
 
+        existing_paths = {
+            str(prim.GetPath()) for prim in source_stage.Traverse() if prim.GetTypeName() == "MjcActuator"
+        }
+
         if not destination_is_layer:
             # Edit the working stage in place; the manager saves it after all rules.
             physx_asset_to_mjc.convert_physx_asset_to_mjc(source_stage)
+            self._log_actuator_readiness(source_stage, existing_paths)
             self.log_operation("PhysxToMjcConversionRule completed")
             return None
 
@@ -101,6 +133,7 @@ class PhysxToMjcConversionRule(RuleInterface):
             overlay_stage.SetDefaultPrim(overlay_stage.GetPrimAtPath(source_default.GetPath()))
 
         physx_asset_to_mjc.convert_physx_asset_to_mjc(source_stage, delta_stage=overlay_stage)
+        self._log_actuator_readiness(overlay_stage, existing_paths)
         output_layer.Save()
         self.add_affected_stage(self.destination_path)
 

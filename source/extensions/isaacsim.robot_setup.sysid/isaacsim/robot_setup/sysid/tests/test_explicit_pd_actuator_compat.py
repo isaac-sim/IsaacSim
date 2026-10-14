@@ -25,6 +25,7 @@ from isaacsim.robot_setup.sysid.actuator_compatibility import ACTUATOR_RUNTIME_E
 from isaacsim.robot_setup.sysid.explicit_pd_actuator_compat import (
     ExplicitPdActuatorCompat,
     ExplicitPdActuatorDescriptor,
+    _actuators_by_dof_index,
     discard_session_actuator_promotions,
     discover_explicit_pd_actuators,
     promote_selected_dofs_to_session_actuators,
@@ -52,6 +53,9 @@ class _Array:
     def assign(self, values):
         self.values = np.asarray(values).copy()
 
+    def numpy(self):
+        return self.values
+
 
 class _DriveArticulation:
     def __init__(self):
@@ -76,7 +80,7 @@ class _Manager:
 
 def _actuator():
     return SimpleNamespace(
-        controller=SimpleNamespace(kp=_Array([0.0, 0.0]), kd=_Array([0.0, 0.0])),
+        drive=SimpleNamespace(kp=_Array([0.0, 0.0]), kd=_Array([0.0, 0.0])),
         delay=SimpleNamespace(delay_steps=_Array([0, 0])),
     )
 
@@ -100,6 +104,88 @@ def _stage_with_pd(*, controller_schema: str = "NewtonPDControlAPI"):
 
 
 class ExplicitPdActuatorCompatTests(omni.kit.test.AsyncTestCase):
+    async def test_maps_actuators_by_their_remapped_dof_indices(self) -> None:
+        shoulder_actuator = SimpleNamespace(indices=_Array([0, 3]))
+        wrist_actuator = SimpleNamespace(indices=_Array([2, 5]))
+        manager = SimpleNamespace(
+            articulation=SimpleNamespace(num_dofs=3),
+            actuators=[wrist_actuator, shoulder_actuator],
+            actuated_dof_indices=[0, 2],
+        )
+
+        by_dof_index = _actuators_by_dof_index(manager)
+
+        self.assertIs(by_dof_index[0], shoulder_actuator)
+        self.assertIs(by_dof_index[2], wrist_actuator)
+
+    async def test_maps_grouped_actuator_to_each_controlled_dof(self) -> None:
+        grouped_actuator = SimpleNamespace(indices=_Array([0, 2, 3, 5]))
+        manager = SimpleNamespace(
+            articulation=SimpleNamespace(num_dofs=3),
+            actuators=[grouped_actuator],
+        )
+
+        by_dof_index = _actuators_by_dof_index(manager)
+
+        self.assertIs(by_dof_index[0], grouped_actuator)
+        self.assertIs(by_dof_index[2], grouped_actuator)
+
+    async def test_create_applies_candidates_in_selected_dof_order(self) -> None:
+        stage = _stage_with_pd()
+        UsdPhysics.RevoluteJoint.Define(stage, "/World/Robot/joint2")
+        prim = stage.DefinePrim("/World/Robot/joint2_actuator", "Xform")
+        prim.AddAppliedSchema("NewtonPDControlAPI")
+        prim.CreateRelationship("newton:targets").SetTargets([Sdf.Path("/World/Robot/joint2")])
+        prim.CreateAttribute("newton:kp", Sdf.ValueTypeNames.Float).Set(20.0)
+        prim.CreateAttribute("newton:kd", Sdf.ValueTypeNames.Float).Set(5.0)
+        dof_indices = {"joint1": 0, "joint2": 1}
+        manager = _Manager(SimpleNamespace(num_dofs=2, get_dof_indices=lambda name: _Array([dof_indices[name]])))
+
+        def from_actuators(paths, configs, **kwargs):
+            manager.actuated_dof_indices = [0, 1]
+            manager.actuators = [
+                SimpleNamespace(
+                    indices=_Array([dof_indices[name], 2 + dof_indices[name]]),
+                    drive=config.controller,
+                    delay=config.delay,
+                )
+                for config, name in configs
+            ]
+            return manager
+
+        runtime = SimpleNamespace(
+            wp=SimpleNamespace(array=lambda values, **kwargs: _Array(values), float32=np.float32, int32=np.int32),
+            DrivePD=SimpleNamespace,
+            DrivePID=SimpleNamespace,
+            Delay=SimpleNamespace,
+            ClampingMaxEffort=SimpleNamespace,
+            ActuatorConfig=SimpleNamespace,
+            ArticulationActuators=SimpleNamespace(from_actuators=from_actuators),
+        )
+        compat = ExplicitPdActuatorCompat.create(
+            stage=stage,
+            articulation_root="/World/Robot",
+            articulation_paths="/World/Robot",
+            selected_dof_paths=["/World/Robot/joint2", "/World/Robot/joint1"],
+            env_count=2,
+            physics_dt=0.01,
+            max_delay_seconds=0.1,
+            runtime=runtime,
+        )
+        try:
+            compat.apply_candidate_batch(
+                stiffness_scale=np.asarray([[2.0, 3.0], [4.0, 5.0]]),
+                damping_scale=np.asarray([[3.0, 4.0], [5.0, 6.0]]),
+                delay_seconds=None,
+            )
+            joint2_actuator, joint1_actuator = manager.actuators
+            np.testing.assert_allclose(joint2_actuator.drive.kp.numpy(), [40.0, 80.0])
+            np.testing.assert_allclose(joint1_actuator.drive.kp.numpy(), [36.0, 60.0])
+            np.testing.assert_allclose(joint2_actuator.drive.kd.numpy(), [15.0, 25.0])
+            np.testing.assert_allclose(joint1_actuator.drive.kd.numpy(), [12.0, 18.0])
+        finally:
+            compat.close()
+
     async def test_discovers_supported_pd_surface_in_selected_dof_order(self) -> None:
         stage = _stage_with_pd()
 
@@ -259,8 +345,8 @@ class ExplicitPdActuatorCompatTests(omni.kit.test.AsyncTestCase):
             delay_seconds=np.asarray([[0.05], [0.11]], dtype=np.float32),
         )
 
-        np.testing.assert_allclose(actuator.controller.kp.values, [20.0, 5.0])
-        np.testing.assert_allclose(actuator.controller.kd.values, [6.0, 0.5])
+        np.testing.assert_allclose(actuator.drive.kp.values, [20.0, 5.0])
+        np.testing.assert_allclose(actuator.drive.kd.values, [6.0, 0.5])
         np.testing.assert_array_equal(actuator.delay.delay_steps.values, [5, 11])
         self.assertEqual(manager.reset_count, 1)
 

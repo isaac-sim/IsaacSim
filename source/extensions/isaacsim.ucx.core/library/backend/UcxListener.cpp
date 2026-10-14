@@ -406,6 +406,49 @@ UcxReceiveResult UCXListener::tagReceive(
     }
 }
 
+UcxReceiveResult UCXListener::tagReceiveWithRequest(void* buffer,
+                                                    size_t length,
+                                                    uint64_t tag,
+                                                    uint64_t mask,
+                                                    std::string& errorMessage,
+                                                    std::shared_ptr<ucxx::Request>& outRequest)
+{
+    try
+    {
+        std::shared_ptr<ucxx::Request> request;
+        {
+            if (m_shutdown.load())
+            {
+                errorMessage = "Listener is shutting down or shut down";
+                return UcxReceiveResult::eFailed;
+            }
+            std::lock_guard<std::mutex> lock(m_endpointMutex);
+            if (!m_endpoint)
+            {
+                errorMessage = "No client connected";
+                return UcxReceiveResult::eFailed;
+            }
+            request = m_endpoint->tagRecv(buffer, length, ucxx::Tag{ tag }, ucxx::TagMask{ mask });
+        }
+
+        if (!request)
+        {
+            errorMessage = "tagRecv returned null request";
+            return UcxReceiveResult::eNullRequest;
+        }
+
+        // Return the request handle so the caller can poll for completion without blocking
+        outRequest = request;
+        errorMessage.clear();
+        return UcxReceiveResult::eSuccess;
+    }
+    catch (const std::exception& e)
+    {
+        errorMessage = e.what();
+        return UcxReceiveResult::eException;
+    }
+}
+
 UcxReceiveResult UCXListener::tagMultiReceive(const uint64_t tag,
                                               const uint64_t tagMask,
                                               std::string& errorMessage,

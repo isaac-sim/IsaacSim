@@ -202,6 +202,11 @@ function add_cuda_dependencies()
 
     -- CUDA-specific include directory
     includedirs { cudaIncludePath }
+    -- CUDA 13 installs CCCL headers in a separate include directory.
+    local ccclIncludePath = path.join(cudaIncludePath, "cccl")
+    if os.isdir(ccclIncludePath) then
+        includedirs { ccclIncludePath }
+    end
 end
 
 -- Define experience to test one particular extension.
@@ -269,10 +274,13 @@ function get_ros2_extra(os_target, rel_path)
     if os_target == "windows" then
         -- Convert forward slashes to backslashes for Windows
         local win_rel_path = rel_path:gsub("/", "\\")
+        -- Spread nearby CI jobs across ROS 2's cross-platform safe domain range.
         return string.format([[
 set ROS_DISTRO=jazzy
 set RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-set ROS_DOMAIN_ID=93
+if not defined ROS_DOMAIN_ID if defined CI_JOB_ID set /a ROS_DOMAIN_ID=1 + %%CI_JOB_ID%% %%%% 101
+if not defined ROS_DOMAIN_ID set /a ROS_DOMAIN_ID=1 + %%RANDOM%% * 101 / 32768
+if defined CI_JOB_ID if not defined ROS_AUTOMATIC_DISCOVERY_RANGE set ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 pushd %%~dp0%sexts
 set basedir=%%cd%%\isaacsim.ros2.core\jazzy\lib
 popd
@@ -479,6 +487,9 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
         -- Convert forward slashes to backslashes for Windows relative path
         local rel_path = string.rep("..\\", depth)
         local testoutput_prefix_win = rel_path
+        local extra_args_win = extra_args:gsub("%$SAMPLE_DIR", function()
+            return "%SAMPLE_DIR%"
+        end)
 
         -- Build PYTHONPATH set statement if directories are specified
         local pythonpath_set = ""
@@ -519,7 +530,7 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
                 rel_path,
                 rel_path,
                 sample_path,
-                extra_args,
+                extra_args_win,
                 testoutput_prefix_win
             )
         else
@@ -528,7 +539,7 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
                 rel_path,
                 rel_path,
                 sample_path,
-                extra_args
+                extra_args_win
             )
         end
 
@@ -538,10 +549,12 @@ SAMPLE_DIR=$SCRIPT_DIR/%s
             [[
 @echo off
 setlocal
+set "SAMPLE_DIR=%%~dp0%s"
 %s%s%s
 call "%%~dp0%spython.bat" -m pip install -r "%%~dp0%srequirements.txt"
 %s
         ]],
+            rel_path,
             extra,
             env_set,
             pythonpath_set,

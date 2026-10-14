@@ -30,7 +30,7 @@ from isaacsim.core.experimental.objects import Cone, Cube, GroundPlane, Sphere, 
 from isaacsim.core.experimental.prims import GeomPrim
 from isaacsim.core.experimental.prims.tests.common import check_allclose, cprint
 from isaacsim.core.rendering_manager import ViewportManager
-from isaacsim.sensors.experimental.rtx import CameraSensor, draw_annotator_data_to_image
+from isaacsim.sensors.experimental.rtx import CameraSensor, RtxCamera, draw_annotator_data_to_image
 
 from .common import FakeAnnotator, normalize_semantics
 
@@ -204,6 +204,47 @@ class TestCameraSensor(omni.kit.test.AsyncTestCase):
             sensor._annotators = {}
             sensor._hydra_texture = None
 
+    async def test_rejects_multiple_prims(self) -> None:
+        """Reject a path that resolves to more than one camera prim."""
+        await stage_utils.create_new_stage_async()
+        await ViewportManager.wait_for_viewport_async()
+        RtxCamera("/World/cam_0")
+        RtxCamera("/World/cam_1")
+        with self.assertRaisesRegex(ValueError, "Only one RtxCamera prim is supported"):
+            CameraSensor("/World/cam_.*", resolution=RESOLUTION, annotators=["rgb"])
+
+    async def test_rejects_multiple_prim_rtx_camera(self) -> None:
+        """Reject a pre-built RtxCamera that wraps more than one prim."""
+        await stage_utils.create_new_stage_async()
+        await ViewportManager.wait_for_viewport_async()
+        camera = RtxCamera(["/World/cam_0", "/World/cam_1"])
+        with self.assertRaisesRegex(ValueError, "Only one RtxCamera prim is supported"):
+            CameraSensor(camera, resolution=RESOLUTION, annotators=["rgb"])
+
+    async def test_rejects_multiple_prims_without_creating_them(self) -> None:
+        """Reject multiple non-existing paths before any Camera prim is created."""
+        await stage_utils.create_new_stage_async()
+        await ViewportManager.wait_for_viewport_async()
+        paths = ["/World/new_cam_0", "/World/new_cam_1"]
+        with self.assertRaisesRegex(ValueError, "Only one RtxCamera prim is supported"):
+            CameraSensor(paths, resolution=RESOLUTION, annotators=["rgb"])
+        stage = stage_utils.get_current_stage(backend="usd")
+        for path in paths:
+            self.assertFalse(stage.GetPrimAtPath(path).IsValid())
+
+    async def test_rejects_multiple_prims_without_applying_schemas(self) -> None:
+        """Reject multiple existing paths before the sensor schema is applied to them."""
+        await stage_utils.create_new_stage_async()
+        await ViewportManager.wait_for_viewport_async()
+        paths = [f"/World/plain_cam_{i}" for i in range(2)]
+        for path in paths:
+            stage_utils.define_prim(path, "Camera")
+        with self.assertRaisesRegex(ValueError, "Only one RtxCamera prim is supported"):
+            CameraSensor("/World/plain_cam_.*", resolution=RESOLUTION, annotators=["rgb"])
+        stage = stage_utils.get_current_stage(backend="usd")
+        for path in paths:
+            self.assertFalse(stage.GetPrimAtPath(path).HasAPI("OmniSensorAPI"))
+
     async def test_has_data(self) -> None:
         """Report completed render data before a frame is fetched."""
         await populate_stage(1, "wrap")
@@ -216,7 +257,13 @@ class TestCameraSensor(omni.kit.test.AsyncTestCase):
                 if sensor.has_data():
                     break
             self.assertTrue(sensor.has_data())
+            # Render completion can precede the `rgb` annotator's first frame.
             data, _ = sensor.get_data("rgb")
+            for _ in range(20):
+                if data is not None:
+                    break
+                await app_utils.update_app_async()
+                data, _ = sensor.get_data("rgb")
             self.assertIsNotNone(data)
             # the state is scoped to the attached annotators and to owning the render product
             sensor.detach_annotators("rgb")

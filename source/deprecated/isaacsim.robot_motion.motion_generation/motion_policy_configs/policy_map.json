@@ -1,8 +1,7 @@
 {
 	"Franka":{
 		"RMPflow" : "./franka/rmpflow/config.json",
-		"RMPflowNoFeedback" : "./franka/rmpflow/config_no_feedback.json",
-		"RMPflowCortex" : "./franka/rmpflow/config_cortex.json"
+		"RMPflowNoFeedback" : "./franka/rmpflow/config_no_feedback.json"
 	},
 	"FR3":{
 		"RMPflow" : "./FR3/rmpflow/config.json"
@@ -21,7 +20,6 @@
 	},
 	"UR10":{
 		"RMPflow" : "./universal_robots/ur10/rmpflow/config.json",
-		"RMPflowCortex" : "./universal_robots/ur10/rmpflow_suction/config_cortex.json",
 		"RMPflowSuction" : "./universal_robots/ur10/rmpflow_suction/config.json"
 	},
 	"UR10e":{

@@ -36,6 +36,21 @@ ProgressCallback = Callable[[str, float], None]
 PreparedCallback = Callable[[Any, Any, Any, list[Any]], None]
 
 
+def _report_preparation(on_progress: ProgressCallback | None, message: str) -> None:
+    """Announce a preparation phase so long pre-solve work is not silent.
+
+    Preparation reports a fraction of zero because the solve that follows
+    reports its own progress from zero; any larger value here would make the
+    reported fraction move backward once optimization starts.
+
+    Args:
+        on_progress: Caller's progress sink, if any.
+        message: Name of the phase about to start.
+    """
+    if on_progress is not None:
+        on_progress(message, 0.0)
+
+
 @dataclass(slots=True)
 class HeadlessSysIdJobRequest:
     """Configuration for one SysID run in an existing Kit process.
@@ -151,37 +166,48 @@ async def run_headless_sysid_job(
         raise_for_schema_errors,
         validate_sysid_run_spec_payload,
     )
-    from .telemetry_quality import build_telemetry_quality_report
 
     if request.enable_extension:
         await _enable_backend_extension()
 
+    from .runtime import ensure_required_runtime_extensions_async
+
+    await ensure_required_runtime_extensions_async(request.spec.simulation)
+
     stage = request.stage
     if stage is None:
+        _report_preparation(on_progress, "Opening stage")
         stage = await _resolve_stage(request.stage_path or request.spec.stage.input_path)
 
     controller = SysIdRunController(request.spec)
-    trajectory = request.trajectory or controller.load_trajectory()
+    trajectory = request.trajectory
+    if trajectory is None:
+        _report_preparation(on_progress, "Loading telemetry")
+        trajectory = controller.load_trajectory()
     schema_payload = request.raw_spec_payload if request.raw_spec_payload is not None else request.spec.to_dict()
     schema_issues = validate_sysid_run_spec_payload(schema_payload)
     raise_for_schema_errors(schema_issues, context="Run specification")
-    telemetry_quality = build_telemetry_quality_report(trajectory, request.spec.telemetry.chunks)
 
     if request.start_timeline:
         await _start_timeline(request.timeline_warmup_updates)
     timeline_playing = True if request.start_timeline else None
 
+    _report_preparation(on_progress, "Running preflight")
     preflight = controller.preflight(
         stage=stage,
         trajectory=trajectory,
         timeline_playing=timeline_playing,
     )
     preflight.raise_for_errors()
+    _report_preparation(on_progress, "Preparing run and pre-solve check")
     prepared = controller.prepare(
         stage,
         trajectory=trajectory,
         timeline_playing=timeline_playing,
     )
+    # `prepare` assesses telemetry quality while building the check report; reuse
+    # that result rather than repeating the scan of the same trajectory.
+    telemetry_quality = prepared.telemetry_quality
     if on_prepared is not None:
         try:
             on_prepared(prepared, preflight, telemetry_quality, schema_issues)
@@ -234,11 +260,14 @@ def summarize_headless_sysid_job(outcome: HeadlessSysIdJobOutcome) -> dict[str, 
     """
     result = outcome.result
     prepared = outcome.prepared
+    from .run_report import SYSID_RUN_REPORT_SCHEMA_VERSION, validation_summary
+
     save_requested = bool(outcome.request.save_stage)
     stage_saved = bool(outcome.stage_saved)
     check_report = getattr(prepared, "check_report", None)
     return {
         "ok": stage_saved or not save_requested,
+        "report_schema_version": SYSID_RUN_REPORT_SCHEMA_VERSION,
         "backend": prepared.backend_label,
         "simulation_engine": getattr(prepared, "simulation_engine", outcome.request.spec.simulation.engine),
         "robot_prim_path": outcome.request.spec.simulation.robot_prim_path,
@@ -247,13 +276,21 @@ def summarize_headless_sysid_job(outcome: HeadlessSysIdJobOutcome) -> dict[str, 
         "stage_saved": stage_saved,
         "check_report_ok": None if check_report is None else bool(getattr(check_report, "ok", True)),
         "parameters_written": bool(result.parameters_written),
+        "live_parameters_applied": bool(getattr(result, "live_parameters_applied", False)),
         "provenance_path": result.provenance_path,
         "final_status": _status_to_dict(result.final_status),
         "last_accepted_status": (
             _status_to_dict(result.last_accepted_status) if result.last_accepted_status is not None else None
         ),
         "selected_status": _status_to_dict(result.selected_status, source=result.selected_status_source),
+        "untuned_validation_metrics": [metric.to_dict() for metric in result.untuned_validation_metrics],
+        "tuned_validation_metrics": [metric.to_dict() for metric in result.tuned_validation_metrics],
+        # Backward-compatible tuned alias.
         "validation_metrics": [metric.to_dict() for metric in result.validation_metrics],
+        "untuned_validation_summary": validation_summary(result.untuned_validation_metrics),
+        "tuned_validation_summary": validation_summary(result.tuned_validation_metrics),
+        "validation_summary": validation_summary(result.validation_metrics),
+        "validation_comparison": dict(result.validation_comparison or {}),
         "parameter_confidence": dict(result.parameter_confidence or {}),
         "schema_issues": [issue.to_dict() for issue in outcome.schema_issues],
     }

@@ -29,10 +29,20 @@ Drop-in compatible - matches the same three-method interface::
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+import carb
 import numpy as np
 from isaacsim.core.experimental.prims import Articulation, RigidPrim
 
-from ._utils import ema_blend, quat_conjugate_wxyz, quat_mul_wxyz, xyzw_to_wxyz
+from ._utils import (
+    FloatingBaseArticulationError,
+    ema_blend,
+    quat_conjugate_wxyz,
+    quat_mul_wxyz,
+    slice_ee_jacobian,
+    xyzw_to_wxyz,
+)
 
 
 class LMIKController:
@@ -49,16 +59,24 @@ class LMIKController:
     - **Joint limits**: hard clamp every iteration via cached DOF limits.
     - **Convergence check**: early exit when pose error drops below threshold.
 
+    The articulation must have a fixed base: the Jacobian is indexed for the
+    fixed-base layout ``(num_links - 1, 6, num_dofs)``.
+
     Args:
         robot: Value for robot.
         ee_link: Value for ee link.
         ee_link_index: Value for ee link index.
-        num_arm_dofs: Value for num arm dofs.
+        num_arm_dofs: Number of controlled joints. Without explicit indices, controls the first N DOFs.
+        arm_dof_indices: Optional articulation DOF indices of the controlled arm joints,
+            in ascending order.
         damping: Value for damping.
         max_iters: Value for max iters.
         convergence_threshold: Value for convergence threshold.
         vr_target_filter: Value for vr target filter.
         max_joint_step_rad: Value for max joint step rad.
+
+    Raises:
+        ValueError: If ``arm_dof_indices`` is empty.
     """
 
     def __init__(
@@ -72,31 +90,42 @@ class LMIKController:
         convergence_threshold: float = 1e-4,
         vr_target_filter: float = 0.0,
         max_joint_step_rad: float = 0.0,
+        *,
+        arm_dof_indices: Sequence[int] | None = None,
     ) -> None:
+        if arm_dof_indices is None:
+            arm_dof_indices = range(num_arm_dofs)
+        if len(arm_dof_indices) != num_arm_dofs:
+            raise ValueError("num_arm_dofs must match the number of arm_dof_indices")
+        if len(arm_dof_indices) == 0:
+            raise ValueError("arm_dof_indices must name at least one articulation DOF")
         self._robot = robot
         self._ee_link = ee_link
         self._ee_link_index = ee_link_index
-        self._num_arm_dofs = num_arm_dofs
+        self._arm_dof_indices = np.asarray(arm_dof_indices, dtype=np.int64)
+        self._num_arm_dofs = len(self._arm_dof_indices)
         self._damping = max(1e-6, damping)
         self._max_iters = max(1, max_iters)
         self._convergence_threshold = max(1e-8, convergence_threshold)
         self._vr_target_filter = np.clip(vr_target_filter, 0.0, 0.99)
         self._max_joint_step_rad = max(0.0, max_joint_step_rad)
 
-        # Cache joint limits (lower, upper) as 1-D arrays for the arm DOFs
+        # Cache joint limits as 1-D arrays over the arm DOFs. `get_dof_limits`
+        # returns the lower and upper bounds as two separate arrays.
         try:
-            limits = robot.get_dof_limits().numpy()  # (N, num_dofs, 2)
-            self._lo = limits[0, :num_arm_dofs, 0].astype(np.float64)
-            self._hi = limits[0, :num_arm_dofs, 1].astype(np.float64)
+            lower, upper = (array.numpy().reshape(-1) for array in robot.get_dof_limits())
+            self._lo = lower[self._arm_dof_indices].astype(np.float64)
+            self._hi = upper[self._arm_dof_indices].astype(np.float64)
         except Exception:
-            self._lo = np.full(num_arm_dofs, -2 * np.pi)
-            self._hi = np.full(num_arm_dofs, 2 * np.pi)
+            self._lo = np.full(self._num_arm_dofs, -2 * np.pi)
+            self._hi = np.full(self._num_arm_dofs, 2 * np.pi)
 
         self._raw_position: np.ndarray | None = None
         self._raw_orientation: np.ndarray | None = None  # wxyz (1, 4)
         self._filtered_position: np.ndarray | None = None
         self._filtered_orientation: np.ndarray | None = None
         self._reachable: bool = True
+        self._floating_base_reported: bool = False
 
     # ------------------------------------------------------------------
     # Properties
@@ -197,12 +226,15 @@ class LMIKController:
             current_dofs = self._robot.get_dof_positions().numpy()
             ee_pos, ee_orient = (arr.numpy() for arr in self._ee_link.get_world_poses())
             jacobians = self._robot.get_jacobian_matrices().numpy()
-            jacobian_ee = jacobians[:, self._ee_link_index - 1, :, : self._num_arm_dofs]
+            jacobian_ee = slice_ee_jacobian(jacobians, self._robot.num_dofs, self._ee_link_index, self._arm_dof_indices)
+        except FloatingBaseArticulationError as exc:
+            self._report_floating_base(exc)
+            return None
         except (AssertionError, RuntimeError):
             return None
 
-        q = current_dofs[0, : self._num_arm_dofs].astype(np.float64).copy()
-        J = jacobian_ee[0]  # (6, num_arm_dofs)
+        q = current_dofs[0, self._arm_dof_indices].astype(np.float64).copy()
+        J = jacobian_ee[0]  # (6, arm_dofs)
         lam = self._damping
         eye_n = np.eye(self._num_arm_dofs)
 
@@ -250,7 +282,7 @@ class LMIKController:
                 ee_orient /= norm_o
 
         # Clamp total delta from initial joint state
-        initial_q = current_dofs[0, : self._num_arm_dofs]
+        initial_q = current_dofs[0, self._arm_dof_indices]
         total_delta = q - initial_q
         if self._max_joint_step_rad > 0.0:
             total_delta = np.clip(total_delta, -self._max_joint_step_rad, self._max_joint_step_rad)
@@ -267,3 +299,15 @@ class LMIKController:
         self._filtered_position = None
         self._filtered_orientation = None
         self._reachable = True
+
+    def _report_floating_base(self, error: FloatingBaseArticulationError) -> None:
+        """Report a refused floating-base articulation once per solver.
+
+        Args:
+            error: The refusal raised while slicing the Jacobian.
+        """
+        self._reachable = False
+        if self._floating_base_reported:
+            return
+        self._floating_base_reported = True
+        carb.log_warn(f"[Teleop][IK] {error}")

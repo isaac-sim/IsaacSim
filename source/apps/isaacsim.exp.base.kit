@@ -1,7 +1,7 @@
 [package]
 description = "Base Isaac Sim App"
 title = "Isaac Sim Base"
-version = "6.1.0"
+version = "6.2.0"
 keywords = ["experience", "app", "usd"] # That makes it browsable in UI with "experience" filter
 
 
@@ -23,8 +23,6 @@ keywords = ["experience", "app", "usd"] # That makes it browsable in UI with "ex
 "isaacsim.core.throttling" = {}
 "isaacsim.core.utils" = {}
 "isaacsim.core.version" = {}
-"isaacsim.cortex.behaviors" = {}
-"isaacsim.cortex.framework" = {}
 "isaacsim.gui.content_browser" = {}
 "isaacsim.gui.menu" = {}
 "isaacsim.gui.property" = {}
@@ -146,6 +144,11 @@ exts."omni.kit.viewport.window".windowMenu.entryCount = 2 # Allow user to create
 exts."omni.kit.viewport.window".windowMenu.label = "" # Put Viewport menuitem under Window menu
 exts."omni.kit.widget.graph".raster_nodes = true # Improve UI rendering performance
 exts."omni.rtx.window.settings".window_menu = "Window" # Where to put the render settings menuitem
+exts."omni.simready.content.browser".usd_search_endpoint = "http://search.simready.omniverse.nvidia.com"
+exts."omni.simready.content.browser".wscache_root_urls = [
+    "https://omniverse-content-production.s3.amazonaws.com/Assets/Isaac/6.2/Isaac/SimReady",
+    "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2/Isaac/SimReady",
+]
 exts."omni.ui".raster.default_rasterpolicy_enabled = true # Improve UI rendering performance
 exts."omni.usd".locking.onClose = false # reduce time it takes to close/create stage
 exts."semantics_schema_editor".hideWindowOnStartup = true
@@ -189,7 +192,7 @@ show_menu_titles = true
 
 [settings.app]
 name = "Isaac-Sim Base"
-version = "6.1.0"
+version = "6.2.0"
 versionFile = "${app}/../VERSION"
 content.emptyStageOnStart = true
 fastShutdown = true

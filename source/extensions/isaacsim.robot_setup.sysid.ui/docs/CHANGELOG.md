@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.5.0] - 2026-10-02
+
+### Added
+- **MuJoCo substeps** setting under Newton (MuJoCo) advanced simulation settings.
+
+### Fixed
+- Read parameter baselines from the selected physics backend, refresh on engine or backend changes, and retry failed reads.
+
+## [1.4.0] - 2026-10-01
+### Fixed
+
+- Show the requested number of decimals in exact-entry float fields. The format string was silently ignored because `ui.FloatField` exposes `precision` rather than `format`.
+- Deliver exact-entry value-changed and end-edit callbacks consistently, and re-clamp the displayed value when a bound changes.
+- Clamp a recipe-supplied automatic-holdout training share to the same 5-95 range the field accepts.
+
+### Changed
+
+- Setting an exact-entry numeric field programmatically no longer fires its value-changed callback. Telemetry load and recipe apply already notify run state once, so the field previously notified twice.
+
+## [1.3.1] - 2026-10-01
+### Changed
+
+- Telemetry preview messages are logged through `carb.log_*` instead of standard Python logging.
+
+### Fixed
+
+- Exporting a run report assesses telemetry quality once instead of twice.
+
+## [1.3.0] - 2026-09-10
+### Added
+
+- Untuned-versus-tuned validation RMSE details and non-holdout fallback labeling on Results.
+
+### Changed
+
+- Exposed physics backend, all actuator runtimes, and explicit-actuator promotion policy without coercing settings when the engine changes.
+- Exported actuator policy and backend selections, and included them in Check invalidation.
+- Made interactive parameter writeback use verified instance-local stage overrides and report the live PhysX refresh.
+- Documented the parameter and residual boundaries enforced for Isaac-hosted and standalone Newton backends.
+- Replaced draggable numeric controls with bounded exact-entry fields, and reorganized Data into explicit analysis-window, automatic-holdout, manual-chunk, and preview sections.
+
 ## [1.2.2] - 2026-08-31
 ### Fixed
 

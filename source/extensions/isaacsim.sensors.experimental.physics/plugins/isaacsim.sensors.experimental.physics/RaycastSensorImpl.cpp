@@ -49,10 +49,14 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace isaacsim
@@ -75,6 +79,10 @@ constexpr float kDirectionNormEpsilon = 1e-8f;
 constexpr float kTimeOffsetEpsilon = 1e-8f;
 constexpr double kVelocityEpsilon = 1e-10;
 constexpr double kQuaternionNormEpsilon = 1e-10;
+
+// Room reserved for every hit prim path. Larger than any small-string buffer, so each slot owns a
+// heap buffer whose address survives being moved into the retired list.
+constexpr size_t kHitPrimPathReserve = 256;
 
 inline void writeVec3(float* buf, size_t i, float x, float y, float z)
 {
@@ -118,6 +126,7 @@ static std::string findParentRigidBody(pxr::UsdStageRefPtr stage, const pxr::Sdf
 class SensorData
 {
 public:
+    std::atomic<bool> active{ true };
     std::string sensorPrimPath;
     std::string parentRigidBodyPath;
     std::string viewId;
@@ -145,10 +154,35 @@ public:
     std::vector<float> hitNormals; // flat [x,y,z, ...]
     std::vector<float> rayOriginsWorld; // flat [x,y,z, ...], always world frame
     std::vector<float> rayEndPointsWorld; // flat [x,y,z, ...], always world frame
+    // Hit paths are published to readers as raw const char*, and a reader may still hold one while a
+    // physics step writes the next reading. Assigning a std::string reallocates its buffer once the
+    // new path outgrows it, which would dangle that pointer, so an outgrown buffer is retired for the
+    // sensor's lifetime instead of being freed. Write and clear these only through the helpers below.
     std::vector<std::string> hitPrimPathStrings;
     std::vector<const char*> hitPrimPathPtrs;
+    std::vector<std::string> retiredHitPrimPathStrings;
     float readingTime = 0.0f;
     bool readingValid = false;
+
+    void setHitPrimPath(size_t index, const std::string& path)
+    {
+        std::string& slot = hitPrimPathStrings[index];
+        if (path.size() > slot.capacity())
+        {
+            retiredHitPrimPathStrings.push_back(std::move(slot));
+            slot.clear();
+            slot.reserve(path.size() * 2);
+        }
+        slot.assign(path);
+        hitPrimPathPtrs[index] = slot.c_str();
+    }
+
+    void clearHitPrimPath(size_t index)
+    {
+        // clear() keeps the buffer, so the published pointer stays valid and reads as an empty string.
+        hitPrimPathStrings[index].clear();
+        hitPrimPathPtrs[index] = hitPrimPathStrings[index].c_str();
+    }
 
     void cacheConfig(pxr::UsdStageRefPtr stage)
     {
@@ -263,6 +297,17 @@ public:
         {
             hitPrimPathStrings.resize(n);
             hitPrimPathPtrs.resize(n, nullptr);
+            for (size_t i = 0; i < n; i++)
+            {
+                // Reserve so every slot owns a heap buffer, but keep whatever path the last
+                // step published: cacheConfig() also runs when an existing sensor re-reads its
+                // attributes, and that must not wipe the reading readers can still see.
+                if (hitPrimPathStrings[i].capacity() < kHitPrimPathReserve)
+                {
+                    hitPrimPathStrings[i].reserve(kHitPrimPathReserve);
+                }
+                hitPrimPathPtrs[i] = hitPrimPathStrings[i].c_str();
+            }
         }
 
         configCached = true;
@@ -277,15 +322,85 @@ public:
         std::fill(hitNormals.begin(), hitNormals.end(), 0.0f);
         std::fill(rayOriginsWorld.begin(), rayOriginsWorld.end(), 0.0f);
         std::fill(rayEndPointsWorld.begin(), rayEndPointsWorld.end(), 0.0f);
-        for (auto& s : hitPrimPathStrings)
+        for (size_t i = 0; i < hitPrimPathPtrs.size(); i++)
         {
-            s.clear();
-        }
-        for (auto& p : hitPrimPathPtrs)
-        {
-            p = nullptr;
+            clearHitPrimPath(i);
         }
     }
+};
+
+using RaycastSensorMap = std::unordered_map<std::string, std::shared_ptr<SensorData>>;
+
+std::shared_ptr<SensorData> findRaycastSensor(const RaycastSensorMap& sensors, const std::string& primPath)
+{
+    const auto it = sensors.find(primPath);
+    return it == sensors.end() ? nullptr : it->second;
+}
+
+bool hasValidRaycastReading(const std::shared_ptr<SensorData>& sensor)
+{
+    return sensor && sensor->active.load(std::memory_order_acquire) && sensor->readingValid && !sensor->configError;
+}
+
+class RaycastSensorReadingViewImpl final : public RaycastSensorReadingView
+{
+public:
+    explicit RaycastSensorReadingViewImpl(std::shared_ptr<SensorData> sensor) : m_sensor(std::move(sensor))
+    {
+    }
+
+    uint32_t getRayCount() const override
+    {
+        return m_sensor ? m_sensor->numRays : 0;
+    }
+
+    const float* getDepths() const override
+    {
+        return m_sensor && !m_sensor->depths.empty() ? m_sensor->depths.data() : nullptr;
+    }
+
+    const float* getHitPositions() const override
+    {
+        return m_sensor && !m_sensor->hitPositions.empty() ? m_sensor->hitPositions.data() : nullptr;
+    }
+
+    const float* getHitNormals() const override
+    {
+        return m_sensor && !m_sensor->hitNormals.empty() ? m_sensor->hitNormals.data() : nullptr;
+    }
+
+    const char* const* getHitPrimPaths() const override
+    {
+        return m_sensor && !m_sensor->hitPrimPathPtrs.empty() ? m_sensor->hitPrimPathPtrs.data() : nullptr;
+    }
+
+    const float* getRayOriginsWorld() const override
+    {
+        return m_sensor && !m_sensor->rayOriginsWorld.empty() ? m_sensor->rayOriginsWorld.data() : nullptr;
+    }
+
+    const float* getRayEndPointsWorld() const override
+    {
+        return m_sensor && !m_sensor->rayEndPointsWorld.empty() ? m_sensor->rayEndPointsWorld.data() : nullptr;
+    }
+
+    float getTime() const override
+    {
+        return m_sensor ? m_sensor->readingTime : 0.0f;
+    }
+
+    bool isValid() const override
+    {
+        return hasValidRaycastReading(m_sensor);
+    }
+
+    void release() override
+    {
+        delete this;
+    }
+
+private:
+    std::shared_ptr<SensorData> m_sensor;
 };
 
 } // namespace
@@ -308,7 +423,7 @@ struct RaycastSensorImpl::ImplData
 
     pxr::UsdStageRefPtr usdStage;
     usdrt::UsdStageRefPtr usdrtStage;
-    std::unordered_map<std::string, SensorData> sensors;
+    RaycastSensorMap sensors;
 };
 
 RaycastSensorImpl::RaycastSensorImpl() : m_impl(std::make_unique<ImplData>())
@@ -448,19 +563,20 @@ bool RaycastSensorImpl::createSensor(const char* primPath)
         if (prim.IsValid())
         {
             std::string currentParent = findParentRigidBody(m_impl->usdStage, sdfPath);
-            if (currentParent == existing->second.parentRigidBodyPath)
+            if (currentParent == existing->second->parentRigidBodyPath && existing->second.use_count() == 1)
             {
                 // Re-read attributes so a delete-and-recreate-at-same-path
                 // picks up the new prim's config.
-                existing->second.configCached = false;
-                existing->second.configError = false;
-                existing->second.cacheConfig(m_impl->usdStage);
+                existing->second->configCached = false;
+                existing->second->configError = false;
+                existing->second->cacheConfig(m_impl->usdStage);
                 return true;
             }
         }
-        if (m_impl->reader && !existing->second.viewId.empty())
+        existing->second->active.store(false, std::memory_order_release);
+        if (m_impl->reader && !existing->second->viewId.empty())
         {
-            m_impl->reader->removeView(existing->second.viewId.c_str());
+            m_impl->reader->removeView(existing->second->viewId.c_str());
         }
         m_impl->sensors.erase(existing);
     }
@@ -472,7 +588,9 @@ bool RaycastSensorImpl::createSensor(const char* primPath)
 
     std::string parentPath = findParentRigidBody(m_impl->usdStage, sdfPath);
 
-    SensorData& sensor = m_impl->sensors[key];
+    auto sensorData = std::make_shared<SensorData>();
+    m_impl->sensors[key] = sensorData;
+    SensorData& sensor = *sensorData;
     sensor.sensorPrimPath = primPath;
     sensor.parentRigidBodyPath = parentPath;
 
@@ -484,6 +602,7 @@ bool RaycastSensorImpl::createSensor(const char* primPath)
             m_impl->reader->createRigidBodyView(sensor.viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
         if (!sensor.rigidBodyView)
         {
+            sensor.active.store(false, std::memory_order_release);
             m_impl->sensors.erase(key);
             return false;
         }
@@ -504,9 +623,10 @@ void RaycastSensorImpl::removeSensor(const char* primPath)
     {
         return;
     }
-    if (m_impl->reader && !it->second.viewId.empty())
+    it->second->active.store(false, std::memory_order_release);
+    if (m_impl->reader && !it->second->viewId.empty())
     {
-        m_impl->reader->removeView(it->second.viewId.c_str());
+        m_impl->reader->removeView(it->second->viewId.c_str());
     }
     m_impl->sensors.erase(it);
 }
@@ -514,8 +634,8 @@ void RaycastSensorImpl::removeSensor(const char* primPath)
 RaycastSensorReading RaycastSensorImpl::getSensorReading(const char* primPath)
 {
     std::string key(primPath);
-    auto it = m_impl->sensors.find(key);
-    if (it == m_impl->sensors.end())
+    std::shared_ptr<SensorData> sensor = findRaycastSensor(m_impl->sensors, key);
+    if (!sensor)
     {
         return RaycastSensorReading();
     }
@@ -529,35 +649,42 @@ RaycastSensorReading RaycastSensorImpl::getSensorReading(const char* primPath)
         pxr::UsdPrim prim = m_impl->usdStage->GetPrimAtPath(pxr::SdfPath(primPath));
         if (!prim.IsValid())
         {
-            if (m_impl->reader && !it->second.viewId.empty())
+            sensor->active.store(false, std::memory_order_release);
+            if (m_impl->reader && !sensor->viewId.empty())
             {
-                m_impl->reader->removeView(it->second.viewId.c_str());
+                m_impl->reader->removeView(sensor->viewId.c_str());
             }
-            m_impl->sensors.erase(it);
+            m_impl->sensors.erase(key);
             return RaycastSensorReading();
         }
     }
 
-    SensorData& sensor = it->second;
-    if (!sensor.readingValid || sensor.configError)
+    if (!hasValidRaycastReading(sensor))
     {
         return RaycastSensorReading();
     }
 
     RaycastSensorReading reading;
-    reading.rayCount = sensor.numRays;
-    reading.depths = sensor.depths.data();
-    reading.hitPositions = sensor.hitPositions.data();
-    reading.hitNormals = sensor.hitNormals.data();
-    reading.rayOriginsWorld = sensor.rayOriginsWorld.data();
-    reading.rayEndPointsWorld = sensor.rayEndPointsWorld.data();
-    if (sensor.reportHitPrimPaths && !sensor.hitPrimPathPtrs.empty())
+    reading.rayCount = sensor->numRays;
+    reading.depths = sensor->depths.data();
+    reading.hitPositions = sensor->hitPositions.data();
+    reading.hitNormals = sensor->hitNormals.data();
+    reading.rayOriginsWorld = sensor->rayOriginsWorld.data();
+    reading.rayEndPointsWorld = sensor->rayEndPointsWorld.data();
+    if (sensor->reportHitPrimPaths && !sensor->hitPrimPathPtrs.empty())
     {
-        reading.hitPrimPaths = sensor.hitPrimPathPtrs.data();
+        reading.hitPrimPaths = sensor->hitPrimPathPtrs.data();
     }
-    reading.time = sensor.readingTime;
+    reading.time = sensor->readingTime;
     reading.isValid = true;
     return reading;
+}
+
+RaycastSensorReadingView* RaycastSensorImpl::getSensorReadingView(const char* primPath)
+{
+    const std::string key(primPath);
+    std::shared_ptr<SensorData> sensor = findRaycastSensor(m_impl->sensors, key);
+    return new (std::nothrow) RaycastSensorReadingViewImpl(std::move(sensor));
 }
 
 void RaycastSensorImpl::_discoverSensorsFromStage()
@@ -581,9 +708,10 @@ void RaycastSensorImpl::_clearSensors()
     for (auto& [id, sensor] : m_impl->sensors)
     {
         (void)id;
-        if (m_impl->reader && !sensor.viewId.empty())
+        sensor->active.store(false, std::memory_order_release);
+        if (m_impl->reader && !sensor->viewId.empty())
         {
-            m_impl->reader->removeView(sensor.viewId.c_str());
+            m_impl->reader->removeView(sensor->viewId.c_str());
         }
     }
     m_impl->sensors.clear();
@@ -599,15 +727,15 @@ void RaycastSensorImpl::_recreateSensorViews()
     for (auto& [id, sensor] : m_impl->sensors)
     {
         (void)id;
-        sensor.rigidBodyView = nullptr;
-        if (sensor.viewId.empty() || sensor.parentRigidBodyPath.empty())
+        sensor->rigidBodyView = nullptr;
+        if (sensor->viewId.empty() || sensor->parentRigidBodyPath.empty())
         {
             continue;
         }
 
-        const char* pathStr = sensor.parentRigidBodyPath.c_str();
-        sensor.rigidBodyView =
-            m_impl->reader->createRigidBodyView(sensor.viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
+        const char* pathStr = sensor->parentRigidBodyPath.c_str();
+        sensor->rigidBodyView =
+            m_impl->reader->createRigidBodyView(sensor->viewId.c_str(), &pathStr, 1, m_impl->engineType.c_str());
     }
     m_impl->readerGeneration = m_impl->reader->getGeneration();
 }
@@ -724,7 +852,7 @@ void RaycastSensorImpl::_processSensor(ImplData& impl, const std::string& primPa
     {
         return;
     }
-    SensorData& sensor = it->second;
+    SensorData& sensor = *it->second;
 
     // Cache config once on first step (frozen for duration of run)
     if (!sensor.configCached && !sensor.configError && impl.usdStage)
@@ -861,8 +989,7 @@ void RaycastSensorImpl::_processSensor(ImplData& impl, const std::string& primPa
                 writeVec3(sensor.rayEndPointsWorld.data(), i, sensorPos[0], sensorPos[1], sensorPos[2]);
                 if (sensor.reportHitPrimPaths)
                 {
-                    sensor.hitPrimPathStrings[i].clear();
-                    sensor.hitPrimPathPtrs[i] = sensor.hitPrimPathStrings[i].c_str();
+                    sensor.clearHitPrimPath(i);
                 }
                 continue;
             }
@@ -955,13 +1082,11 @@ void RaycastSensorImpl::_processSensor(ImplData& impl, const std::string& primPa
             if (sensor.reportHitPrimPaths && hit.rigidBody != 0)
             {
                 pxr::SdfPath hitPath = isaacsim::core::includes::getSdfPathFromUint64(hit.rigidBody);
-                sensor.hitPrimPathStrings[i] = hitPath.GetString();
-                sensor.hitPrimPathPtrs[i] = sensor.hitPrimPathStrings[i].c_str();
+                sensor.setHitPrimPath(i, hitPath.GetString());
             }
             else if (sensor.reportHitPrimPaths)
             {
-                sensor.hitPrimPathStrings[i].clear();
-                sensor.hitPrimPathPtrs[i] = sensor.hitPrimPathStrings[i].c_str();
+                sensor.clearHitPrimPath(i);
             }
         }
         else
@@ -975,8 +1100,7 @@ void RaycastSensorImpl::_processSensor(ImplData& impl, const std::string& primPa
             writeVec3(sensor.hitNormals.data(), i, 0.0f, 0.0f, 0.0f);
             if (sensor.reportHitPrimPaths)
             {
-                sensor.hitPrimPathStrings[i].clear();
-                sensor.hitPrimPathPtrs[i] = sensor.hitPrimPathStrings[i].c_str();
+                sensor.clearHitPrimPath(i);
             }
         }
     }

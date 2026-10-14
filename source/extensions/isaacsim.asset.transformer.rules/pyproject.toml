@@ -15,7 +15,7 @@
 
 [project]
 name = "isaacsim-asset-transformer-rules"
-version = "1.7.18"
+version = "1.7.24"
 description = "Rule implementations for the Isaac Sim Asset Transformer"
 requires-python = ">=3.12"
 dependencies = [

@@ -256,7 +256,7 @@ class TestCameraUpdateState(omni.kit.test.AsyncTestCase):
         self.camera._depth_annotator = _ScriptedAnnotator([empty_image])
         self.camera._normals_annotator = _ScriptedAnnotator([empty_image])
         self.camera._segmentation_annotator = _ScriptedAnnotator([{"data": empty_image, "info": {}}])
-        self.camera._instance_id_segmentation_annotator = _ScriptedAnnotator([{"data": empty_image, "info": {}}])
+        self.camera._instance_id_segmentation_annotator = _ScriptedAnnotator([empty_image])
 
         with mock.patch.object(camera_impl.carb, "log_warn") as log_warn:
             self.camera.update_state()
@@ -286,6 +286,16 @@ class TestCameraUpdateState(omni.kit.test.AsyncTestCase):
             self.assertIsNone(
                 getattr(self.camera, name).value, f"'{name}' kept its previous frame after the modality missed"
             )
+
+    async def test_instance_id_fast_annotator_updates_from_raw_array(self) -> None:
+        """Store the fast annotator's raw uint32 array without expecting legacy metadata."""
+        instance_ids = np.full((HEIGHT, WIDTH), 70_000, dtype=np.uint32)
+        self.camera._instance_id_segmentation_annotator = _ScriptedAnnotator([instance_ids])
+
+        self.camera.update_state()
+
+        self.assertTrue(np.array_equal(self.camera.instance_id_segmentation_image.value, instance_ids))
+        self.assertIsNone(self.camera.instance_id_segmentation_info.value)
 
     async def test_invalid_prim_clears_every_buffer(self) -> None:
         """A camera prim that goes invalid must not leave the last good step's frames or pose behind."""

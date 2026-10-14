@@ -17,11 +17,11 @@
 
 from __future__ import annotations
 
-import logging
 import math
 from collections.abc import Callable
 from typing import Optional
 
+import carb
 import torch
 
 from ..env_bridge import SysIdEnvironmentBridgeError
@@ -38,8 +38,6 @@ from ..parameter_types import SysIdParameterType
 from ..regressor import estimate_analytical_jacobian
 from ..rollout_optimizer_base import RolloutOptimizerBase
 from ..runtime import yield_control
-
-_LOGGER = logging.getLogger(__name__)
 
 _CONSTANT_ANALYTICAL_PARAMETER_TYPES = frozenset(
     {
@@ -183,7 +181,7 @@ class LevenbergMarquardtOptimizer(RolloutOptimizerBase):
             # Jacobian for a torque-domain residual. The default position/velocity
             # residual lives in a different space, so fall back to finite differences
             # rather than solving against a mismatched operator.
-            _LOGGER.warning(
+            carb.log_warn(
                 "SysId: analytical Jacobian requested but the residual is not torque-only; "
                 "falling back to finite-difference Jacobian."
             )
@@ -196,7 +194,7 @@ class LevenbergMarquardtOptimizer(RolloutOptimizerBase):
                     if entry.param_type not in _CONSTANT_ANALYTICAL_PARAMETER_TYPES
                 }
             )
-            _LOGGER.warning(
+            carb.log_warn(
                 "SysId: analytical Jacobian requested for nonlinear or unsupported parameter types "
                 f"({', '.join(unsupported)}); falling back to finite differences."
             )

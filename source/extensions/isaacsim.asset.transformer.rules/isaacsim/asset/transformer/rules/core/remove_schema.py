@@ -225,34 +225,57 @@ class RemoveSchemaRule(RuleInterface):
             return 0
 
         api_schemas = prim_spec.GetInfo("apiSchemas")
-        if isinstance(api_schemas, Sdf.TokenListOp):
+        is_list_op = isinstance(api_schemas, Sdf.TokenListOp)
+        if is_list_op:
             deleted_items = list(api_schemas.deletedItems or [])
             explicit_items = list(api_schemas.explicitItems or [])
+            # ``addedItems`` backs the legacy ``add apiSchemas = [...]`` syntax,
+            # which older authoring tools and hand-written layers still use.
+            # Rebuilding the op without it drops every token it held.
+            added_items = list(api_schemas.addedItems or [])
             prepended_items = list(api_schemas.prependedItems or [])
             appended_items = list(api_schemas.appendedItems or [])
             ordered_items = list(api_schemas.orderedItems or [])
         else:
             deleted_items = []
             explicit_items = []
+            added_items = []
             prepended_items = []
             appended_items = []
             ordered_items = []
 
-        for schema in matching_schemas:
-            if schema not in deleted_items:
-                deleted_items.append(schema)
+        # Drop the matched tokens from every vector this spec authors. A delete
+        # is applied before added/prepended/appended items are re-added, so a
+        # token left in those vectors would survive its own deletion.
+        matched = set(matching_schemas)
+        explicit_items = [schema for schema in explicit_items if schema not in matched]
+        added_items = [schema for schema in added_items if schema not in matched]
+        prepended_items = [schema for schema in prepended_items if schema not in matched]
+        appended_items = [schema for schema in appended_items if schema not in matched]
+        ordered_items = [schema for schema in ordered_items if schema not in matched]
 
-        new_list_op = Sdf.TokenListOp()
-        if explicit_items:
-            new_list_op.explicitItems = explicit_items
-        if prepended_items:
-            new_list_op.prependedItems = prepended_items
-        if appended_items:
-            new_list_op.appendedItems = appended_items
-        if deleted_items:
-            new_list_op.deletedItems = deleted_items
-        if ordered_items:
-            new_list_op.orderedItems = ordered_items
+        if is_list_op and api_schemas.isExplicit:
+            # An SdfListOp is either explicit or composing, never both: USD
+            # clears every item vector when the mode changes. Filtering the
+            # explicit list is the removal, and recording a deletion alongside
+            # it would flip the op to composing and discard the whole list.
+            new_list_op = Sdf.TokenListOp.CreateExplicit(explicit_items)
+        else:
+            for schema in matching_schemas:
+                if schema not in deleted_items:
+                    deleted_items.append(schema)
+
+            new_list_op = Sdf.TokenListOp()
+            if added_items:
+                new_list_op.addedItems = added_items
+            if prepended_items:
+                new_list_op.prependedItems = prepended_items
+            if appended_items:
+                new_list_op.appendedItems = appended_items
+            if deleted_items:
+                new_list_op.deletedItems = deleted_items
+            if ordered_items:
+                new_list_op.orderedItems = ordered_items
         prim_spec.SetInfo("apiSchemas", new_list_op)
 
         return len(matching_schemas)

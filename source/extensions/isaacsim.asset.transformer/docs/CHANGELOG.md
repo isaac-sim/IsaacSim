@@ -1,5 +1,17 @@
 # Changelog
 
+## [6.2.1] - 2026-10-05
+### Changed
+- Align manager regressions with isolated publication for all exports, including empty destinations.
+
+## [6.2.0] - 2026-09-23
+### Added
+- `ExecutionReport.composition_errors` reports unresolved composition arcs on the output stage; `composition_errors_truncated` flags an incomplete search.
+
+### Fixed
+- Content composed through sublayers, references, and payloads is no longer dropped when `flatten_source` is `false`; the output is not relocatable.
+- A failed source-stage export now fails the transform instead of transforming a stale base layer.
+
 ## [6.1.0] - 2026-08-03
 ### Changed
 - Load `isaacsim.asset.transformer` from the independently built `isaacsim-asset` wheel while preserving existing imports.

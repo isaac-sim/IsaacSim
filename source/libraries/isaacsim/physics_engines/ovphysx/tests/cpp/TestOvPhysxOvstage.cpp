@@ -141,9 +141,11 @@ TEST_CASE("ovphysx ovstage attach: create->populate->wait->attach + re-attach")
 {
     const std::string asset = "CartPole.usda";
 
+    ovphysx_string_t schemaRoot{};
+    REQUIRE(ovphysx_get_codeless_schema_root(&schemaRoot).status == OVPHYSX_API_SUCCESS);
+    const ovx_string_t schemaPath{ schemaRoot.ptr, schemaRoot.length };
+    REQUIRE(ovstage_population_register_usd_schemas(&schemaPath, 1) == OVSTAGE_OK);
     REQUIRE(ovphysx_initialize().status == OVPHYSX_API_SUCCESS);
-    ovphysx_register_schema_paths();
-
     ovphysx_create_args arguments = OVPHYSX_CREATE_ARGS_DEFAULT;
     ovphysx_handle_t handle = OVPHYSX_INVALID_HANDLE;
     REQUIRE(ovphysx_create_instance(&arguments, &handle).status == OVPHYSX_API_SUCCESS);

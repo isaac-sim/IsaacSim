@@ -45,6 +45,7 @@ public:
     bool createSensor(const char* primPath) override;
     void removeSensor(const char* primPath) override;
     RaycastSensorReading getSensorReading(const char* primPath) override;
+    RaycastSensorReadingView* getSensorReadingView(const char* primPath) override;
 
 private:
     struct ImplData; ///< @brief Forward-declared implementation data (pimpl).

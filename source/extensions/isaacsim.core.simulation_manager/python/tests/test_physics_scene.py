@@ -22,10 +22,17 @@ import unittest
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.test
 import omni.timeline
-from isaacsim.core.simulation_manager import PhysicsScene, PhysxGpuCfg, PhysxScene, SimulationManager
+import omni.usd
+from isaacsim.core.simulation_manager import (
+    PhysicsScene,
+    PhysxGpuCfg,
+    PhysxScene,
+    SimulationManager,
+    _simulation_manager,
+)
 from isaacsim.core.simulation_manager.impl.mjc_scene import NewtonMjcScene
 from omni.kit.app import get_app
-from pxr import Gf, PhysxSchema
+from pxr import Gf, PhysxSchema, Sdf
 
 
 class TestPhysicsScene(omni.kit.test.AsyncTestCase):
@@ -56,6 +63,31 @@ class TestPhysicsScene(omni.kit.test.AsyncTestCase):
         physics_scene = PhysicsScene("/World/physicsScene")
 
         self.assertTrue(physics_scene.prim.HasAPI("NewtonSceneAPI"))
+
+    async def test_native_physics_scene_constructor_usd_inputs(self) -> None:
+        """Test the native PhysicsScene binding accepts USD SdfPath and UsdPrim inputs."""
+        path_from_sdf_path = "/World/physicsSceneFromSdfPath"
+        scene_from_sdf_path = _simulation_manager.PhysicsScene(Sdf.Path(path_from_sdf_path))
+        self.assertEqual(scene_from_sdf_path.path, path_from_sdf_path)
+
+        path_from_usd_prim = "/World/physicsSceneFromUsdPrim"
+        prim = stage_utils.define_prim(path_from_usd_prim, type_name="PhysicsScene")
+        self.assertTrue(prim.IsValid())
+
+        scene_from_usd_prim = _simulation_manager.PhysicsScene(prim)
+        self.assertEqual(scene_from_usd_prim.path, path_from_usd_prim)
+
+    async def test_native_physics_scene_apis_without_stage(self) -> None:
+        """Native scene APIs should not dereference a missing default USD stage."""
+        self.assertTrue(stage_utils.close_stage())
+        try:
+            self.assertIsNone(omni.usd.get_context().get_stage())
+            self.assertEqual(_simulation_manager.get_physics_scene_paths(None), [])
+            self.assertEqual(SimulationManager._simulation_manager_interface.cleanup_invalid_physics_scenes(), [])
+            with self.assertRaisesRegex(RuntimeError, "without a USD stage"):
+                _simulation_manager.PhysicsScene("/World/physicsScene")
+        finally:
+            await stage_utils.create_new_stage_async()
 
     async def test_dt(self) -> None:
         """Test dt."""

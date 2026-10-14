@@ -38,22 +38,44 @@ if(NOT isaacsim_ovstage_runtime OR isaacsim_ovstage_runtime MATCHES "-NOTFOUND$"
     message(FATAL_ERROR "ovstage::ovstage does not declare its runtime library location")
 endif()
 get_filename_component(isaacsim_ovstage_runtime_dir "${isaacsim_ovstage_runtime}" DIRECTORY)
+if(WIN32)
+    set(isaacsim_ovstage_implementation "${isaacsim_ovstage_runtime_dir}/ovstage.dll")
+else()
+    set(isaacsim_ovstage_implementation "${isaacsim_ovstage_runtime_dir}/libovstage.so")
+endif()
+if(NOT EXISTS "${isaacsim_ovstage_implementation}")
+    message(FATAL_ERROR
+        "The selected ovstage package is missing its implementation library: "
+        "${isaacsim_ovstage_implementation}"
+    )
+endif()
+if(NOT TARGET isaacsim-ovstage-implementation)
+    add_library(isaacsim-ovstage-implementation SHARED IMPORTED GLOBAL)
+    set_target_properties(isaacsim-ovstage-implementation PROPERTIES
+        IMPORTED_LOCATION "${isaacsim_ovstage_implementation}"
+    )
+endif()
 isaacsim_install_runtime_dependencies(
     MODULE isaacsim.foundation.usd.ovstage
-    TARGETS ovstage::ovstage
+    TARGETS ovstage::ovstage isaacsim-ovstage-implementation
+    NATIVE_ONLY
 )
 isaacsim_add_runtime_directory(
     MODULE isaacsim.foundation.usd.ovstage
     SOURCE "${isaacsim_ovstage_runtime_dir}/plugins"
     DESTINATION plugins
-    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/plugins"
+    WINDOWS_BESIDE_MODULE
+    NATIVE_ONLY
 )
-isaacsim_add_runtime_directory(
-    MODULE isaacsim.foundation.usd.ovstage
-    SOURCE "${isaacsim_ovstage_runtime_dir}/ovstage_usd_schemas"
-    DESTINATION ovstage_usd_schemas
-    WINDOWS_INSTALL_DESTINATION "${CMAKE_INSTALL_BINDIR}/ovstage_usd_schemas"
-)
+if(EXISTS "${isaacsim_ovstage_runtime_dir}/ovstage_usd_schemas")
+    isaacsim_add_runtime_directory(
+        MODULE isaacsim.foundation.usd.ovstage
+        SOURCE "${isaacsim_ovstage_runtime_dir}/ovstage_usd_schemas"
+        DESTINATION ovstage_usd_schemas
+        WINDOWS_BESIDE_MODULE
+        NATIVE_ONLY
+    )
+endif()
 
 isaacsim_add_cpp_tests(
     MODULE isaacsim.foundation.usd.ovstage

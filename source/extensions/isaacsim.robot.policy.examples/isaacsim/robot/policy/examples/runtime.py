@@ -168,7 +168,7 @@ def _build_actuators(
     from .utils.newton_actuators import build_newton_actuator_configs
 
     device = SimulationManager.get_physics_sim_device()
-    actuator_configs: list[tuple[object, str]] = []
+    actuator_configs: list[tuple[object, list[str]]] = []
     for spec in specs:
         network_data = read_artifact_bytes(spec.network_file) if spec.network_file else None
         actuator_configs.extend(build_newton_actuator_configs(spec, network_data, num_robots=1, device=device))

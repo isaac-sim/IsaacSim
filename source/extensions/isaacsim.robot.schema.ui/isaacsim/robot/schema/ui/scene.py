@@ -25,6 +25,8 @@ from omni.ui import scene as sc
 from .manipulator import ConnectionManipulator
 from .model import ConnectionModel
 
+DISPLAY_CONNECTIONS_SETTING = "/persistent/isaac/robotInspector/displayConnections"
+
 
 class ConnectionScene:  # pragma: no cover
     """Viewport scene manager for robot joint connection visualization.
@@ -44,10 +46,14 @@ class ConnectionScene:  # pragma: no cover
             icon_scale=icon_scale,
         )
         self._icon_scale = icon_scale
+        carb.settings.get_settings().set_default_bool(DISPLAY_CONNECTIONS_SETTING, True)
         self._settings_subscription = carb.settings.get_settings().subscribe_to_node_change_events(
-            "/persistent/physics/visualizationDisplayJoints", self._on_settings_changed
+            DISPLAY_CONNECTIONS_SETTING, self._on_settings_changed
         )
-        self.visible = carb.settings.get_settings().get("/persistent/physics/visualizationDisplayJoints")
+        self.visible = (
+            carb.settings.get_settings().get(DISPLAY_CONNECTIONS_SETTING)
+            and not omni.timeline.get_timeline_interface().is_playing()
+        )
 
         timeline = omni.timeline.get_timeline_interface()
         event_stream = timeline.get_timeline_event_stream()
@@ -68,7 +74,7 @@ class ConnectionScene:  # pragma: no cover
         if event_type == omni.timeline.TimelineEventType.PLAY:
             self.visible = False
         elif event_type == omni.timeline.TimelineEventType.STOP:
-            self.visible = carb.settings.get_settings().get("/persistent/physics/visualizationDisplayJoints")
+            self.visible = carb.settings.get_settings().get(DISPLAY_CONNECTIONS_SETTING)
             model = ConnectionInstance.get_instance().get_model()
             if model:
                 model.force_rebuild()
@@ -79,7 +85,10 @@ class ConnectionScene:  # pragma: no cover
         Args:
             *args: Setting change callback arguments (unused).
         """
-        self.visible = carb.settings.get_settings().get("/persistent/physics/visualizationDisplayJoints")
+        self.visible = (
+            carb.settings.get_settings().get(DISPLAY_CONNECTIONS_SETTING)
+            and not omni.timeline.get_timeline_interface().is_playing()
+        )
 
     def set_joint_connections(self, joint_connections: list[Any]) -> None:
         """Set the joint connections to visualize.

@@ -32,10 +32,10 @@ ever produces a finite cost at its initial theta.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Optional
 
+import carb
 import torch
 
 from ..env_bridge import SysIdEnvironmentBridgeError
@@ -44,8 +44,6 @@ from ..optimizer_config import OptimizerBackendConfig
 from ..parameter_space import ParameterSpace
 from ..rollout_optimizer_base import RolloutOptimizerBase
 from ..runtime import yield_control
-
-_LOGGER = logging.getLogger(__name__)
 
 _NON_DIFFERENTIABLE_BRIDGE_MESSAGE = (
     "Gradient descent requires a bridge with autograd rollouts (set "
@@ -207,13 +205,13 @@ class GradientDescentOptimizer(RolloutOptimizerBase):
                 seed_cost = float(costs_detached[0].item())
                 fallback_cost = float(costs_detached[1].item())
                 if not (seed_cost <= fallback_cost):
-                    _LOGGER.warning(
+                    carb.log_warn(
                         "SysId gradient descent: the analytical presolve seed starts worse than the "
                         f"pre-presolve initials at rollout cost ({seed_cost:.6g} vs {fallback_cost:.6g}); "
                         "the initials run as their own restart row and the better start wins."
                     )
                 else:
-                    _LOGGER.info(
+                    carb.log_info(
                         "SysId gradient descent: initial rollout cost "
                         f"{seed_cost:.6g} at the analytical presolve seed vs {fallback_cost:.6g} at the "
                         "pre-presolve initials."
@@ -266,7 +264,7 @@ class GradientDescentOptimizer(RolloutOptimizerBase):
                             )
                             adam.param_groups[restart_index]["lr"] = row_learning_rate[restart_index]
                             adam.state.pop(theta_rows[restart_index], None)
-                            _LOGGER.warning(
+                            carb.log_warn(
                                 f"SysId gradient descent: restart {restart_index} produced a non-finite "
                                 f"gradient at iteration {iteration}; rejected the step and reduced its "
                                 f"learning rate to {row_learning_rate[restart_index]:.3g}."
@@ -283,7 +281,7 @@ class GradientDescentOptimizer(RolloutOptimizerBase):
                         )
                         adam.param_groups[restart_index]["lr"] = row_learning_rate[restart_index]
                         adam.state.pop(theta_rows[restart_index], None)
-                        _LOGGER.warning(
+                        carb.log_warn(
                             f"SysId gradient descent: restart {restart_index} produced a non-finite "
                             f"cost at iteration {iteration}; rejected the step and reduced its "
                             f"learning rate to {row_learning_rate[restart_index]:.3g}."

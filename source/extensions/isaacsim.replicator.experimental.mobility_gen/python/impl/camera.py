@@ -49,11 +49,7 @@ class MobilityGenCamera(Module):
         self.segmentation_image = Buffer(tags=["segmentation"])
         self.segmentation_info = Buffer()
         self.depth_image = Buffer(tags=["depth"])
-        # TODO: tag should be ["instance_id_segmentation"], not ["segmentation"]. Using the same tag causes
-        # state_dict_segmentation() to return both buffers, mixing instance ID data into state/segmentation/.
-        # Also, the annotator used is the hidden legacy "instance_id_segmentation" node; should be
-        # "instance_id_segmentation_fast" to match the supported API.
-        self.instance_id_segmentation_image = Buffer(tags=["segmentation"])
+        self.instance_id_segmentation_image = Buffer(tags=["instance_id_segmentation"])
         self.instance_id_segmentation_info = Buffer()
         self.normals_image = Buffer(tags=["normals"])
         self.position = Buffer()
@@ -128,7 +124,7 @@ class MobilityGenCamera(Module):
         if self._instance_id_segmentation_annotator is not None:
             return
         self._instance_id_segmentation_annotator = rep.AnnotatorRegistry.get_annotator(
-            "instance_id_segmentation", init_params={"colorize": False}
+            "instance_id_segmentation_fast", init_params={"colorize": False}
         )
         self._instance_id_segmentation_annotator.attach(self._render_product)
 
@@ -208,11 +204,10 @@ class MobilityGenCamera(Module):
                 self._drop_frame("depth", self.depth_image)
 
         if self._instance_id_segmentation_annotator is not None:
-            data = self._instance_id_segmentation_annotator.get_data(do_array_copy=True)
-            id_seg_image = data["data"]
+            id_seg_image = self._instance_id_segmentation_annotator.get_data(do_array_copy=True)
             if id_seg_image is not None and id_seg_image.size > 0:
                 self.instance_id_segmentation_image.set_value(id_seg_image)
-                self.instance_id_segmentation_info.set_value(data["info"])
+                self.instance_id_segmentation_info.set_value(None)
             else:
                 self._drop_frame(
                     "instance_id_segmentation",

@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--use-timestamp-matching",
     action="store_true",
-    help="Encode simulation time in captured filenames and validate by matching timestamps to golden.",
+    help="Validate captured simulation timestamps against the nearest golden timestamp.",
 )
 parser.add_argument(
     "--timestamp-tolerance",
@@ -147,10 +147,7 @@ from omni.replicator.core.scripts.writers_default.basicwriter import BasicWriter
 
 
 class TimestampedBasicWriter(BasicWriter):
-    """BasicWriter subclass that uses the timeline simulation time.
-
-    filename instead of an incrementing frame counter.
-    """
+    """Name captured images using simulation time instead of an incrementing frame counter."""
 
     def write(self, data: dict[str, Any]) -> None:
         """Write a frame using the current timeline time as the reference.
@@ -161,8 +158,11 @@ class TimestampedBasicWriter(BasicWriter):
         self._ref_time_sec = omni.timeline.get_timeline_interface().get_current_time()
         super().write(data)
 
-    def _write_rgb(self, anno_rp_data: dict[str, Any], output_path: str) -> None:
-        file_path = f"{output_path}rgb_{self._ref_time_sec:.6f}.{self._image_output_format}"
+    def _write_rgb(self, anno_rp_data: dict[str, Any], output_path: str | None = None) -> None:
+        """Preserve BasicWriter's output layout while replacing the frame index with simulation time."""
+        file_path = self._resolve_path("rgb", self._image_output_format, output_path)
+        stem, extension = os.path.splitext(file_path)
+        file_path = f"{stem.rsplit('_', 1)[0]}_{self._ref_time_sec:.6f}{extension}"
         self._backend.schedule(F.write_image, data=anno_rp_data["data"], path=file_path)
 
 
@@ -316,6 +316,8 @@ ROTATION_DEG_PER_SEC = ROTATION_HZ * 360.0
 PHYSICS_DT = 1.0 / 60.0
 
 benchmark.store_measurements()
+# Keep the rotation's time origin before warmup so headings match simulation timestamps.
+rotation_start_time = timeline.get_current_time()
 # perform benchmark
 benchmark.set_phase("benchmark", warmup_frames=15)
 
@@ -349,7 +351,8 @@ print(f"Run directory: {run_dir}\n")
 # when cameras tick at different rates.
 # Use the camera prim path from render_product_map directly as the output subdirectory
 # so that the directory tree matches the golden data layout without any post-hoc rename.
-writer_type = "TimestampedBasicWriter" if args.use_timestamp_matching else "BasicWriter"
+# Both validation modes use the timestamped filenames in the golden data.
+writer_type = "TimestampedBasicWriter"
 writers = {}
 for rp_path, camera_path in validator.render_product_map.items():
     w = rep.WriterRegistry.get(writer_type)
@@ -358,8 +361,10 @@ for rp_path, camera_path in validator.render_product_map.items():
     writers[rp_path] = w
 
 frame_timestamps = []
-for frame_idx in range(0, n_frames):
-    angle_deg = ROTATION_DEG_PER_SEC * (frame_idx + 1) * PHYSICS_DT
+for _ in range(n_frames):
+    # Set the heading for the simulation time captured by the next step.
+    rotation_time = timeline.get_current_time() - rotation_start_time + PHYSICS_DT
+    angle_deg = ROTATION_DEG_PER_SEC * rotation_time
     yaw_rotation = Gf.Rotation(Gf.Vec3d(0, 0, 1), angle_deg)
     for robot, (init_pos, init_orient) in zip(robots, robot_initial_poses):
         init_quat = Gf.Quatd(float(init_orient[0]), Gf.Vec3d(*[float(x) for x in init_orient[1:]]))

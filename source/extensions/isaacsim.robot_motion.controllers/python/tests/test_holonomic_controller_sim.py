@@ -108,8 +108,7 @@ class TestHolonomicControllerSim(omni.kit.test.AsyncTestCase):
         """Load the O3dyn mecanum robot and build a controller from its authored geometry.
 
         Returns:
-            ``(articulation, HolonomicController)``. Skips the test if assets are absent
-            or the mecanum-wheel attributes are not authored on the asset.
+            ``(articulation, HolonomicController)``. Skips the test if assets are absent.
         """
         if self._assets_root is None:
             self.skipTest("Isaac assets root is not available; skipping sim test.")
@@ -117,7 +116,7 @@ class TestHolonomicControllerSim(omni.kit.test.AsyncTestCase):
         from isaacsim.robot.experimental.wheeled_robots.robots import HolonomicRobotUsdSetup
 
         stage_utils.add_reference_to_stage(
-            usd_path=self._assets_root + "/Isaac/Robots/Fraunhofer/O3dyn/o3dyn.usd",
+            usd_path=self._assets_root + "/Isaac/Robots_Multiphysics/Fraunhofer/O3dyn/o3dyn.usda",
             path="/World/O3dyn",
         )
         o3dyn = Articulation(
@@ -132,11 +131,11 @@ class TestHolonomicControllerSim(omni.kit.test.AsyncTestCase):
         wheel_radius, wheel_positions, wheel_orientations, mecanum_angles, wheel_axis, up_axis = (
             setup.get_holonomic_controller_params()
         )
-        if len(wheel_positions) != len(O3DYN_WHEEL_JOINTS):
-            self.skipTest(
-                f"O3dyn mecanum wheels not found via the isaacmecanumwheel attributes "
-                f"(found {len(wheel_positions)}); cannot build the controller from the asset."
-            )
+        self.assertEqual(
+            len(wheel_positions),
+            len(O3DYN_WHEEL_JOINTS),
+            "O3dyn mecanum-wheel metadata does not match the expected wheel count.",
+        )
 
         SimulationManager.setup_simulation(dt=DT, device="cpu")
         app_utils.play()

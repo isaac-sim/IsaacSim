@@ -29,6 +29,7 @@ import asyncio
 import csv
 import json
 import sys
+import traceback
 from pathlib import Path
 
 from headless_sysid_solve import (
@@ -155,14 +156,21 @@ def main() -> int:  # noqa: D103
         raise
 
     simulation_app = SimulationApp({"headless": True})
+    exit_code = 1
     try:
         loop = asyncio.get_event_loop()
         task = loop.create_task(_run(args))
         while not task.done():
             simulation_app.update()
-        return int(task.result())
+        exit_code = int(task.result())
+    except Exception as exc:
+        print(f"[sysid-shift] ERROR: {exc}", file=sys.stderr, flush=True)
+        traceback.print_exc()
+        exit_code = 1
     finally:
-        simulation_app.close()
+        # Fast shutdown terminates the process inside `close()`, so the status must be passed here.
+        simulation_app.close(exit_code=exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -59,6 +59,7 @@ ISAACSIM_PHYSICS_OVSIM_API void invalidate();
 ISAACSIM_PHYSICS_OVSIM_API void step();
 
 /** @brief Set a simulation parameter exposed by a provider.
+ * @note `physics` / `time-step` accepts a positive double in seconds (default 1/60 second), applied at initialize().
  * @param[in] provider Name of the parameter provider.
  * @param[in] parameterName Name of the parameter to set.
  * @param[in] value Value to assign to the parameter.

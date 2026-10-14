@@ -23,7 +23,12 @@ import zlib
 from unittest.mock import patch
 
 import omni.kit.test
-from isaacsim.asset.transformer.manager import AssetTransformerManager, RuleRegistry, _collect_assets
+from isaacsim.asset.transformer.manager import (
+    _MAX_VARIANT_SELECTIONS_PROBED,
+    AssetTransformerManager,
+    RuleRegistry,
+    _collect_assets,
+)
 from isaacsim.asset.transformer.models import RuleConfigurationParam, RuleProfile, RuleSpec
 from isaacsim.asset.transformer.rule_interface import RuleInterface
 from pxr import Sdf, Usd, UsdGeom
@@ -52,6 +57,21 @@ def _write_1x1_png(path: str) -> None:
         fh.write(_chunk(b"IHDR", ihdr))
         fh.write(_chunk(b"IDAT", idat))
         fh.write(_chunk(b"IEND", b""))
+
+
+def _package_temp_dir() -> tempfile.TemporaryDirectory:
+    """Temporary directory for tests that open the transformed output package.
+
+    An open USD layer is an OS-level file lock on Windows, so the crate-backed
+    ``base.usd`` a test opens to inspect cannot be unlinked while that handle is
+    alive. Cleanup is therefore best-effort, matching the
+    ``shutil.rmtree(..., ignore_errors=True)`` convention used by the rules
+    tests.
+
+    Returns:
+        Context manager yielding the temporary directory path.
+    """
+    return tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
 
 
 class _DummyRule(RuleInterface):
@@ -117,6 +137,22 @@ class _FakeStage:
             A fresh ``_FakeLayer`` instance.
         """
         return _FakeLayer()
+
+    def GetCompositionErrors(self) -> list:  # noqa: N802
+        """Report no composition errors (test stub).
+
+        Returns:
+            Always an empty list.
+        """
+        return []
+
+    def GetPseudoRoot(self) -> None:  # noqa: N802
+        """Report no pseudo-root, short-circuiting the variant-error sweep.
+
+        Returns:
+            Always ``None``.
+        """
+        return
 
 
 def _fake_usd(open_returns: object | None) -> types.SimpleNamespace:
@@ -199,7 +235,8 @@ class TestManager(omni.kit.test.AsyncTestCase):
                 output_package_root="/pkg",
             )
             mgr = AssetTransformerManager()
-            report = mgr.run(input_stage="in.usda", profile=profile, package_root=None)
+            # This fake USD stage tests rule execution; publication requires real layers.
+            report = mgr._run_in_directory(input_stage="in.usda", profile=profile, package_root=None)
             self.assertEqual(len(report.results), 1)
             result = report.results[0]
             self.assertTrue(result.success)
@@ -298,6 +335,619 @@ class TestManager(omni.kit.test.AsyncTestCase):
                 "manager must delete the rule-deferred file after releasing the working stage",
             )
 
+    async def _build_composed_fixture(self, fixture_root: str) -> str:
+        """Author a source stage whose content arrives through all three composition arcs.
+
+        Layout::
+
+            <fixture_root>/root.usda  <-- subLayers ./sub.usda, references ./ref.usda,
+                                          payloads ./pay.usda, and binds ./grid.png
+            <fixture_root>/sub.usda   <-- contributes /Cube
+            <fixture_root>/ref.usda   <-- contributes /Robot/RefMesh/Geom
+            <fixture_root>/pay.usda   <-- contributes /Robot/PayNode/PayGeom
+
+        Args:
+            fixture_root: Directory to author the fixture into.
+
+        Returns:
+            Path to the root layer.
+        """
+        ref_path = os.path.join(fixture_root, "ref.usda")
+        ref_stage = Usd.Stage.CreateNew(ref_path)
+        UsdGeom.Mesh.Define(ref_stage, "/RefMesh")
+        UsdGeom.Scope.Define(ref_stage, "/RefMesh/Geom")
+        ref_stage.SetDefaultPrim(ref_stage.GetPrimAtPath("/RefMesh"))
+        ref_stage.GetRootLayer().Save()
+
+        sub_path = os.path.join(fixture_root, "sub.usda")
+        sub_stage = Usd.Stage.CreateNew(sub_path)
+        UsdGeom.Cube.Define(sub_stage, "/Cube")
+        sub_stage.GetRootLayer().Save()
+
+        pay_path = os.path.join(fixture_root, "pay.usda")
+        pay_stage = Usd.Stage.CreateNew(pay_path)
+        UsdGeom.Xform.Define(pay_stage, "/PayShape")
+        UsdGeom.Sphere.Define(pay_stage, "/PayShape/PayGeom")
+        pay_stage.SetDefaultPrim(pay_stage.GetPrimAtPath("/PayShape"))
+        pay_stage.GetRootLayer().Save()
+
+        _write_1x1_png(os.path.join(fixture_root, "grid.png"))
+
+        root_path = os.path.join(fixture_root, "root.usda")
+        root_stage = Usd.Stage.CreateNew(root_path)
+        root_stage.GetRootLayer().subLayerPaths.append("./sub.usda")
+        robot = UsdGeom.Xform.Define(root_stage, "/Robot")
+        UsdGeom.Xform.Define(root_stage, "/Robot/RefMesh").GetPrim().GetReferences().AddReference("./ref.usda")
+        UsdGeom.Xform.Define(root_stage, "/Robot/PayNode").GetPrim().GetPayloads().AddPayload("./pay.usda")
+        attr = robot.GetPrim().CreateAttribute("inputs:diffuse", Sdf.ValueTypeNames.Asset)
+        attr.Set(Sdf.AssetPath("./grid.png"))
+        root_stage.GetRootLayer().Save()
+        return root_path
+
+    async def test_run_without_flatten_source_preserves_composed_prims(self) -> None:
+        """The default ``flatten_source=False`` path must keep every composed prim.
+
+        Exporting only the source root layer into ``payloads/`` leaves every
+        relative sublayer, reference, and payload arc anchored against a
+        directory that does not contain those layers, so all content arriving
+        through an arc silently disappears from the output. The composed prim
+        set must survive and no arc may be left unresolved.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+            source_path = await self._build_composed_fixture(fixture_root)
+
+            # Bind the stage: traversing a temporary would expire mid-iteration.
+            source_stage = Usd.Stage.Open(source_path)
+            expected = sorted(p.GetPath().pathString for p in source_stage.Traverse())
+            # Guard the fixture itself: without arc content there is nothing to lose.
+            self.assertIn("/Cube", expected, "fixture must contribute a sublayer prim")
+            self.assertIn("/Robot/RefMesh/Geom", expected, "fixture must contribute a reference child")
+            self.assertIn("/Robot/PayNode/PayGeom", expected, "fixture must contribute a payload child")
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertIsNotNone(report.output_stage_path)
+            out_stage = Usd.Stage.Open(report.output_stage_path)
+            actual = sorted(p.GetPath().pathString for p in out_stage.Traverse())
+
+            composition_errors = [str(e) for e in out_stage.GetCompositionErrors()]
+            self.assertEqual(
+                composition_errors,
+                [],
+                f"output stage has unresolved composition arcs: {composition_errors}",
+            )
+            self.assertEqual(
+                actual,
+                expected,
+                f"prims dropped from the output stage: {sorted(set(expected) - set(actual))}",
+            )
+            self.assertEqual(report.composition_errors, [], "report must not hide composition errors")
+
+    async def test_run_without_flatten_source_keeps_arcs_resolvable(self) -> None:
+        """The non-flatten path must keep arcs as arcs *and* keep them resolving.
+
+        This is what distinguishes ``flatten_source=False`` from ``True``: the
+        output stays a composed stage. Its arc targets are not collected into
+        the package, so each arc has to be re-anchored to the source file it
+        names rather than left pointing inside ``payloads/``.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+            source_path = await self._build_composed_fixture(fixture_root)
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            out_layer = Sdf.Layer.FindOrOpen(report.output_stage_path)
+            self.assertTrue(out_layer.subLayerPaths, "sublayer arc must survive in the output root layer")
+
+            # Every arc target must resolve to a real file from the output layer.
+            out_dir = os.path.dirname(report.output_stage_path)
+            arc_paths = list(out_layer.subLayerPaths)
+            for prim_path in ("/Robot/RefMesh", "/Robot/PayNode"):
+                prim_spec = out_layer.GetPrimAtPath(prim_path)
+                self.assertIsNotNone(prim_spec, f"{prim_path} missing from output layer")
+                arc_paths.extend(ref.assetPath for ref in prim_spec.referenceList.prependedItems)
+                arc_paths.extend(pay.assetPath for pay in prim_spec.payloadList.prependedItems)
+
+            self.assertEqual(len(arc_paths), 3, f"expected sublayer, reference and payload arcs: {arc_paths}")
+            for arc_path in arc_paths:
+                resolved = os.path.normpath(os.path.join(out_dir, arc_path))
+                self.assertTrue(os.path.isfile(resolved), f"arc target does not resolve: {arc_path} -> {resolved}")
+
+            # Non-layer assets are still collected into the package.
+            self.assertIn("grid.png", os.listdir(os.path.join(out_root, "source_assets")))
+
+    async def test_run_with_flatten_source_still_bakes_composition(self) -> None:
+        """Control: ``flatten_source=True`` keeps baking arcs and stays self-contained.
+
+        Guards against a fix that accidentally routes the flatten path through
+        layer localization, which would ship dependency layers the flattened
+        output does not need.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+            source_path = await self._build_composed_fixture(fixture_root)
+
+            source_stage = Usd.Stage.Open(source_path)
+            expected = sorted(p.GetPath().pathString for p in source_stage.Traverse())
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=True, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            out_stage = Usd.Stage.Open(report.output_stage_path)
+            self.assertEqual(sorted(p.GetPath().pathString for p in out_stage.Traverse()), expected)
+            self.assertEqual([str(e) for e in out_stage.GetCompositionErrors()], [])
+
+            # Flatten bakes the arcs away, so no dependency layer should be copied.
+            out_layer = Sdf.Layer.FindOrOpen(report.output_stage_path)
+            self.assertEqual(list(out_layer.subLayerPaths), [], "flattened output must not declare sublayers")
+            copied = os.listdir(os.path.join(out_root, "source_assets"))
+            self.assertIn("grid.png", copied, "texture must still be collected")
+            self.assertNotIn("sub.usda", copied, "flattened output must not ship dependency layers")
+
+    async def test_run_reports_composition_errors_instead_of_failing_silently(self) -> None:
+        """A source stage with a genuinely missing arc target must surface on the report.
+
+        The manager previously returned a report with ``output_stage_path`` set
+        and no error of any kind while the output stage was missing content.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            UsdGeom.Xform.Define(stage, "/Robot")
+            # Arc target that does not exist anywhere, so no amount of collecting
+            # can resolve it. The manager must say so rather than stay silent.
+            UsdGeom.Xform.Define(stage, "/Robot/Missing").GetPrim().GetReferences().AddReference("./absent.usda")
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertTrue(report.composition_errors, "unresolvable arc must be reported")
+            self.assertTrue(
+                any("absent.usda" in err for err in report.composition_errors),
+                f"report must name the unresolved arc: {report.composition_errors}",
+            )
+
+    async def test_run_reports_composition_errors_inside_unselected_variants(self) -> None:
+        """A broken arc inside a variant option nobody selected must still be reported.
+
+        ``Usd.Stage.GetCompositionErrors`` only sees arcs the current variant
+        selections compose, so a package can lose everything behind an
+        unselected option while the report reads clean.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            robot = UsdGeom.Xform.Define(stage, "/Robot")
+            stage.SetDefaultPrim(robot.GetPrim())
+            variant_set = robot.GetPrim().GetVariantSets().AddVariantSet("Configuration")
+            variant_set.AddVariant("good")
+            variant_set.AddVariant("broken")
+
+            variant_set.SetVariantSelection("broken")
+            with variant_set.GetVariantEditContext():
+                broken = UsdGeom.Xform.Define(stage, "/Robot/Broken")
+                broken.GetPrim().GetReferences().AddReference("./absent.usda")
+
+            # Leave "good" selected so the broken option is never composed.
+            variant_set.SetVariantSelection("good")
+            with variant_set.GetVariantEditContext():
+                UsdGeom.Sphere.Define(stage, "/Robot/Good")
+
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            # Guard the fixture: the default composition must itself be clean,
+            # otherwise the assertion below would pass for the wrong reason.
+            self.assertIsNone(report.output_stage_path, "invalid composition must not be published")
+            self.assertEqual(os.listdir(out_root), [])
+            fixture_stage = Usd.Stage.Open(source_path)
+            self.assertEqual(
+                [str(e) for e in fixture_stage.GetCompositionErrors()],
+                [],
+                "fixture must keep the default selection resolvable",
+            )
+
+            self.assertTrue(
+                any("absent.usda" in err for err in report.composition_errors),
+                f"error inside the unselected option must be reported: {report.composition_errors}",
+            )
+            self.assertTrue(
+                any("{Configuration=broken}" in err for err in report.composition_errors),
+                f"report must attribute the error to the option that exposed it: {report.composition_errors}",
+            )
+
+    async def test_run_reports_composition_errors_outside_the_default_prim(self) -> None:
+        """A broken variant on a sibling of the default prim must still be reported.
+
+        Sweeping from the default prim instead of the pseudo-root silently skips
+        every sibling root, and stages pairing a default prim with
+        ``/Environment`` or ``/Looks`` are the norm. The partial sweep that
+        results is indistinguishable from a clean one.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            robot = UsdGeom.Xform.Define(stage, "/Robot")
+            # A default prim is what narrows the sweep, so the fixture must set
+            # one for this test to exercise the failure at all.
+            stage.SetDefaultPrim(robot.GetPrim())
+            UsdGeom.Sphere.Define(stage, "/Robot/Good")
+
+            environment = UsdGeom.Xform.Define(stage, "/Environment")
+            variant_set = environment.GetPrim().GetVariantSets().AddVariantSet("EnvConfig")
+            variant_set.AddVariant("plain")
+            variant_set.AddVariant("broken")
+            variant_set.SetVariantSelection("broken")
+            with variant_set.GetVariantEditContext():
+                UsdGeom.Xform.Define(stage, "/Environment/Broken").GetPrim().GetReferences().AddReference(
+                    "./absent_env.usda"
+                )
+            variant_set.SetVariantSelection("plain")
+
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertIsNone(report.output_stage_path, "invalid composition must not be published")
+            self.assertEqual(os.listdir(out_root), [])
+            fixture_stage = Usd.Stage.Open(source_path)
+            self.assertEqual(
+                [str(e) for e in fixture_stage.GetCompositionErrors()],
+                [],
+                "fixture must keep the default composition resolvable",
+            )
+            self.assertTrue(
+                any("absent_env.usda" in err for err in report.composition_errors),
+                f"error outside the default prim must be reported: {report.composition_errors}",
+            )
+            self.assertFalse(
+                report.composition_errors_truncated,
+                "a two-option sweep must not report itself as truncated",
+            )
+
+    async def test_run_flags_a_truncated_composition_error_sweep(self) -> None:
+        """Exhausting the selection budget must be reported, not hidden.
+
+        The sweep is bounded, so a large enough asset stops being probed part
+        way through. Returning the partial result unmarked makes a bigger asset
+        look cleaner than a smaller one and leaves the caller unable to tell
+        "clean" from "gave up".
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            robot = UsdGeom.Xform.Define(stage, "/Robot")
+            stage.SetDefaultPrim(robot.GetPrim())
+            variant_set = robot.GetPrim().GetVariantSets().AddVariantSet("Configuration")
+            # One option past the budget is enough to force the early exit.
+            option_count = _MAX_VARIANT_SELECTIONS_PROBED + 2
+            for index in range(option_count):
+                variant_set.AddVariant(f"opt_{index:03d}")
+            variant_set.SetVariantSelection("opt_000")
+
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertTrue(
+                report.composition_errors_truncated,
+                f"a sweep that stopped after {_MAX_VARIANT_SELECTIONS_PROBED} selections must say so",
+            )
+            self.assertIn(
+                "composition_errors_truncated",
+                report.to_dict(),
+                "the truncation flag must reach the serialized report",
+            )
+
+    async def test_run_does_not_reanchor_a_broken_arc_to_an_unrelated_file(self) -> None:
+        """A broken arc must be reported, not quietly repointed at a same-named file.
+
+        Re-anchoring walks candidate anchor directories to find the file the
+        source named. Accepting a match under a sublayer's directory turns a
+        genuinely broken arc into a resolving arc pointing at different
+        content, which is a silent wrong answer rather than a reported error.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            far_dir = os.path.join(fixture_root, "far")
+            os.makedirs(far_dir, exist_ok=True)
+
+            # A decoy with the name the root layer asks for, but somewhere the
+            # root layer's own relative path could never reach.
+            decoy = Usd.Stage.CreateNew(os.path.join(far_dir, "shared.usda"))
+            UsdGeom.Xform.Define(decoy, "/Decoy")
+            decoy.GetRootLayer().Save()
+            del decoy
+
+            sub_path = os.path.join(far_dir, "sub.usda")
+            sub = Usd.Stage.CreateNew(sub_path)
+            UsdGeom.Xform.Define(sub, "/Sub")
+            sub.GetRootLayer().Save()
+            del sub
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            robot = UsdGeom.Xform.Define(stage, "/Robot")
+            stage.SetDefaultPrim(robot.GetPrim())
+            # The sublayer is what puts far/ into the candidate anchor list.
+            stage.GetRootLayer().subLayerPaths.append("./far/sub.usda")
+            # Genuinely broken: there is no shared.usda beside the root layer.
+            UsdGeom.Xform.Define(stage, "/Robot/Missing").GetPrim().GetReferences().AddReference("./shared.usda")
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertIsNone(report.output_stage_path, "a broken arc must prevent publication")
+            self.assertEqual(os.listdir(out_root), [])
+            self.assertTrue(
+                any("shared.usda" in err for err in report.composition_errors),
+                f"broken arc must be reported instead: {report.composition_errors}",
+            )
+
+    async def test_run_survives_a_relpath_failure_across_volumes(self) -> None:
+        """A path that cannot be made relative must not abort the transform.
+
+        ``os.path.relpath`` raises on Windows when the source tree and the
+        output package sit on different drives or across a UNC share, which is
+        an ordinary layout. The arc still needs re-anchoring; failing the whole
+        run over a path-formatting limit does not help anyone.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+
+            dep_path = os.path.join(fixture_root, "dep.usda")
+            dep = Usd.Stage.CreateNew(dep_path)
+            dep.SetDefaultPrim(UsdGeom.Xform.Define(dep, "/Dep").GetPrim())
+            dep.GetRootLayer().Save()
+            del dep
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            robot = UsdGeom.Xform.Define(stage, "/Robot")
+            stage.SetDefaultPrim(robot.GetPrim())
+            UsdGeom.Xform.Define(stage, "/Robot/Dep").GetPrim().GetReferences().AddReference("./dep.usda")
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+
+            real_relpath = os.path.relpath
+
+            def _relpath_across_volumes(path: str, start: str | None = None) -> str:
+                """Stand in for ntpath's cross-mount refusal.
+
+                Args:
+                    path: Target path.
+                    start: Directory to relate the target to.
+
+                Returns:
+                    The relative path for unrelated calls.
+
+                Raises:
+                    ValueError: When asked to relate the dependency to the output.
+                """
+                if start and "dep.usda" in path:
+                    raise ValueError("path is on mount 'D:', start on mount 'C:'")
+                return real_relpath(path, start) if start else real_relpath(path)
+
+            with patch("isaacsim.asset.transformer.manager.os.path.relpath", _relpath_across_volumes):
+                report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertIsNotNone(report.output_stage_path, "transform must still produce an output stage")
+            out_layer = Sdf.Layer.FindOrOpen(report.output_stage_path)
+            arcs = [str(ref.assetPath) for ref in out_layer.GetPrimAtPath("/Robot/Dep").referenceList.prependedItems]
+            self.assertTrue(
+                any(arc.endswith("dep.usda") for arc in arcs),
+                f"arc must still name the dependency: {arcs}",
+            )
+            self.assertEqual(
+                report.composition_errors,
+                [],
+                f"the fallback target must still resolve: {report.composition_errors}",
+            )
+
+    async def test_run_still_returns_a_report_when_the_error_sweep_fails(self) -> None:
+        """A failed diagnostic must not cost the caller a successful run's report.
+
+        The output is already saved by the time composition errors are
+        collected, so letting that collection propagate would discard a report
+        the caller has otherwise earned and leave every rule result unseen.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+
+            source_path = os.path.join(fixture_root, "root.usda")
+            stage = Usd.Stage.CreateNew(source_path)
+            robot = UsdGeom.Xform.Define(stage, "/Robot")
+            stage.SetDefaultPrim(robot.GetPrim())
+            UsdGeom.Sphere.Define(stage, "/Robot/Good")
+            stage.GetRootLayer().Save()
+            del stage
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+
+            def _explode(_stage: Usd.Stage) -> None:
+                """Simulate a USD failure inside the diagnostic sweep.
+
+                Args:
+                    _stage: Unused stage argument.
+
+                Raises:
+                    RuntimeError: Always.
+                """
+                raise RuntimeError("simulated USD failure inside the diagnostic sweep")
+
+            with patch("isaacsim.asset.transformer.manager._collect_composition_errors", _explode):
+                report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            self.assertIsNotNone(report, "caller must still receive a report")
+            self.assertIsNotNone(report.finished_at, "report must be closed even when the sweep fails")
+            self.assertTrue(
+                report.composition_errors_truncated,
+                "an inconclusive sweep must not be reported as a complete one",
+            )
+            self.assertEqual(
+                [],
+                report.composition_errors,
+                "a failed sweep must not invent an unresolved arc the output may not have",
+            )
+
+    async def test_run_fails_when_the_source_stage_cannot_be_exported(self) -> None:
+        """A failed export must not leave an earlier run's base layer to be transformed.
+
+        The export is what places the source content in the output package. If
+        it fails while an earlier run's base layer still sits at that path, the
+        pipeline transforms that stale content and reports success for an output
+        the source never produced. A stale layer is what makes this silent: with
+        nothing at the path, opening the working stage fails loudly on its own.
+        """
+        with _package_temp_dir() as root:
+            payloads_dir = os.path.join(root, "out", "payloads")
+            os.makedirs(payloads_dir, exist_ok=True)
+            stale_stage = Usd.Stage.CreateNew(os.path.join(payloads_dir, "base.usd"))
+            stale_stage.SetDefaultPrim(UsdGeom.Xform.Define(stale_stage, "/Stale").GetPrim())
+            stale_stage.GetRootLayer().Save()
+            del stale_stage
+
+            failing_layer = types.SimpleNamespace(
+                realPath=os.path.join(root, "src", "root.usda"),
+                Export=lambda _path: False,
+            )
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+
+            with self.assertRaisesRegex(RuntimeError, "Failed to export source stage"):
+                AssetTransformerManager().run(
+                    types.SimpleNamespace(GetRootLayer=lambda: failing_layer),
+                    profile,
+                    package_root=os.path.join(root, "out"),
+                )
+
+    async def _build_nested_fixture(self, fixture_root: str) -> str:
+        """Author a source stage whose dependency layer has a relative arc of its own.
+
+        Layout::
+
+            <fixture_root>/root.usda        <-- references ./sub/a.usda
+            <fixture_root>/sub/a.usda       <-- references ../shared/b.usda
+            <fixture_root>/shared/b.usda    <-- contributes /B/Geom
+
+        The nesting is the point. ``a.usda`` resolves ``../shared/b.usda``
+        against its own directory, so anything that relocates ``a.usda``
+        without rewriting its arcs strands ``b.usda``.
+
+        Args:
+            fixture_root: Directory to author the fixture into.
+
+        Returns:
+            Path to the root layer.
+        """
+        shared_dir = os.path.join(fixture_root, "shared")
+        sub_dir = os.path.join(fixture_root, "sub")
+        os.makedirs(shared_dir, exist_ok=True)
+        os.makedirs(sub_dir, exist_ok=True)
+
+        b_stage = Usd.Stage.CreateNew(os.path.join(shared_dir, "b.usda"))
+        UsdGeom.Xform.Define(b_stage, "/B")
+        UsdGeom.Sphere.Define(b_stage, "/B/Geom")
+        b_stage.SetDefaultPrim(b_stage.GetPrimAtPath("/B"))
+        b_stage.GetRootLayer().Save()
+
+        a_stage = Usd.Stage.CreateNew(os.path.join(sub_dir, "a.usda"))
+        a_root = UsdGeom.Xform.Define(a_stage, "/A")
+        UsdGeom.Xform.Define(a_stage, "/A/FromShared").GetPrim().GetReferences().AddReference("../shared/b.usda")
+        a_stage.SetDefaultPrim(a_root.GetPrim())
+        a_stage.GetRootLayer().Save()
+
+        root_path = os.path.join(fixture_root, "root.usda")
+        root_stage = Usd.Stage.CreateNew(root_path)
+        world = UsdGeom.Xform.Define(root_stage, "/World")
+        UsdGeom.Xform.Define(root_stage, "/World/Nested").GetPrim().GetReferences().AddReference("./sub/a.usda")
+        root_stage.SetDefaultPrim(world.GetPrim())
+        root_stage.GetRootLayer().Save()
+        return root_path
+
+    async def test_run_without_flatten_source_keeps_nested_dependency_arcs_resolvable(self) -> None:
+        """A dependency layer's own relative arcs must keep resolving in the output.
+
+        Every other fixture here uses dependency layers that sit beside the
+        root and carry no arcs of their own, which cannot detect an approach
+        that relocates dependency layers without rewriting what they point at.
+        Copying layers flat into ``source_assets/`` strands every relative arc
+        inside them.
+        """
+        with _package_temp_dir() as root:
+            fixture_root = os.path.join(root, "src")
+            os.makedirs(fixture_root, exist_ok=True)
+            source_path = await self._build_nested_fixture(fixture_root)
+
+            source_stage = Usd.Stage.Open(source_path)
+            expected = sorted(p.GetPath().pathString for p in source_stage.Traverse())
+            # Guard the fixture: the deepest prim only exists via the nested arc.
+            self.assertIn(
+                "/World/Nested/FromShared/Geom",
+                expected,
+                "fixture must contribute a prim through a nested arc",
+            )
+
+            out_root = os.path.join(root, "out")
+            profile = RuleProfile(profile_name="p", flatten_source=False, rules=[], base_name="base.usd")
+            report = AssetTransformerManager().run(source_path, profile, package_root=out_root)
+
+            out_stage = Usd.Stage.Open(report.output_stage_path)
+            actual = sorted(p.GetPath().pathString for p in out_stage.Traverse())
+            self.assertEqual(
+                actual,
+                expected,
+                f"prims lost behind the nested arc: {sorted(set(expected) - set(actual))}",
+            )
+            self.assertEqual(
+                report.composition_errors,
+                [],
+                f"nested dependency arc left unresolved: {report.composition_errors}",
+            )
+
     async def test_collect_assets_rewrites_source_relative_paths(self) -> None:
         """Regression test: relative asset paths must remap when source and output sit at different depths.
 
@@ -368,6 +1018,136 @@ class TestManager(omni.kit.test.AsyncTestCase):
                 broken,
                 [],
                 f"Output layer still contains unresolvable asset paths: {broken}",
+            )
+
+    async def test_collect_assets_preserves_prior_collection_on_basename_collision(self) -> None:
+        """Regression: collecting twice into one package_root must not overwrite the first asset.
+
+        Two source stages each reference their own ``tex.png``. Collecting both
+        into the same ``package_root`` previously let the second ``shutil.copy2``
+        destroy the first, so the first stage silently resolved to the wrong
+        image. The second asset must land under a suffixed name, the first must
+        be untouched, and the collision must be reported.
+        """
+
+        def _make_stage(directory: str, payload: bytes) -> str:
+            os.makedirs(directory, exist_ok=True)
+            texture_path = os.path.join(directory, "tex.png")
+            _write_1x1_png(texture_path)
+            with open(texture_path, "ab") as handle:
+                handle.write(payload)
+            # Same size and mtime across fixtures, as mtime-preserving copies produce,
+            # so only a byte comparison can tell them apart.
+            os.utime(texture_path, (1700000000, 1700000000))
+            stage_path = os.path.join(directory, "scene.usda")
+            stage = Usd.Stage.CreateNew(stage_path)
+            prim = UsdGeom.Xform.Define(stage, "/World")
+            attr = prim.GetPrim().CreateAttribute("inputs:diffuse", Sdf.ValueTypeNames.Asset)
+            attr.Set(Sdf.AssetPath("./tex.png"))
+            stage.GetRootLayer().Save()
+            return stage_path
+
+        with tempfile.TemporaryDirectory() as root:
+            package_root = os.path.join(root, "pkg")
+            assets_dir = os.path.join(package_root, "source_assets")
+            # Equal-length payloads so filecmp cannot decide on size alone.
+            first_stage = _make_stage(os.path.join(root, "first"), b"AAAAA")
+            second_stage = _make_stage(os.path.join(root, "second"), b"BBBBB")
+            third_stage = _make_stage(os.path.join(root, "third"), b"BBBBB")
+            fourth_stage = _make_stage(os.path.join(root, "fourth"), b"AAAAA")
+
+            with open(os.path.join(root, "first", "tex.png"), "rb") as handle:
+                first_bytes = handle.read()
+            with open(os.path.join(root, "second", "tex.png"), "rb") as handle:
+                second_bytes = handle.read()
+
+            _collect_assets(Sdf.Layer.FindOrOpen(first_stage), package_root, source_layer_path=first_stage)
+            collected_first = os.path.join(assets_dir, "tex.png")
+            self.assertTrue(os.path.isfile(collected_first), "first collection must produce source_assets/tex.png")
+
+            with self.assertLogs("isaacsim.asset.transformer.manager", level="WARNING") as captured:
+                _collect_assets(Sdf.Layer.FindOrOpen(second_stage), package_root, source_layer_path=second_stage)
+
+            with open(collected_first, "rb") as handle:
+                preserved = handle.read()
+            self.assertEqual(
+                preserved,
+                first_bytes,
+                "second collection must not overwrite the asset collected by the first",
+            )
+            collected_second = os.path.join(assets_dir, "tex_1.png")
+            self.assertTrue(os.path.isfile(collected_second), "colliding asset must be collected under a suffix")
+            with open(collected_second, "rb") as handle:
+                self.assertEqual(handle.read(), second_bytes)
+            self.assertTrue(
+                any("already holds different content" in message for message in captured.output),
+                f"collision must be reported at WARNING level, got: {captured.output}",
+            )
+
+            # The second stage must now point at the suffixed copy, not at tex.png.
+            second_reopened = Usd.Stage.Open(second_stage)
+            remapped = [
+                str(attribute.Get().path)
+                for prim in second_reopened.Traverse()
+                for attribute in prim.GetAttributes()
+                if isinstance(attribute.Get(), Sdf.AssetPath)
+            ]
+            self.assertTrue(
+                any("tex_1.png" in path for path in remapped),
+                f"second stage must reference the suffixed asset, got: {remapped}",
+            )
+
+            # Identical content reuses the existing copy: no extra file, no copy, still reported.
+            with patch("isaacsim.asset.transformer.manager.shutil.copy2") as copy_spy:
+                with self.assertLogs("isaacsim.asset.transformer.manager", level="WARNING") as reuse_logs:
+                    _collect_assets(Sdf.Layer.FindOrOpen(third_stage), package_root, source_layer_path=third_stage)
+            copy_spy.assert_not_called()
+            self.assertEqual(
+                sorted(os.listdir(assets_dir)),
+                ["tex.png", "tex_1.png"],
+                "byte-identical content must reuse the existing collected asset",
+            )
+            self.assertTrue(
+                any("reusing" in message for message in reuse_logs.output),
+                f"reuse must be reported at WARNING level, got: {reuse_logs.output}",
+            )
+            third_reopened = Usd.Stage.Open(third_stage)
+            third_remapped = [
+                str(attribute.Get().path)
+                for prim in third_reopened.Traverse()
+                for attribute in prim.GetAttributes()
+                if isinstance(attribute.Get(), Sdf.AssetPath)
+            ]
+            self.assertTrue(
+                any("tex_1.png" in path for path in third_remapped),
+                f"third stage must reference the reused suffixed asset, got: {third_remapped}",
+            )
+
+            # Identical content at the UNSUFFIXED destination is also a reuse, and also reported.
+            with patch("isaacsim.asset.transformer.manager.shutil.copy2") as base_copy_spy:
+                with self.assertLogs("isaacsim.asset.transformer.manager", level="WARNING") as base_logs:
+                    _collect_assets(Sdf.Layer.FindOrOpen(fourth_stage), package_root, source_layer_path=fourth_stage)
+            base_copy_spy.assert_not_called()
+            self.assertEqual(sorted(os.listdir(assets_dir)), ["tex.png", "tex_1.png"])
+            self.assertTrue(
+                any("identical content" in message for message in base_logs.output),
+                f"reuse at the unsuffixed destination must warn, got: {base_logs.output}",
+            )
+
+            fourth_reopened = Usd.Stage.Open(fourth_stage)
+            fourth_remapped = [
+                str(attribute.Get().path)
+                for prim in fourth_reopened.Traverse()
+                for attribute in prim.GetAttributes()
+                if isinstance(attribute.Get(), Sdf.AssetPath)
+            ]
+            self.assertTrue(
+                any("source_assets" in path and path.endswith("tex.png") for path in fourth_remapped),
+                f"fourth stage must reference the reused base asset, got: {fourth_remapped}",
+            )
+            self.assertFalse(
+                any("tex_1.png" in path for path in fourth_remapped),
+                f"fourth stage must not reference the suffixed asset, got: {fourth_remapped}",
             )
 
     async def test_collect_assets_handles_sublayer_anchored_relative_paths(self) -> None:

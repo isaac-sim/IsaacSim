@@ -89,7 +89,8 @@ protected:
      * @param[in] db Database accessor for node inputs/outputs
      * @param[in] port Port number for UCX listener
      * @param[in] tag UCX tag for message identification
-     * @param[in] timeoutMs Timeout in milliseconds for send request (0 = infinite)
+     * @param[in] timeoutMs Timeout in milliseconds for send request (0 is clamped, see
+     *                      UcxNode::publishMessage())
      * @return bool True if execution succeeded, false otherwise
      */
     bool computeImpl(DatabaseT& db, uint16_t port, uint64_t tag, uint32_t timeoutMs)

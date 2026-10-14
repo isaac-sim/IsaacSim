@@ -13,7 +13,7 @@ The `MJCF Importer` extension uses `MJCFImporterConfig`, a dataclass that stores
 settings for MJCF import operations. The UI extension allows users to modify these settings
 through a graphical interface. Configuration fields can be set directly on the dataclass instance.
 
-The main entry point is the `MJCFImporter` class in `python/impl/converter.py`, which takes
+The main entry point is the `MJCFImporter` class, which takes
 an optional `MJCFImporterConfig` instance. The importer uses the `mujoco-usd-converter` library
 to convert MJCF files to USD format.
 

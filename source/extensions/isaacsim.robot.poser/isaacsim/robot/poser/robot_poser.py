@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,7 +34,7 @@ from typing import Any
 import numpy as np
 
 # Ensure the default LM solver is registered at import time.
-from pxr import Gf, Sdf, Tf, Usd, UsdGeom
+from pxr import Gf, Sdf, Tf, Usd, UsdGeom, UsdPhysics
 from usd.schema.isaac.robot_schema import Attributes, Classes, Relations
 from usd.schema.isaac.robot_schema.utils import GetAllNamedPoses
 
@@ -701,17 +702,52 @@ class RobotPoser:
 
 
 _articulation_cache: dict[str, tuple] = {}
+_articulation_stage_ref: weakref.ReferenceType[Usd.Stage] | None = None
+_articulation_notice: Any = None
 
 
-def _get_articulation(robot_path: str) -> tuple[Any, dict[str, int]]:
+def _on_articulation_resync(notice: Any, stage: Usd.Stage) -> None:
+    """Invalidate robot handles when their composed topology changes.
+
+    Args:
+        notice: USD change notice.
+        stage: Stage sending the notice.
+    """
+    topology_paths = list(notice.GetResyncedPaths())
+    topology_paths.extend(
+        path
+        for path in notice.GetChangedInfoOnlyPaths()
+        if path.name
+        in (
+            "physics:body0",
+            "physics:body1",
+            "physics:jointEnabled",
+            "physics:excludeFromArticulation",
+            "isaac:physics:robotJoints",
+            "isaac:physics:robotLinks",
+        )
+    )
+    for robot_path in list(_articulation_cache):
+        path = Sdf.Path(robot_path)
+        if any(p.HasPrefix(path) or path.HasPrefix(p) for p in topology_paths):
+            invalidate_articulation_cache(robot_path)
+
+
+def _get_articulation(robot_path: str, stage: Usd.Stage) -> tuple[Any, dict[str, int]]:
     """Return a cached (Articulation, dof_path_to_idx) pair for *robot_path*.
 
     Args:
         robot_path: USD path to the robot prim.
+        stage: Stage owning the robot and its DOF layout.
 
     Returns:
         Tuple of (Articulation, dof_path_to_idx mapping).
     """
+    global _articulation_stage_ref, _articulation_notice
+    if _articulation_stage_ref is None or stage != _articulation_stage_ref():
+        invalidate_articulation_cache()
+        _articulation_stage_ref = weakref.ref(stage, lambda _: invalidate_articulation_cache())
+        _articulation_notice = Tf.Notice.Register(Usd.Notice.ObjectsChanged, _on_articulation_resync, stage)
     cached = _articulation_cache.get(robot_path)
     if cached is not None:
         return cached
@@ -731,8 +767,13 @@ def invalidate_articulation_cache(robot_path: str | None = None) -> None:
     Args:
         robot_path: If given, drop only that entry; otherwise clear all.
     """
+    global _articulation_stage_ref, _articulation_notice
     if robot_path is None:
         _articulation_cache.clear()
+        if _articulation_notice is not None:
+            _articulation_notice.Revoke()
+        _articulation_notice = None
+        _articulation_stage_ref = None
     else:
         _articulation_cache.pop(robot_path, None)
 
@@ -746,7 +787,7 @@ def _drive_robot(stage: Usd.Stage, robot_prim: Usd.Prim, joint_dict: dict[str, f
         joint_dict: Joint path to value (radians or meters).
     """
     robot_path = str(robot_prim.GetPath())
-    articulation, dof_path_to_idx = _get_articulation(robot_path)
+    articulation, dof_path_to_idx = _get_articulation(robot_path, stage)
 
     positions: list[float] = []
     dof_indices: list[int] = []
@@ -1170,19 +1211,80 @@ def import_poses(
         robot_prim: Robot root prim.
         filepath: Source file path (as written by export_poses).
 
+    Empty joint mappings are valid no-op poses when both endpoint prims exist.
+    The entire file is validated before any pose is stored; malformed entries
+    raise ValueError without changing existing poses.
+
     Returns:
-        Number of poses successfully imported.
+        Number of valid poses successfully imported.
+
+    Raises:
+        ValueError: If pose data or endpoint paths are malformed.
     """
     with open(filepath) as fh:
         raw = json.load(fh)
 
+    if not isinstance(raw, dict):
+        raise ValueError("Pose file must contain a JSON object")
+
     # Support both legacy (flat) and new (envelope) formats.
     if "_meta" in raw and "poses" in raw:
+        if not isinstance(raw["_meta"], dict):
+            raise ValueError("Pose metadata must be an object")
         units = raw["_meta"].get("units", "radians")
         data = raw["poses"]
     else:
         units = "radians"
         data = raw
+
+    if not isinstance(data, dict) or units not in ("radians", "degrees"):
+        raise ValueError("Poses must be an object with units 'radians' or 'degrees'")
+
+    # Validate the entire file before creating or overwriting any USD prims.
+    for name, pd in data.items():
+        if not isinstance(pd, dict):
+            raise ValueError(f"Pose {name!r} must be an object")
+        joints = pd.get("joints")
+        if not isinstance(joints, dict):
+            raise ValueError(f"Pose {name!r}: joints must be an object (empty is a valid no-op)")
+        for field_name in ("start_link", "end_link"):
+            value = pd.get(field_name)
+            if not isinstance(value, str) or not Sdf.Path.IsValidPathString(value):
+                raise ValueError(f"Pose {name!r}: {field_name} must be an absolute prim path")
+            path = Sdf.Path(value)
+            if not path.IsAbsolutePath() or not path.IsPrimPath() or not stage.GetPrimAtPath(path):
+                raise ValueError(f"Pose {name!r}: {field_name} does not identify an existing prim")
+        for path, value in joints.items():
+            if not isinstance(path, str) or not Sdf.Path.IsValidPathString(path):
+                raise ValueError(f"Pose {name!r}: invalid joint path {path!r}")
+            joint_path = Sdf.Path(path)
+            if not joint_path.IsAbsolutePath() or not joint_path.IsPrimPath() or not stage.GetPrimAtPath(joint_path):
+                raise ValueError(f"Pose {name!r}: joint {path!r} does not exist")
+            if not stage.GetPrimAtPath(joint_path).IsA(UsdPhysics.Joint):
+                raise ValueError(f"Pose {name!r}: {path!r} is not a physics joint")
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+                raise ValueError(f"Pose {name!r}: joint values must be finite numbers")
+            # Validate the authored representation before any pose is stored.
+            # A finite radian input can overflow when converted to degrees.
+            with np.errstate(over="ignore"):
+                native_value = _to_native_value(stage, path, value) if units == "radians" else float(value)
+            if not np.isfinite(native_value) or abs(native_value) > float(np.finfo(np.float32).max):
+                raise ValueError(
+                    f"Pose {name!r}: joint {path!r} cannot be represented in the USD float joint-values attribute"
+                )
+        fixed = pd.get("joint_fixed", {})
+        if not isinstance(fixed, dict) or any(not isinstance(v, bool) for v in fixed.values()):
+            raise ValueError(f"Pose {name!r}: joint_fixed must map joint paths to booleans")
+        if not isinstance(pd.get("valid", True), bool):
+            raise ValueError(f"Pose {name!r}: valid must be a boolean")
+        for field_name, size in (("target_position", 3), ("target_orientation", 4)):
+            value = pd.get(field_name)
+            if value is not None and (
+                not isinstance(value, list)
+                or len(value) != size
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not np.isfinite(v) for v in value)
+            ):
+                raise ValueError(f"Pose {name!r}: {field_name} must contain {size} finite numbers")
 
     count = 0
     for name, pd in data.items():
