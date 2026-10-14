@@ -73,6 +73,22 @@ jobs:
           echo "=== Coverage packages created ==="
           ls -lah _build/packages/ || echo "No packages directory found"
 
+      - name: Fingerprint artifacts (pre-upload)
+        run: |
+          set -euo pipefail
+          echo "=== Artifact fingerprints (pre-upload) ==="
+          manifest="_build/packages/artifact-manifest.txt"
+          : > "$manifest"
+          for f in $(find _build/packages/ -name '*.7z' -o -name '*.zip' | sort); do
+            size=$(stat -c%s "$f")
+            sha=$(sha256sum "$f" | cut -d' ' -f1)
+            basename=$(basename "$f")
+            echo "  $f  size=$size  sha256=$sha"
+            echo "$sha  $size  $basename" >> "$manifest"
+          done
+          echo "--- Manifest ---"
+          cat "$manifest"
+
       - name: Upload coverage build artifacts
         uses: actions/upload-artifact@v4
         with:

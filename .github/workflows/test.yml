@@ -39,7 +39,7 @@ on:
 jobs:
   test:
     name: "Test (${{ inputs.suite }}${{ inputs.bucket != '' && format(':{0}', inputs.bucket) || '' }})"
-    runs-on: [self-hosted, gpu-stg]
+    runs-on: [self-hosted, gpu]
     timeout-minutes: 120
     defaults:
       run:
@@ -71,6 +71,64 @@ jobs:
           name: isaac-sim-packages-${{ inputs.platform }}-${{ inputs.config }}${{ inputs.coverage && '-cov' || '' }}
           path: _build/packages/
 
+      - name: Verify downloaded artifacts against build manifest
+        run: |
+          set -euo pipefail
+          echo "=== Verifying artifact integrity ==="
+          manifest="_build/packages/artifact-manifest.txt"
+          if [ ! -f "$manifest" ]; then
+            echo "::error::No artifact-manifest.txt found — build may not include manifest yet"
+            echo "Falling back to basic existence check"
+            mapfile -t archives < <(find _build/packages/ -name '*.7z' -o -name '*.zip')
+            if [ ${#archives[@]} -eq 0 ]; then
+              echo "::error::No archives found in _build/packages/"
+              exit 1
+            fi
+            for archive in "${archives[@]}"; do
+              echo "  $(basename "$archive")  size=$(stat -c%s "$archive")  sha256=$(sha256sum "$archive" | cut -d' ' -f1)"
+            done
+            exit 0
+          fi
+          echo "Manifest contents:"
+          cat "$manifest"
+          echo "---"
+          errors=0
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            expected_sha=$(echo "$line" | awk '{print $1}')
+            expected_size=$(echo "$line" | awk '{print $2}')
+            filename=$(echo "$line" | awk '{print $3}')
+            # Find the file on disk
+            actual_file=$(find _build/packages/ -name "$filename" -print -quit)
+            if [ -z "$actual_file" ]; then
+              echo "::error::Manifest lists $filename but file not found on disk"
+              errors=$((errors + 1))
+              continue
+            fi
+            actual_size=$(stat -c%s "$actual_file")
+            actual_sha=$(sha256sum "$actual_file" | cut -d' ' -f1)
+            if [ "$actual_size" != "$expected_size" ] || [ "$actual_sha" != "$expected_sha" ]; then
+              echo "::error::MISMATCH: $filename"
+              echo "  expected: size=$expected_size  sha256=$expected_sha"
+              echo "  actual:   size=$actual_size  sha256=$actual_sha"
+              if [ "$actual_size" != "$expected_size" ]; then
+                diff_bytes=$((expected_size - actual_size))
+                echo "  size difference: $diff_bytes bytes"
+              fi
+              errors=$((errors + 1))
+            else
+              echo "  OK: $filename  size=$actual_size  sha256=$actual_sha"
+            fi
+          done < "$manifest"
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::$errors artifact(s) failed integrity check — download was corrupted"
+            echo "=== Disk usage (df -h) ==="
+            df -h
+            echo "=== _build/packages/ listing ==="
+            ls -lah _build/packages/
+            exit 1
+          fi
+          echo "All artifacts verified against build manifest ✓"
 
       - name: Run tests
         env:
