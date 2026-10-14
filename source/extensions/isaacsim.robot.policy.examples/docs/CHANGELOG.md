@@ -1,5 +1,17 @@
 # Changelog
 
+## [7.2.3] - 2026-10-01
+### Fixed
+- Defer policy sample construction until an example is selected so asset-server authentication cannot block application startup during browser registration.
+
+## [7.2.2] - 2026-10-01
+### Fixed
+- Preserve authored MuJoCo joint-limit solver references when applying Newton defaults.
+
+## [7.2.1] - 2026-09-29
+### Changed
+- Build one grouped Newton actuator per exported actuator group instead of one per joint.
+
 ## [7.2.0] - 2026-08-14
 ### Added
 - Binary joint-position actions that map one policy channel to multiple joints.

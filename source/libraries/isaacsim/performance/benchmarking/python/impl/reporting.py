@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -41,18 +42,14 @@ def resolve_output_path(result: _BenchmarkResult, output: str | Path | None = No
     return (root / result.definition.identifier / filename).resolve()
 
 
-def write_result(result: _BenchmarkResult, path: Path) -> dict[str, Any]:
-    """Atomically write one benchmark result JSON file.
+def _write_document(document: dict[str, Any], path: Path) -> None:
+    """Publish a JSON document only after its complete contents reach disk.
 
     Args:
-        result: Benchmark result to serialize.
+        document: JSON-compatible document to serialize.
         path: Destination JSON path.
 
-    Returns:
-        Structured result document written to disk.
-
     """
-    document = result_document(result)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
@@ -67,6 +64,37 @@ def write_result(result: _BenchmarkResult, path: Path) -> dict[str, Any]:
             os.unlink(temporary_name)
         except FileNotFoundError:
             pass
+        raise
+
+
+def write_result(result: _BenchmarkResult, path: Path) -> dict[str, Any]:
+    """Write a result and, when requested, its referenced collector observations.
+
+    Args:
+        result: Benchmark result to serialize.
+        path: Destination result JSON path.
+
+    Returns:
+        Structured result document written to disk.
+
+    """
+    document = result_document(result)
+    sidecar = None
+    if result.collector_capture is not None:
+        sidecar = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.collector.json")
+        document["environment"] = {
+            **document["environment"],
+            "collector": {**document["environment"].get("collector", {}), "artifact": sidecar.name},
+        }
+        _write_document(result.collector_capture, sidecar)
+    try:
+        _write_document(document, path)
+    except BaseException:
+        if sidecar is not None:
+            try:
+                sidecar.unlink()
+            except OSError:
+                pass
         raise
     return document
 

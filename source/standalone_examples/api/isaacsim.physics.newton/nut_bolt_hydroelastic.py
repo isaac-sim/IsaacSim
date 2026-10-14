@@ -35,14 +35,31 @@ parser.add_argument("--test", default=False, action="store_true", help="Run in t
 parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cuda", help="Simulation device")
 args, _ = parser.parse_known_args()
 
-extra_args = [
-    "--/exts/isaacsim.core.simulation_manager/default_engine=newton",
-    "--enable",
-    "isaacsim.physics.newton",
-    "--enable",
-    "isaacsim.physics.newton.tensors",
-]
-simulation_app = SimulationApp({"headless": args.test, "extra_args": extra_args})
+required_extensions = ["isaacsim.physics.newton", "isaacsim.physics.newton.tensors"]
+if args.test:
+    # The default Base experience includes interactive examples that are unrelated to this
+    # headless test and may perform remote asset checks during startup.
+    required_extensions.extend(
+        [
+            "isaacsim.core.experimental.objects",
+            "isaacsim.storage.native",
+            "omni.hydra.usdrt_delegate",
+            "omni.kit.loop",
+            "omni.kit.telemetry",
+            "omni.kit.usd.mdl",
+            "omni.usd.metrics.assembler.ui",
+            "usdrt.scenegraph",
+        ]
+    )
+
+extra_args = ["--/exts/isaacsim.core.simulation_manager/default_engine=newton"]
+for extension in required_extensions:
+    extra_args.extend(["--enable", extension])
+
+simulation_app = SimulationApp(
+    {"headless": args.test, "extra_args": extra_args},
+    experience=None if args.test else "",
+)
 
 import carb
 import isaacsim.core.experimental.utils.app as app_utils
@@ -74,19 +91,30 @@ NUT_ENGAGEMENT = 0.0005
 NUT_YAW = math.pi / 8.0
 
 
+def fail(message: str) -> None:
+    """Shut down the app and report a nonzero process status."""
+    carb.log_error(message)
+    app_utils.stop()
+    simulation_app.close(exit_code=1)
+    # ``close`` returns when fast shutdown is disabled.
+    sys.exit(1)
+
+
 def setup_collider(prim: Usd.Prim, material: UsdShade.Material) -> None:
     """Author SDF, hydroelastic, and contact settings on a collider and bind its physics material."""
     if not prim.HasAPI("NewtonSDFCollisionAPI"):
         prim.ApplyAPI("NewtonSDFCollisionAPI")
     # Opt into hydroelastic contact and cook an SDF fine enough for the M16 thread.
     prim.GetAttribute("newton:hydroelasticEnabled").Set(True)
-    prim.GetAttribute("newton:hydroelasticStiffness").Set(1.0e10)
+    # The default 1e10 contact is too compliant for reliable engagement at this scale.
+    prim.GetAttribute("newton:hydroelasticStiffness").Set(1.0e11)
     prim.GetAttribute("newton:sdfMaxResolution").Set(128)
     prim.GetAttribute("newton:sdfNarrowBandInner").Set(-0.005)
     prim.GetAttribute("newton:sdfNarrowBandOuter").Set(0.005)
-    # Zero margin keeps the collision surface at the mesh; a small gap detects contacts early.
+    # Keep hydroelastic contacts on the mesh surface. A 5 mm gap per collider admits
+    # separated contact patches across several 2 mm thread pitches and destabilizes engagement.
     prim.GetAttribute("newton:contactMargin").Set(0.0)
-    prim.GetAttribute("newton:contactGap").Set(0.005)
+    prim.GetAttribute("newton:contactGap").Set(0.0)
     # The Factory assets ship with the PhysX SDF collider setup, which NewtonSDFCollisionAPI
     # supersedes. Clearing the approximation token avoids a parse warning.
     prim.GetAttribute("physics:approximation").Set("none")
@@ -97,18 +125,16 @@ def setup_collider(prim: Usd.Prim, material: UsdShade.Material) -> None:
 
 engine = SimulationManager.get_active_physics_engine()
 if engine != "newton":
-    carb.log_error(f"This example requires the Newton physics engine. Active engine is '{engine}'.")
-    simulation_app.close()
-    sys.exit(1)
+    fail(f"This example requires the Newton physics engine. Active engine is '{engine}'.")
 print(f"Using physics engine: {engine} on device: {args.device}")
 
 assets_root_path = get_assets_root_path()
 if assets_root_path is None:
-    carb.log_error("Could not find Isaac Sim assets folder")
-    simulation_app.close()
-    sys.exit(1)
+    fail("Could not find Isaac Sim assets folder")
 
 stage_utils.create_new_stage()
+stage_utils.set_stage_units(meters_per_unit=1.0)
+stage_utils.set_stage_up_axis("Z")
 # The thread pitch is 2 mm, so contacts have to be resolved at a fraction of that.
 SimulationManager.setup_simulation(dt=1.0 / 240.0, device=args.device)
 
@@ -167,7 +193,8 @@ max_contacts = 40_000
 configure_newton(
     NewtonConfig(
         num_substeps=2,
-        solver_cfg=MuJoCoSolverConfig(njmax=max_contacts, nconmax=max_contacts),
+        # Elliptic cones avoid the directional bias of pyramidal friction on the helical thread.
+        solver_cfg=MuJoCoSolverConfig(njmax=max_contacts, nconmax=max_contacts, cone="elliptic"),
         collision_cfg=CollisionConfig(
             rigid_contact_max=max_contacts,
             hydroelastic=HydroelasticConfig(mc_edge_clamp_min=0.0, buffer_mult_iso=2),
@@ -192,6 +219,19 @@ while simulation_app.is_running():
         position, orientation = nut.get_world_poses()
         position = position.numpy()[0]
         orientation = orientation.numpy()[0]
+        if not all(math.isfinite(float(value)) for value in (*position, *orientation)):
+            pose = f"position={position}, orientation={orientation}"
+            fail(f"Nut pose became nonfinite at frame {frame_count}: {pose}")
+        if args.test:
+            # Descent and quaternion rotation alone also pass for a nut falling off the bolt.
+            radial_offset = math.hypot(float(position[0]), float(position[1]))
+            # The local Z axis must stay aligned with the bolt, regardless of rotation about Z.
+            axis_alignment = 1.0 - 2.0 * (float(orientation[1]) ** 2 + float(orientation[2]) ** 2)
+            tilt = math.acos(max(-1.0, min(axis_alignment, 1.0)))
+            if radial_offset > 0.002:
+                fail(f"Test mode: nut left the bolt axis at frame {frame_count}: offset={radial_offset:.4f} m")
+            if tilt > math.radians(15.0):
+                fail(f"Test mode: nut tipped at frame {frame_count}: tilt={math.degrees(tilt):.1f} deg")
         if start_height is None:
             start_height = float(position[2])
             start_orientation = orientation.copy()
@@ -210,12 +250,14 @@ if start_height is not None:
         min_descent = 0.010
         min_rotation = math.radians(45.0)
         if descent < min_descent:
-            raise RuntimeError(f"test mode: nut descent {descent:.4f} m is below the {min_descent:.4f} m threshold")
+            fail(f"Test mode: nut descent {descent:.4f} m is below the {min_descent:.4f} m threshold")
         if max_rotation < min_rotation:
-            raise RuntimeError(
-                f"test mode: nut rotation {math.degrees(max_rotation):.1f} deg is below the "
+            fail(
+                f"Test mode: nut rotation {math.degrees(max_rotation):.1f} deg is below the "
                 f"{math.degrees(min_rotation):.1f} deg threshold"
             )
+elif args.test:
+    fail("Test mode: simulation did not produce a nut pose")
 
 app_utils.stop()
 simulation_app.close()

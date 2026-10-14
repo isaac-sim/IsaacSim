@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.12.1] - 2026-09-25
+### Added
+- Support Newton incoming joint wrench and projected DOF force queries.
+
+## [1.12.0] - 2026-09-25
+- Added set/get joint friction properties support for Newton.
+
+## [1.11.1] - 2026-09-23
+### Fixed
+- Report invalidated physics simulation views as invalid.
+- Preserve regex views when unrelated prims are deleted.
+- Coordinate shared prim-data reader initialization across wrappers.
+- Return independent arrays from no-index articulation DOF getters.
+- Support one-sided Fabric local-pose updates.
+- Preserve non-unit scale when setting USDRT poses.
+
+## [1.11.0] - 2026-09-22
+### Added
+- Support Newton gravity and Coriolis compensation forces.
+
+### Fixed
+- Preserve root-wrench and all joint compensation forces for floating articulations; reject unexpected backend tensor layouts.
+
+## [1.10.10] - 2026-09-15
+### Fixed
+- `RigidPrim.get_masses`: avoid modifying prims without an authored mass.
+
 ## [1.10.9] - 2026-09-14
 ### Fixed
 - Adding stage async after test setup of the xform_prim test to prevent random crashes (1.10.7 fix did not catch all the cases).
@@ -8,7 +35,7 @@
 ## [1.10.8] - 2026-09-01
 ### Fixed
 - get_local_scales() returns unit scaling if scaling attribute does not exists
-- adding get_world_scales()
+- Adding get_world_scales()
 
 ## [1.10.7] - 2026-09-01
 ### Fixed

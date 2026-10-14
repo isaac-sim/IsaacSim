@@ -47,6 +47,55 @@ struct JointStateSensorReading
 };
 
 /**
+ * @class JointStateSensorReadingView
+ * @brief Read-only live view of joint-state sensor output buffers.
+ * @details The view retains its backing buffers until release(). Numeric pointers remain stable for the view lifetime,
+ * while their values and getTime() update on each physics step. isValid() becomes false when the sensor is removed,
+ * reset, stopped, or otherwise loses a valid reading. Previously returned buffers remain readable and contain their
+ * last values after invalidation.
+ *
+ * The view performs no synchronization with the physics step that writes these buffers. Reading it while a step is in
+ * flight yields torn values that mix the current and the previous reading, so read it only from the thread that drives
+ * physics and only between steps. Use getSensorReading() instead when a reader cannot be ordered against the step.
+ */
+class JointStateSensorReadingView
+{
+public:
+    /** @brief Get the number of articulation degrees of freedom. */
+    virtual int32_t getDofCount() const = 0;
+
+    /** @brief Get degree-of-freedom names in articulation order. */
+    virtual const char* const* getDofNames() const = 0;
+
+    /** @brief Get degree-of-freedom positions in radians or meters. */
+    virtual const float* getPositions() const = 0;
+
+    /** @brief Get degree-of-freedom velocities in radians or meters per second. */
+    virtual const float* getVelocities() const = 0;
+
+    /** @brief Get degree-of-freedom efforts in newton-meters or newtons. */
+    virtual const float* getEfforts() const = 0;
+
+    /** @brief Get per-degree-of-freedom types, where zero is rotation and one is translation. */
+    virtual const uint8_t* getDofTypes() const = 0;
+
+    /** @brief Get the number of meters represented by one stage unit. */
+    virtual float getStageMetersPerUnit() const = 0;
+
+    /** @brief Get the simulation time of the currently exposed reading in seconds. */
+    virtual float getTime() const = 0;
+
+    /** @brief Check whether the sensor and its current reading remain valid. */
+    virtual bool isValid() const = 0;
+
+    /** @brief Release the view and its retained backing buffers. */
+    virtual void release() = 0;
+
+protected:
+    virtual ~JointStateSensorReadingView() = default;
+};
+
+/**
  * @struct IJointStateSensor
  * @brief Carbonite interface for managing C++ joint state sensors.
  * @details Reads all DOF positions, velocities, and efforts from an articulation
@@ -73,7 +122,7 @@ struct JointStateSensorReading
  */
 struct IJointStateSensor
 {
-    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IJointStateSensor", 2, 0);
+    CARB_PLUGIN_INTERFACE("isaacsim::sensors::experimental::physics::IJointStateSensor", 2, 1);
 
     /**
      * @brief Shut down the manager, destroying all sensors and freeing resources.
@@ -104,6 +153,15 @@ struct IJointStateSensor
      *         isValid is false before the first physics step or if the sensor is disabled.
      */
     virtual JointStateSensorReading getSensorReading(const char* articulationRootPath) = 0;
+
+    /**
+     * @brief Acquire a retained read-only live view of the latest sensor buffers.
+     * @details The returned view owns a reference to the sensor buffers and must be released with
+     * JointStateSensorReadingView::release(). The view is invalid when no valid reading is available.
+     * @param articulationRootPath USD path used when the sensor was created.
+     * @return Retained view object, or nullptr if allocation fails.
+     */
+    virtual JointStateSensorReadingView* getSensorReadingView(const char* articulationRootPath) = 0;
 };
 
 } // namespace isaacsim::sensors::experimental::physics

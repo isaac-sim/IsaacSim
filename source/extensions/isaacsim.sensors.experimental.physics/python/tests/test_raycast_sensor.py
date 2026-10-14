@@ -37,6 +37,17 @@ from .common import step_simulation
 class TestRaycastSensor(omni.kit.test.AsyncTestCase):
     """Test physics raycast sensor on dynamic rigid bodies."""
 
+    async def test_default_reading_has_consistent_empty_array_shapes(self) -> None:
+        """An invalid owned snapshot initializes every numeric array."""
+        from isaacsim.sensors.experimental.physics import _physics_sensors
+
+        reading = _physics_sensors.RaycastSensorReading()
+        self.assertEqual(reading.depths.shape, (0,))
+        self.assertEqual(reading.hit_positions.shape, (0, 3))
+        self.assertEqual(reading.hit_normals.shape, (0, 3))
+        self.assertEqual(reading.ray_origins_world.shape, (0, 3))
+        self.assertEqual(reading.ray_end_points_world.shape, (0, 3))
+
     async def setUp(self) -> None:
         """Create a fresh stage and timeline for raycast-on-rigid-body tests."""
         self._timeline = omni.timeline.get_timeline_interface()
@@ -351,7 +362,7 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         self.assertGreater(len(frame["depths"]), 0, "Should have depth data")
 
     async def test_get_sensor_reading(self) -> None:
-        """get_sensor_reading returns a C++ reading struct."""
+        """get_sensor_reading returns a mutable owned snapshot without property copies."""
         await _create_basic_scene()
 
         sensor = RaycastSensor(
@@ -372,6 +383,60 @@ class TestRaycastSensorRuntimeData(omni.kit.test.AsyncTestCase):
         reading = sensor.get_sensor_reading()
         self.assertTrue(reading.is_valid, "Reading should be valid after simulation")
         self.assertEqual(reading.ray_count, 1)
+        self.assertIs(reading.depths, reading.depths)
+
+        original_depth = float(reading.depths[0])
+        reading.depths[0] = original_depth + 1.0
+        self.assertEqual(reading.depths[0], original_depth + 1.0)
+        reading.depths[0] = original_depth
+
+        # Captured scalars are read-only; only the arrays a snapshot owns are mutable.
+        for field in ("time", "is_valid", "ray_count"):
+            with self.subTest(field=field):
+                with self.assertRaises(AttributeError):
+                    setattr(reading, field, 0)
+
+        snapshot_time = reading.time
+        snapshot_depths = reading.depths.copy()
+        await step_simulation(0.1)
+        self.assertEqual(reading.time, snapshot_time)
+        np.testing.assert_array_equal(reading.depths, snapshot_depths)
+
+    async def test_hit_prim_path_longer_than_reserved_buffer(self) -> None:
+        """A hit path that outgrows the buffer reserved per ray is reported without truncation."""
+        stage = await _create_basic_scene()
+
+        # Nest the target deeply so its path outgrows the buffer each ray reserves up front,
+        # taking the grow path that keeps the outgrown buffer alive for readers.
+        target_path = "/World/" + "/".join(f"deeply_nested_group_{i:02d}" for i in range(12)) + "/Target"
+        self.assertGreater(len(target_path), 256)
+
+        target = UsdGeom.Cube.Define(stage, target_path)
+        target.GetSizeAttr().Set(1.0)
+        target.AddTranslateOp().Set(Gf.Vec3d(2.0, 0.0, 1.5))
+        UsdPhysics.RigidBodyAPI.Apply(target.GetPrim()).CreateKinematicEnabledAttr(True)
+        UsdPhysics.CollisionAPI.Apply(target.GetPrim())
+        await omni.kit.app.get_app().next_update_async()
+
+        sensor = RaycastSensor(
+            Raycast.create(
+                "/World/Sensors/LongPathSensor",
+                ray_origins=[[0.0, 0.0, 0.0]],
+                ray_directions=[[1.0, 0.0, 0.0]],
+                min_range=0.1,
+                max_range=100.0,
+                output_frame="WORLD",
+                report_hit_prim_paths=True,
+                translations=np.array([[0.0, 0.0, 1.5]]),
+            )
+        )
+
+        self._timeline.play()
+        await step_simulation(0.3)
+
+        reading = sensor.get_sensor_reading()
+        self.assertTrue(reading.is_valid, "Reading should be valid after simulation")
+        self.assertEqual(list(reading.hit_prim_paths), [target_path])
 
     async def test_physics_only_step_outputs_raycast_data(self) -> None:
         """RaycastSensor produces data when stepping physics without app/render updates."""
@@ -490,6 +555,11 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
 
         reading = backend.get_sensor_reading()
         self.assertTrue(reading.is_valid, "Should have valid reading before remove")
+        depths = reading.depths.copy()
+        hit_positions = reading.hit_positions.copy()
+        hit_normals = reading.hit_normals.copy()
+        ray_origins_world = reading.ray_origins_world.copy()
+        ray_end_points_world = reading.ray_end_points_world.copy()
 
         from isaacsim.sensors.experimental.physics.impl.extension import get_raycast_sensor_interface
 
@@ -499,6 +569,59 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
 
         reading_after = iface.get_sensor_reading(sensor_path)
         self.assertFalse(reading_after.is_valid, "Reading should be invalid after remove")
+        np.testing.assert_array_equal(reading.depths, depths)
+        np.testing.assert_array_equal(reading.hit_positions, hit_positions)
+        np.testing.assert_array_equal(reading.hit_normals, hit_normals)
+        np.testing.assert_array_equal(reading.ray_origins_world, ray_origins_world)
+        np.testing.assert_array_equal(reading.ray_end_points_world, ray_end_points_world)
+
+    async def test_reading_view_is_live_read_only_and_invalidates_on_remove(self) -> None:
+        """Owner-backed views update in place and retain last data after dynamic invalidation."""
+        await _create_basic_scene()
+
+        sensor_path = "/World/Sensors/ViewSensor"
+        backend = RaycastSensor(
+            Raycast.create(
+                sensor_path,
+                min_range=0.1,
+                max_range=100.0,
+                ray_origins=[[0.0, 0.0, 0.0]],
+                ray_directions=[[1.0, 0.0, 0.0]],
+                output_frame="WORLD",
+                translations=[[0.0, 0.0, 1.5]],
+            )
+        )
+
+        self._timeline.play()
+        await step_simulation(0.3)
+
+        view = backend.get_sensor_reading_view()
+        self.assertTrue(view.is_valid)
+        depths = view.depths
+        self.assertFalse(depths.flags.writeable)
+        self.assertIs(depths.base, view)
+        self.assertEqual(view.hit_prim_paths, ())
+        data_address = depths.__array_interface__["data"][0]
+        first_time = view.time
+
+        with self.assertRaises(ValueError):
+            depths[0] = 0.0
+        with self.assertRaises(ValueError):
+            depths.setflags(write=True)
+
+        await step_simulation(0.1)
+        self.assertGreater(view.time, first_time)
+        self.assertEqual(view.depths.__array_interface__["data"][0], data_address)
+
+        retained_values = depths.copy()
+        from isaacsim.sensors.experimental.physics.impl.extension import get_raycast_sensor_interface
+
+        iface = get_raycast_sensor_interface()
+        self.assertIsNotNone(iface)
+        iface.remove_sensor(sensor_path)
+
+        self.assertFalse(view.is_valid)
+        np.testing.assert_array_equal(depths, retained_values)
 
     async def test_sensor_reset(self) -> None:
         """Sensor reset() removes the C++ sensor and clears state."""
@@ -556,6 +679,13 @@ class TestRaycastSensorLifecycle(omni.kit.test.AsyncTestCase):
 
         reading = backend.get_sensor_reading()
         self.assertTrue(reading.is_valid)
+
+        view = backend.get_sensor_reading_view()
+        self.assertTrue(view.is_valid)
+
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
+        self.assertFalse(view.is_valid)
 
         backend.on_timeline_stop()
         self.assertFalse(backend._sensor_created)

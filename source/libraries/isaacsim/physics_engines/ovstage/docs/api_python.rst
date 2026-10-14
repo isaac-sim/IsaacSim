@@ -22,10 +22,11 @@ Python guide and API reference
 
 .. currentmodule:: isaacsim.physics_engines.ovstage
 
-Use :func:`setup` before importing a backend that needs the packaged OVStage
-runtime directly. :func:`get_native_handle` registers a Python stage for later
-lookup, while :func:`as_native_handle` normalizes integer and nanobind capsule
-representations.
+Use :func:`setup` before the first OVStage population and before importing a
+backend that needs the packaged runtime directly. Setup registers the required
+Newton and PhysX USD schemas. :func:`get_native_handle` registers a Python
+stage for later lookup, while :func:`as_native_handle` normalizes integer and
+nanobind capsule representations.
 
 .. autosummary::
 

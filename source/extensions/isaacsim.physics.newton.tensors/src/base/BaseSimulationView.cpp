@@ -124,6 +124,24 @@ bool BaseSimulationView::check() const
     return m_valid;
 }
 
+void BaseSimulationView::_refreshModel() const
+{
+    if (m_newtonStage.is_none())
+        return;
+
+    py::gil_scoped_acquire gil;
+    try
+    {
+        py::object model = m_newtonStage.attr("model");
+        if (!model.is(m_model))
+            m_model = model;
+    }
+    catch (py::error_already_set& e)
+    {
+        CARB_LOG_ERROR("Failed to read the Newton model: %s", e.what());
+    }
+}
+
 bool BaseSimulationView::setSubspaceRoots(const char* pattern)
 {
     return true;
@@ -152,6 +170,7 @@ bool BaseSimulationView::setGravity(const carb::Float3& gravity)
 
     m_gravity = gravity;
 
+    _refreshModel();
     py::gil_scoped_acquire gil;
     try
     {
@@ -183,6 +202,7 @@ bool BaseSimulationView::getGravity(carb::Float3& gravity)
     if (!m_valid)
         return false;
 
+    _refreshModel();
     py::gil_scoped_acquire gil;
     try
     {
@@ -211,6 +231,7 @@ static constexpr int kNewtonJointFree = 4;
 
 ObjectType BaseSimulationView::getObjectType(const char* path)
 {
+    _refreshModel();
     if (!m_valid || !path || m_model.is_none())
         return ObjectType::eInvalid;
 

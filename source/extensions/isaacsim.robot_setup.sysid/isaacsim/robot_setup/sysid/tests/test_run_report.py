@@ -39,13 +39,14 @@ from isaacsim.robot_setup.sysid.run_report import (
     save_validation_series_overlay_png,
 )
 from isaacsim.robot_setup.sysid.schema_validation import (
+    _RUN_REPORT_V4_ADDED_KEYS,
     validate_sysid_run_report_payload,
 )
 
 
 def _empty_report() -> SysIdRunReport:
     return SysIdRunReport(
-        report_schema_version=3,
+        report_schema_version=4,
         run_spec={},
         schema_issues=[],
         telemetry_quality={},
@@ -54,8 +55,13 @@ def _empty_report() -> SysIdRunReport:
         newton_config=None,
         robot_prim_path="/World/Robot",
         train_chunks=[],
+        untuned_validation_metrics=[],
+        tuned_validation_metrics=[],
         validation_metrics=[],
+        untuned_validation_summary={},
+        tuned_validation_summary={},
         validation_summary={},
+        validation_comparison={},
         validation_artifacts={},
         resampling_diagnostics=[],
         tuning_assessment={},
@@ -71,21 +77,55 @@ def _empty_report() -> SysIdRunReport:
 
 
 class RunReportTests(omni.kit.test.AsyncTestCase):
-    async def test_run_report_payload_matches_version_three_contract(self) -> None:
+    async def test_run_report_payload_matches_version_four_contract(self) -> None:
         payload = json.loads(json.dumps(_empty_report().to_dict()))
 
         self.assertEqual(validate_sysid_run_report_payload(payload), [])
         schema = json.loads(read_schema_resource("sysid_run_report.schema.json"))
-        self.assertEqual(schema["properties"]["report_schema_version"]["const"], 3)
+        self.assertEqual(schema["properties"]["report_schema_version"]["const"], 4)
         self.assertEqual(set(schema["required"]), set(payload))
 
-    async def test_run_report_validator_rejects_wrong_version(self) -> None:
+    async def test_run_report_validator_rejects_unknown_version(self) -> None:
         payload = _empty_report().to_dict()
-        payload["report_schema_version"] = 2
+        payload["report_schema_version"] = 99
 
         issues = validate_sysid_run_report_payload(payload)
 
         self.assertEqual([issue.path for issue in issues if issue.severity == "error"], ["$.report_schema_version"])
+
+    async def test_run_report_validator_reads_superseded_version_three(self) -> None:
+        """A report written by an older release stays readable with a warning."""
+        payload = _empty_report().to_dict()
+        payload["report_schema_version"] = 3
+
+        issues = validate_sysid_run_report_payload(payload)
+
+        self.assertEqual([issue.severity for issue in issues], ["warning"])
+        self.assertEqual([issue.path for issue in issues], ["$.report_schema_version"])
+
+    async def test_run_report_validator_reads_version_three_without_version_four_keys(self) -> None:
+        """A real version-3 artifact lacks the version-4 keys and must still read."""
+        payload = _empty_report().to_dict()
+        payload["report_schema_version"] = 3
+        for key in _RUN_REPORT_V4_ADDED_KEYS:
+            payload.pop(key, None)
+
+        issues = validate_sysid_run_report_payload(payload)
+
+        self.assertEqual([issue.severity for issue in issues], ["warning"])
+        self.assertEqual([issue.path for issue in issues], ["$.report_schema_version"])
+
+    async def test_run_report_validator_still_requires_version_three_keys(self) -> None:
+        """Dropping a key version 3 also required stays a hard error."""
+        payload = _empty_report().to_dict()
+        payload["report_schema_version"] = 3
+        for key in _RUN_REPORT_V4_ADDED_KEYS:
+            payload.pop(key, None)
+        payload.pop("parameters")
+
+        issues = validate_sysid_run_report_payload(payload)
+
+        self.assertEqual([issue.path for issue in issues if issue.severity == "error"], ["$.parameters"])
 
     async def test_validation_overlay_writes_png(self) -> None:
         rollout = SimpleNamespace(
@@ -138,6 +178,7 @@ class RunReportTests(omni.kit.test.AsyncTestCase):
         prepared = SimpleNamespace(
             config=SimpleNamespace(
                 theta_initial=torch.tensor([1.0]),
+                theta_authored_initial=torch.tensor([0.8]),
                 param_entries=[entry],
                 trajectory=SimpleNamespace(num_joints=1),
             )
@@ -160,6 +201,7 @@ class RunReportTests(omni.kit.test.AsyncTestCase):
         rows = _parameter_rows(prepared, result)
 
         self.assertEqual(len(rows), 1)
-        self.assertAlmostEqual(rows[0]["delta"], 0.2)
+        self.assertAlmostEqual(rows[0]["initial"], 0.8)
+        self.assertAlmostEqual(rows[0]["delta"], 0.4)
         self.assertEqual(rows[0]["confidence"]["verdict"], "well_constrained")
         self.assertAlmostEqual(rows[0]["confidence"]["ten_percent_range"], 0.05)

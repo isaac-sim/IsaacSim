@@ -69,6 +69,10 @@ class OptimizerConfig:
     # replaced ``theta_initial``. Backends evaluate it alongside the seed so a
     # poor seed cannot make the solve worse than running without the presolve.
     theta_fallback: torch.Tensor | None = None
+    # Immutable values authored by the user/recipe at launch.  This differs
+    # from ``theta_initial`` when analytical presolve supplies the optimizer
+    # seed, and is the only valid baseline for "untuned" validation.
+    theta_authored_initial: torch.Tensor | None = None
 
 
 # Backward-compatible aliases for existing call sites.

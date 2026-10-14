@@ -38,6 +38,7 @@ from _legacy_runner import (  # noqa: E402
     cpu_device,
     gpu_device,
     gpu_only,
+    register_scenario_batches,
     run_scenario,
 )
 from common.get_set_contract import (  # noqa: E402
@@ -145,6 +146,9 @@ class PhysxRawContactIndexedMultiGet(_PhysxContactReportMixin, RawContactIndexed
 class PhysxRawContactExternalMultiGet(_PhysxContactReportMixin, RawContactExternalMultiGetCommon):
     """Configure external-buffer raw-contact reads for OvPhysX."""
 
+    EXPECT_EXTERNAL_ALIAS = True
+    EXPECT_EXTERNAL_VALIDATION = True
+
 
 class PhysxRawContactIndexedExternalMultiGet(_PhysxContactReportMixin, RawContactIndexedExternalMultiGetCommon):
     """Configure indexed external-buffer raw-contact reads for OvPhysX."""
@@ -169,6 +173,72 @@ class _PhysxDofPositionsOutOfRangeSet(DofPositionsSubsetSetCommon):
         for value in (-1, self.view.count):
             indices = wp.array([value], dtype=wp.int32, device=self.wp_device)
             self.view.set_data("dof-positions", data, indices)
+
+
+_ARTICULATION_CONTRACT_SCENARIOS = (
+    DofPositionsFullGetCommon,
+    DofPositionsExternalGetCommon,
+    DofPositionsIndexedGetCommon,
+    DofPositionsIndexedExternalGetCommon,
+    DofPositionsFullSetCommon,
+    DofPositionsSubsetSetCommon,
+    DofPositionsIndexSizeSetCommon,
+    DofStiffnessesFullGetCommon,
+    DofStiffnessesExternalGetCommon,
+    DofStiffnessesIndexedGetCommon,
+    DofStiffnessesIndexedExternalGetCommon,
+    DofStiffnessesFullSetCommon,
+    DofStiffnessesSubsetSetCommon,
+    DofStiffnessesIndexSizeSetCommon,
+    DofDampingsFullGetCommon,
+    DofDampingsExternalGetCommon,
+    DofDampingsIndexedGetCommon,
+    DofDampingsIndexedExternalGetCommon,
+    DofDampingsFullSetCommon,
+    DofDampingsSubsetSetCommon,
+    DofDampingsIndexSizeSetCommon,
+    DofArmaturesFullGetCommon,
+    DofArmaturesExternalGetCommon,
+    DofArmaturesIndexedGetCommon,
+    DofArmaturesIndexedExternalGetCommon,
+    DofArmaturesFullSetCommon,
+    DofArmaturesSubsetSetCommon,
+    DofArmaturesIndexSizeSetCommon,
+    DofMaxForcesFullGetCommon,
+    DofMaxForcesExternalGetCommon,
+    DofMaxForcesIndexedGetCommon,
+    DofMaxForcesIndexedExternalGetCommon,
+    DofMaxForcesFullSetCommon,
+    DofMaxForcesSubsetSetCommon,
+    DofMaxForcesIndexSizeSetCommon,
+    ExtensibilityCommon,
+    MetadataCommon,
+    ReadOnlyRejectsSetCommon,
+)
+_RIGID_BODY_CONTRACT_SCENARIOS = (
+    VelocitiesFullGetCommon,
+    VelocitiesExternalGetCommon,
+    VelocitiesIndexedGetCommon,
+    VelocitiesIndexedExternalGetCommon,
+    VelocitiesFullSetCommon,
+    VelocitiesSubsetSetCommon,
+    VelocitiesIndexSizeSetCommon,
+    MassesFullGetCommon,
+    MassesExternalGetCommon,
+    MassesIndexedGetCommon,
+    MassesIndexedExternalGetCommon,
+    MassesFullSetCommon,
+    MassesSubsetSetCommon,
+    MassesIndexSizeSetCommon,
+    WriteOnlyRejectsGetCommon,
+)
+register_scenario_batches(
+    "ovphysx",
+    (
+        _ARTICULATION_CONTRACT_SCENARIOS,
+        _RIGID_BODY_CONTRACT_SCENARIOS,
+    ),
+)
 
 
 class TestGetSetContract:

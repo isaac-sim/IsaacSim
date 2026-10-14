@@ -648,7 +648,8 @@ def main() -> int:  # noqa: D103
         print(f"[simsim] ERROR: {exc}", file=sys.stderr, flush=True)
         exit_code = 1
     finally:
-        app.close()
+        # Fast shutdown terminates the process inside `close()`, so the status must be passed here.
+        app.close(exit_code=exit_code)
     return exit_code
 
 

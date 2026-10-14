@@ -80,16 +80,16 @@ class NewtonRigidBodyView:
         self._sim_timestamp = 0
 
         # Create tensors for caching data
-        self._transforms, self._transforms_desc = self._frontend.create_tensor((self.count, 7), float32)
-        self._velocities, self._velocities_desc = self._frontend.create_tensor((self.count, 6), float32)
-        self._accelerations, self._accelerations_desc = self._frontend.create_tensor((self.count, 6), float32)
-        self._masses, self._masses_desc = self._frontend.create_tensor((self.count, 1), float32)
-        self._inv_masses, self._inv_masses_desc = self._frontend.create_tensor((self.count, 1), float32)
-        self._coms, self._coms_desc = self._frontend.create_tensor((self.count, 7), float32)
-        self._inertias, self._inertias_desc = self._frontend.create_tensor((self.count, 9), float32)
-        self._inv_inertias, self._inv_inertias_desc = self._frontend.create_tensor((self.count, 9), float32)
-        self._disable_simulations, self._disable_simulations_desc = self._frontend.create_tensor((self.count, 1), uint8)
-        self._disable_gravities, self._disable_gravities_desc = self._frontend.create_tensor((self.count, 1), uint8)
+        self._transforms = self._frontend.create_tensor((self.count, 7), float32)
+        self._velocities = self._frontend.create_tensor((self.count, 6), float32)
+        self._accelerations = self._frontend.create_tensor((self.count, 6), float32)
+        self._masses = self._frontend.create_tensor((self.count, 1), float32)
+        self._inv_masses = self._frontend.create_tensor((self.count, 1), float32)
+        self._coms = self._frontend.create_tensor((self.count, 7), float32)
+        self._inertias = self._frontend.create_tensor((self.count, 9), float32)
+        self._inv_inertias = self._frontend.create_tensor((self.count, 9), float32)
+        self._disable_simulations = self._frontend.create_tensor((self.count, 1), uint8)
+        self._disable_gravities = self._frontend.create_tensor((self.count, 1), uint8)
 
         # Initialize COM cache with identity quaternions [qx=0, qy=0, qz=0, qw=1] for orientation part
         coms_warp = self._convert_to_warp(self._coms)

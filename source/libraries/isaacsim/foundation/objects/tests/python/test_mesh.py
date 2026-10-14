@@ -58,6 +58,24 @@ def test_num_faces(capsys: Any, stage: Any) -> None:
     assert prims.num_faces == [1] * N
 
 
+def _get_display_colors(prims: Any, indices: Any = None) -> Any:
+    """Read the authored display colors, one RGB triple per prim.
+
+    The wrappers only write display colors, so the primvar is read back as a plain attribute: one array of
+    colors per prim, which the setter always authors with a single entry.
+
+    Args:
+        prims: Wrapper to read from.
+        indices: Indices of prims to read. If not defined, all wrapped prims are read.
+
+    Returns:
+        Display colors (shape ``(N, 3)``).
+    """
+    output = prims.get_attribute_values("primvars:displayColor", indices=indices)
+    isaacsim_test.check_array(output, shape=(len(output), 1, 3), dtype=wp.float32)
+    return output.numpy().reshape(-1, 3)
+
+
 @pytest.mark.parametrize("populate", [True, False])
 def test_points(capsys: Any, stage: Any, populate: Any) -> None:
     """Test points.
@@ -176,6 +194,50 @@ def test_subdivision_specs(capsys: Any, stage: Any, populate: Any) -> None:
 
 
 @pytest.mark.parametrize("populate", [True, False])
+def test_display_colors(capsys: Any, stage: Any, populate: Any) -> None:
+    """Test display colors.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+        stage: Stage used by the test.
+        populate: Whether to populate the test stage.
+    """
+    prims = Mesh(_get_paths(stage, populate))
+    # a single color token is broadcast to all the prims
+    prims.set_display_colors("#ff0000")
+    isaacsim_test.check_allclose(np.tile([1.0, 0.0, 0.0], (N, 1)), _get_display_colors(prims))
+    # numeric RGB triples, one per prim, and only for the selected prims
+    values = np.linspace(0.0, 1.0, N * 3, dtype=np.float32).reshape(N, 3)
+    prims.set_display_colors(values)
+    isaacsim_test.check_allclose(values, _get_display_colors(prims))
+    prims.set_display_colors("green", indices=[2])
+    isaacsim_test.check_allclose(np.array([[0.0, 0.5019608, 0.0]]), _get_display_colors(prims, indices=[2]))
+    # one color token per prim
+    prims.set_display_colors(["#00ff00", "k", "tab:blue", "0.5", "aquamarine"])
+    expected = np.array(
+        [[0, 1, 0], [0, 0, 0], [0.12156863, 0.46666667, 0.70588235], [0.5, 0.5, 0.5], [0.49803922, 1, 0.83137255]]
+    )
+    isaacsim_test.check_allclose(expected, _get_display_colors(prims))
+    # a single grayscale component is broadcast to the three channels, one per prim or shared by all of them
+    prims.set_display_colors(0.25)
+    isaacsim_test.check_allclose(np.full((N, 3), 0.25), _get_display_colors(prims))
+    grays = np.linspace(0.0, 1.0, N, dtype=np.float32).reshape(N, 1)
+    prims.set_display_colors(grays)
+    isaacsim_test.check_allclose(np.tile(grays, (1, 3)), _get_display_colors(prims))
+    # colors that cannot be broadcast to one RGB triple per prim are rejected
+    with pytest.raises(ValueError):
+        prims.set_display_colors(["red", "green"])
+    with pytest.raises(ValueError):
+        prims.set_display_colors(np.zeros((3, N), dtype=np.float32))
+    # unrecognized color tokens are rejected
+    with pytest.raises(ValueError):
+        prims.set_display_colors("not-a-color")
+    # an empty selection has no prim to color
+    with pytest.raises(ValueError):
+        prims.set_display_colors("red", indices=[])
+
+
+@pytest.mark.parametrize("populate", [True, False])
 def test_update_extents(capsys: Any, stage: Any, populate: Any) -> None:
     """Test update extents.
 
@@ -209,3 +271,20 @@ def test_are_of_type(capsys: Any, stage: Any) -> None:
     # non-existing prims
     with pytest.raises(RuntimeError):
         Mesh.are_of_type("/World/NonExistent")
+
+
+def test_legacy_display_color_getter(stage: Any) -> None:
+    """Preserve the M1 placeholder call with and without the indices keyword.
+
+    Args:
+        stage: Stage used by the test.
+    """
+    prims = Mesh(["/World/LegacyColor"])
+    for result in (prims.get_display_colors(), prims.get_display_colors(indices=[0])):
+        assert isinstance(result, np.ndarray)
+        assert result.shape == ()
+        assert result.dtype == np.dtype(np.int32)
+        np.testing.assert_array_equal(result, np.asarray(0, dtype=np.int32))
+    del prims
+    result[...] = 7
+    assert result.item() == 7

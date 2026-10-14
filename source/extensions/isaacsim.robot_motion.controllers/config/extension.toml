@@ -3,25 +3,34 @@
 # https://docs.omniverse.nvidia.com/kit/docs/kit-manual/latest/guide/extensions_advanced.html
 #
 
+[core]
+reloadable = false
+# Load after required extensions with order -100.
+order = -97
+
 [package]
-version = "0.3.2"
+version = "0.4.0"
 category = "simulation"
 title = "controllers"
-description = "Contains portable controllers which can be used in Isaac Sim."
+description = "Provides the isaacsim.robot_motion.controllers library in Kit."
 keywords = ["ackermann", "controllers", "differential", "generation", "holonomic", "impedance", "joint", "motion", "operational"]
 changelog = "docs/CHANGELOG.md"
 readme = "docs/Overview.md"
 preview_image = "data/preview.png"
 icon = "data/icon.png"
+writeTarget.kit = true
+writeTarget.platform = true
 
 [dependencies]
 "isaacsim.common" = {}
 "isaacsim.core.experimental.utils" = {}
 "isaacsim.pip.newton" = {}
 "isaacsim.robot_motion.experimental.motion_generation" = {}
+"isaacsim.robot_motion.schema" = {}
 
+# Controller implementation, delivered from the projected isaacsim-robot-motion wheel.
 [[python.module]]
-name = "isaacsim.robot_motion.controllers"
+path = "pip_prebundle"
 
 # define the Python module for tests
 [[python.module]]

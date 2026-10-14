@@ -16,6 +16,7 @@
 """Main Teleop window - composes independent panel modules."""
 
 import carb.eventdispatcher
+import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
 import omni.ui as ui
@@ -124,6 +125,7 @@ class TeleopWindow(ui.Window):
 
         Preserve the user's configured profile state, but clear stage-bound runtime state.
         """
+        self._teleop_profile_panel.on_stage_closed()
         self._session_panel.on_stage_closed()
         self._floating_panel.on_stage_closed()
         self._ik_panel.on_stage_closed()
@@ -188,6 +190,9 @@ class TeleopWindow(ui.Window):
         Returns:
             Tuple containing success state and a status message.
         """
+        if not app_utils.is_stopped():
+            return False, "Stop the timeline before loading a profile"
+
         resolve = (
             stage_utils.is_stage_set() or omni.usd.get_context().get_stage() is not None
         ) and not stage_utils.is_stage_loading()
@@ -219,6 +224,8 @@ class TeleopWindow(ui.Window):
             self._visual_cues_manager.hide_all()
         if self._teleop_profile_panel:
             self._teleop_profile_panel.destroy()
+        if self._session_panel:
+            self._session_panel.destroy()
         if self._floating_panel:
             self._floating_panel.destroy()
         if self._ik_panel:

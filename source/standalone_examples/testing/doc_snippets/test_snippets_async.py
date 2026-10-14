@@ -1274,6 +1274,10 @@ for _candidate in [script_dir, *script_dir.parents]:
 
 if repo_root is None:
     print(f"Error: Could not locate {snippets_rel} in any ancestor of {script_dir}")
+    print(
+        "This internal documentation test requires an Isaac Sim source checkout; binary packages do not include "
+        f"{snippets_rel}. From a built source checkout, run `./repo.sh test -s doc_snippets_async`."
+    )
     sys.exit(1)
 
 snippets_dir = repo_root / snippets_rel

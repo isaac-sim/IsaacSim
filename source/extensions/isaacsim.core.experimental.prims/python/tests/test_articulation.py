@@ -15,8 +15,9 @@
 
 """Verifies Articulation wrappers resolve USD and PhysX articulation metadata and expose runtime tensor-backed properties. Covers poses, velocities, solver settings, link and DOF properties, tendons, default state, control mode switching, and fixed versus floating base metadata."""
 
+import copy
 from typing import Any, Literal
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -33,7 +34,7 @@ from isaacsim.core.experimental.prims.impl._usd_articulation import (
 from isaacsim.core.experimental.utils.backend import use_backend
 from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.storage.native import get_assets_root_path
-from pxr import Sdf, UsdGeom, UsdPhysics
+from pxr import Gf, Sdf, UsdGeom, UsdPhysics
 
 from .common import (
     check_allclose,
@@ -44,6 +45,7 @@ from .common import (
     draw_indices,
     draw_sample,
     parametrize,
+    requires_engines,
 )
 
 
@@ -66,6 +68,74 @@ async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"
         stage_utils.add_reference_to_stage(usd_path=usd_path, path=f"/World/A_{i}")
 
 
+async def populate_stage_with_simple_articulations(count: int = 2) -> None:
+    """Create local two-link articulations for backend-neutral tensor tests."""
+    await stage_utils.create_new_stage_async()
+    stage = stage_utils.get_current_stage(backend="usd")
+
+    for i in range(count):
+        articulation_path = f"/World/A_{i}"
+        articulation = UsdGeom.Xform.Define(stage, articulation_path)
+        articulation.AddTranslateOp().Set((float(i) * 3.0, 0.0, 0.0))
+        UsdPhysics.ArticulationRootAPI.Apply(articulation.GetPrim())
+
+        root_path = f"{articulation_path}/root"
+        root = UsdGeom.Cube.Define(stage, root_path)
+        UsdPhysics.RigidBodyAPI.Apply(root.GetPrim())
+        UsdPhysics.MassAPI.Apply(root.GetPrim()).CreateMassAttr(1.0)
+        root_joint = UsdPhysics.FixedJoint.Define(stage, f"{root_path}/root_joint")
+        root_joint.CreateBody1Rel().SetTargets([root_path])
+
+        child_path = f"{articulation_path}/child"
+        child = UsdGeom.Cube.Define(stage, child_path)
+        child.AddTranslateOp().Set((1.0, 0.0, 0.0))
+        UsdPhysics.RigidBodyAPI.Apply(child.GetPrim())
+        UsdPhysics.MassAPI.Apply(child.GetPrim()).CreateMassAttr(1.0)
+        child_joint = UsdPhysics.RevoluteJoint.Define(stage, f"{child_path}/joint")
+        child_joint.CreateBody0Rel().SetTargets([root_path])
+        child_joint.CreateBody1Rel().SetTargets([child_path])
+        child_joint.CreateAxisAttr().Set("Y")
+
+
+async def populate_compensation_pendulum(max_num_prims: int, operation: str, **kwargs: Any) -> None:
+    """Author unit-mass, unit-length links with revolute Y joints and known analytical dynamics.
+
+    Args:
+        max_num_prims: Number of independent pendulums.
+        operation: Fixture operation, always wrap.
+        **kwargs: Unused fixture options.
+    """
+    await stage_utils.create_new_stage_async()
+    stage = stage_utils.get_current_stage(backend="usd")
+    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+    scene = UsdPhysics.Scene.Define(stage, "/World/PhysicsScene")
+    scene.CreateGravityDirectionAttr(Gf.Vec3f(0, 0, -1))
+    scene.CreateGravityMagnitudeAttr(9.81)
+    for i in range(max_num_prims):
+        root = f"/World/A_{i}"
+        UsdGeom.Xform.Define(stage, root)
+        for name, x in (("base", 0.0), ("link1", 0.5), ("link2", 1.5)):
+            body = UsdGeom.Xform.Define(stage, f"{root}/{name}")
+            body.AddTranslateOp().Set(Gf.Vec3d(x, i * 3, 0))
+            UsdPhysics.RigidBodyAPI.Apply(body.GetPrim())
+            mass = UsdPhysics.MassAPI.Apply(body.GetPrim())
+            mass.CreateMassAttr(1.0)
+            mass.CreateCenterOfMassAttr(Gf.Vec3f(0))
+            mass.CreateDiagonalInertiaAttr(Gf.Vec3f(0.01, 0.1, 0.1))
+        fixed = UsdPhysics.FixedJoint.Define(stage, f"{root}/fixed")
+        fixed.CreateBody1Rel().SetTargets([f"{root}/base"])
+        fixed.CreateLocalPos0Attr(Gf.Vec3f(0, i * 3, 0))
+        UsdPhysics.ArticulationRootAPI.Apply(fixed.GetPrim())
+        for j, parent in ((1, "base"), (2, "link1")):
+            joint = UsdPhysics.RevoluteJoint.Define(stage, f"{root}/joint{j}")
+            joint.CreateBody0Rel().SetTargets([f"{root}/{parent}"])
+            joint.CreateBody1Rel().SetTargets([f"{root}/link{j}"])
+            joint.CreateAxisAttr("Y")
+            joint.CreateLocalPos0Attr(Gf.Vec3f(0 if j == 1 else 0.5, 0, 0))
+            joint.CreateLocalPos1Attr(Gf.Vec3f(-0.5, 0, 0))
+
+
 async def play_stop_timeline() -> None:
     """Play stop timeline."""
     omni.timeline.get_timeline_interface().play()
@@ -84,6 +154,85 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
     async def tearDown(self) -> None:
         """Method called immediately after the test method has been called."""
         super().tearDown()
+
+    # --------------------------------------------------------------------
+
+    @requires_engines(supported_engines=["physx", "newton"])
+    async def test_link_incoming_joint_force_tensor_backend(self) -> None:
+        """Test the public incoming-joint-force API with each tensor physics engine."""
+        restore_config = None
+        if SimulationManager.get_active_physics_engine() == "newton":
+            from isaacsim.physics.newton import NewtonConfig, configure_newton, get_newton_config
+
+            current_config = get_newton_config()
+            restore_config = copy.deepcopy(current_config) if current_config else NewtonConfig()
+            config = copy.deepcopy(restore_config)
+            config.solver_outputs.link_incoming_joint_force = True
+            configure_newton(config)
+
+        timeline = omni.timeline.get_timeline_interface()
+        try:
+            await populate_stage_with_simple_articulations()
+            SimulationManager.set_physics_sim_device("cpu")
+            prim = Articulation("/World/A_.*")
+            timeline.play()
+            await omni.kit.app.get_app().next_update_async()
+
+            for indices, expected_count in draw_indices(count=2, step=2):
+                for link_indices, expected_link_count in draw_indices(count=prim.num_links, step=2):
+                    with use_backend("tensor", raise_on_unsupported=True, raise_on_fallback=True):
+                        forces, torques = prim.get_link_incoming_joint_force(indices=indices, link_indices=link_indices)
+                    check_array(
+                        [forces, torques],
+                        shape=(expected_count, expected_link_count, 3),
+                        dtype=wp.float32,
+                        device="cpu",
+                    )
+                    self.assertTrue(np.isfinite(forces.numpy()).all())
+                    self.assertTrue(np.isfinite(torques.numpy()).all())
+        finally:
+            timeline.stop()
+            await omni.kit.app.get_app().next_update_async()
+            if restore_config is not None:
+                configure_newton(restore_config)
+
+    @requires_engines(supported_engines=["physx", "newton"])
+    async def test_dof_projected_joint_force_tensor_backend(self) -> None:
+        """Test the public projected-DOF-force API with each tensor physics engine."""
+        restore_config = None
+        if SimulationManager.get_active_physics_engine() == "newton":
+            from isaacsim.physics.newton import NewtonConfig, configure_newton, get_newton_config
+
+            current_config = get_newton_config()
+            restore_config = copy.deepcopy(current_config) if current_config else NewtonConfig()
+            config = copy.deepcopy(restore_config)
+            config.solver_outputs.link_incoming_joint_force = True
+            configure_newton(config)
+
+        timeline = omni.timeline.get_timeline_interface()
+        try:
+            await populate_stage_with_simple_articulations()
+            SimulationManager.set_physics_sim_device("cpu")
+            prim = Articulation("/World/A_.*")
+            timeline.play()
+            await omni.kit.app.get_app().next_update_async()
+
+            for indices, expected_count in draw_indices(count=2, step=2):
+                for dof_indices, expected_dof_count in draw_indices(count=prim.num_dofs, step=2):
+                    with use_backend("tensor", raise_on_unsupported=True, raise_on_fallback=True):
+                        output = prim.get_dof_projected_joint_forces(indices=indices, dof_indices=dof_indices)
+                    check_array(
+                        output,
+                        shape=(expected_count, expected_dof_count),
+                        dtype=wp.float32,
+                        device="cpu",
+                    )
+                    self.assertTrue(np.isfinite(output.numpy()).all())
+        finally:
+            timeline.stop()
+            await omni.kit.app.get_app().next_update_async()
+            if restore_config is not None:
+                configure_newton(restore_config)
 
     # --------------------------------------------------------------------
 
@@ -511,7 +660,9 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
             cprint(f"  |    |-- indices: {type(indices).__name__}, count: {expected_count}")
             for link_indices, expected_link_count in draw_indices(count=prim.num_links, step=2):
                 cprint(f"  |    |    |-- link_indices: {type(link_indices).__name__}, count: {expected_link_count}")
-                for v0, expected_v0 in draw_sample(shape=(expected_count, expected_link_count), dtype=wp.float32):
+                for v0, expected_v0 in draw_sample(
+                    shape=(expected_count, expected_link_count), dtype=wp.float32, low=0.1
+                ):
                     with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
                         prim.set_link_masses(v0, indices=indices, link_indices=link_indices)
                         output = prim.get_link_masses(indices=indices, link_indices=link_indices)
@@ -607,7 +758,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
     @parametrize(
         backends=["tensor"],
         operations=["wrap"],
-        supported_engines=["physx"],
+        supported_engines=["physx", "newton"],
         prim_class=Articulation,
         populate_stage_func=populate_stage,
     )
@@ -622,6 +773,19 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         """
         # check backend
         self.check_backend(backend, prim)
+        view = prim._physics_articulation_view
+        for getter, raw_getter in (
+            (prim.get_dof_gravity_compensation_forces, view.get_gravity_compensation_forces),
+            (
+                prim.get_dof_coriolis_and_centrifugal_compensation_forces,
+                view.get_coriolis_and_centrifugal_compensation_forces,
+            ),
+        ):
+            expected = raw_getter().numpy().copy()
+            self.assertEqual(expected.shape, (num_prims, prim.num_dofs))
+            self.assertTrue(np.isfinite(expected).all())
+            np.testing.assert_array_equal(getter().numpy(), expected)
+            np.testing.assert_array_equal(getter(dof_indices=list(range(prim.num_dofs))).numpy(), expected)
         # test cases (coriolis and centrifugal compensation forces)
         for indices, expected_count in draw_indices(count=num_prims, step=2):
             cprint(f"  |    |-- indices: {type(indices).__name__}, expected_count: {expected_count}")
@@ -640,6 +804,211 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                 with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
                     forces = prim.get_dof_gravity_compensation_forces(indices=indices, dof_indices=dof_indices)
                 check_array(forces, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
+
+    @parametrize(
+        backends=["tensor"],
+        operations=["wrap"],
+        supported_engines=["physx", "newton"],
+        prim_class=Articulation,
+        populate_stage_func=populate_stage,
+        populate_stage_func_kwargs={"usd_path": "Isaac/Robots_Multiphysics/BostonDynamics/spot/spot.usda"},
+        max_num_prims=2,
+    )
+    async def test_floating_compensation_forces(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Verify floating-base forces retain the root wrench followed by all joint forces.
+
+        Args:
+            prim: Articulation wrapper under test.
+            num_prims: Number of wrapped articulations.
+            device: Wrapper output device.
+            backend: Backend under test.
+        """
+        self.check_backend(backend, prim)
+        prim.set_dof_velocities(np.linspace(0.3, 2.0, prim.num_dofs, dtype=np.float32))
+        view = prim._physics_articulation_view
+        for getter, raw_getter in (
+            (prim.get_dof_gravity_compensation_forces, view.get_gravity_compensation_forces),
+            (
+                prim.get_dof_coriolis_and_centrifugal_compensation_forces,
+                view.get_coriolis_and_centrifugal_compensation_forces,
+            ),
+        ):
+            raw = raw_getter().numpy().copy()
+            self.assertEqual(raw.shape, (num_prims, prim.num_dofs + 6))
+            expected = raw
+            if getter.__name__ == "get_dof_gravity_compensation_forces":
+                total_mass = prim.get_link_masses().numpy().reshape(num_prims, -1).sum(axis=1)
+                np.testing.assert_allclose(raw[:, 2], total_mass * 9.81, rtol=1e-4)
+                np.testing.assert_allclose(raw[:, :2], 0.0, atol=1e-4)
+            self.assertTrue(np.isfinite(raw).all())
+            self.assertGreater(np.max(np.abs(expected[:, 6:])), 1e-6, "Force oracle must be nonzero")
+            for dof_indices in (
+                None,
+                list(range(6 + prim.num_dofs)),
+                list(range(6)),
+                list(range(6, 6 + prim.num_dofs)),
+                [5 + prim.num_dofs, 0, 6, 0],
+                0,
+            ):
+                columns = np.arange(6 + prim.num_dofs) if dof_indices is None else np.atleast_1d(dof_indices)
+                result = getter(dof_indices=dof_indices)
+                check_array(result, shape=(num_prims, len(columns)), dtype=wp.float32, device=device)
+                self.assertTrue(result.is_contiguous)
+                np.testing.assert_allclose(result.numpy(), expected[:, columns], rtol=1e-5, atol=1e-6)
+
+    @parametrize(
+        backends=["tensor"],
+        operations=["wrap"],
+        supported_engines=["physx"],
+        instances=["many"],
+        prim_class=Articulation,
+        populate_stage_func=populate_stage,
+        max_num_prims=2,
+    )
+    async def test_compensation_force_tensor_contract(
+        self, prim: Any, num_prims: Any, device: Any, backend: Any
+    ) -> None:
+        """Exercise indexing, transfer, empty selections and malformed layouts through the public getters.
+
+        Args:
+            prim: Articulation wrapper under test.
+            num_prims: Number of wrapped articulations.
+            device: Wrapper output device.
+            backend: Backend under test.
+        """
+        self.check_backend(backend, prim)
+        for name in ("gravity", "coriolis_and_centrifugal"):
+            getter = getattr(prim, f"get_dof_{name}_compensation_forces")
+            raw_name = f"get_{name}_compensation_forces"
+            for source_device in ("cpu", "cuda"):
+                for root_columns in (0, 6):
+                    values = np.arange(num_prims * (prim.num_dofs + root_columns), dtype=np.float32).reshape(
+                        num_prims, prim.num_dofs + root_columns
+                    )
+                    raw = wp.array(values, device=source_device)
+                    with patch.object(prim._physics_articulation_view, raw_name, return_value=raw):
+                        row_cases = (None, [1, 0, 0], 0, [], np.array([1]), wp.array([0], dtype=wp.int32))
+                        column_cases = (
+                            None,
+                            list(range(prim.num_dofs + root_columns)),
+                            [prim.num_dofs + root_columns - 1, 0, 0],
+                            0,
+                            [],
+                            np.array([0]),
+                            wp.array([0], dtype=wp.int32),
+                        )
+                        for rows in row_cases:
+                            row_values = (
+                                np.arange(num_prims)
+                                if rows is None
+                                else np.atleast_1d(rows.numpy() if isinstance(rows, wp.array) else rows).astype(
+                                    np.int32
+                                )
+                            )
+                            for columns in column_cases:
+                                column_values = (
+                                    np.arange(prim.num_dofs + root_columns)
+                                    if columns is None
+                                    else np.atleast_1d(
+                                        columns.numpy() if isinstance(columns, wp.array) else columns
+                                    ).astype(np.int32)
+                                )
+                                result = getter(indices=rows, dof_indices=columns)
+                                check_array(
+                                    result,
+                                    shape=(len(row_values), len(column_values)),
+                                    dtype=wp.float32,
+                                    device=device,
+                                )
+                                self.assertTrue(result.is_contiguous)
+                                np.testing.assert_array_equal(result.numpy(), values[np.ix_(row_values, column_values)])
+                        np.testing.assert_array_equal(raw.numpy(), values)
+                for shape in ((num_prims,), (num_prims, prim.num_dofs + 1), (num_prims + 1, prim.num_dofs)):
+                    with patch.object(
+                        prim._physics_articulation_view, raw_name, return_value=wp.zeros(shape, device=source_device)
+                    ):
+                        with self.assertRaisesRegex(RuntimeError, "Unexpected compensation-force tensor shape"):
+                            getter()
+                with patch.object(Articulation, "num_dofs", new_callable=PropertyMock, return_value=0):
+                    for root_columns in (0, 6):
+                        with patch.object(
+                            prim._physics_articulation_view,
+                            raw_name,
+                            return_value=wp.zeros((num_prims, root_columns), device=source_device),
+                        ):
+                            result = getter()
+                            check_array(result, shape=(num_prims, root_columns), dtype=wp.float32, device=device)
+
+    @parametrize(
+        backends=["tensor"],
+        operations=["wrap"],
+        prim_class=Articulation,
+        populate_stage_func=populate_compensation_pendulum,
+        max_num_prims=2,
+    )
+    async def test_analytical_compensation_forces(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """Compare two-link pendulum torques against analytical inverse dynamics.
+
+        Args:
+            prim: Articulation wrapper under test.
+            num_prims: Number of wrapped articulations.
+            device: Output device.
+            backend: Backend under test.
+        """
+        self.check_backend(backend, prim)
+        self.assertEqual(prim.num_dofs, 2)
+        stage = None
+        if SimulationManager.get_active_physics_engine() == "newton":
+            from isaacsim.physics.newton.impl.extension import acquire_stage
+
+            stage = acquire_stage()
+        for q1, q2 in ((0.0, np.pi / 2), (0.3, -np.pi / 3)):
+            for v1, v2 in ((0.0, 0.0), (0.7, -0.4)):
+                angles = np.array([[q1 + 0.15 * i, q2] for i in range(num_prims)], dtype=np.float32)
+                velocities = np.array([[v1 + 0.2 * i, v2] for i in range(num_prims)], dtype=np.float32)
+                prim.set_dof_positions(angles)
+                prim.set_dof_velocities(velocities)
+                snapshot = (
+                    {}
+                    if stage is None
+                    else {
+                        name: getattr(stage.state_0, name).numpy().copy()
+                        for name in ("joint_q", "joint_qd", "body_q", "body_qd", "body_f")
+                    }
+                )
+                angle1, angle2 = angles.T
+                velocity1, velocity2 = velocities.T
+                gravity = np.column_stack(
+                    (
+                        -9.81 * (1.5 * np.cos(angle1) + 0.5 * np.cos(angle1 + angle2)),
+                        -4.905 * np.cos(angle1 + angle2),
+                    )
+                )
+                coriolis = np.column_stack(
+                    (
+                        -0.5 * np.sin(angle2) * (2 * velocity1 * velocity2 + velocity2 * velocity2),
+                        0.5 * np.sin(angle2) * velocity1 * velocity1,
+                    )
+                )
+                for getter, expected in (
+                    (prim.get_dof_gravity_compensation_forces, gravity),
+                    (prim.get_dof_coriolis_and_centrifugal_compensation_forces, coriolis),
+                ):
+                    result = getter()
+                    check_array(result, shape=(num_prims, 2), dtype=wp.float32, device=device)
+                    np.testing.assert_allclose(result.numpy(), expected, atol=2e-4, rtol=1e-4)
+                    np.testing.assert_allclose(getter(dof_indices=[1, 0]).numpy(), result.numpy()[:, [1, 0]], atol=1e-6)
+                if num_prims > 1:
+                    # A view of only the second articulation exercises a nonzero model DOF offset and mask.
+                    subset = Articulation("/World/A_1")
+                    np.testing.assert_allclose(
+                        subset.get_dof_gravity_compensation_forces().numpy(), gravity[1:], atol=2e-4
+                    )
+                    np.testing.assert_allclose(
+                        subset.get_dof_coriolis_and_centrifugal_compensation_forces().numpy(), coriolis[1:], atol=2e-4
+                    )
+                for name, before in snapshot.items():
+                    np.testing.assert_array_equal(getattr(stage.state_0, name).numpy(), before)
 
     @parametrize(
         backends=["tensor", "usd"],
@@ -865,17 +1234,44 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                         output = prim.get_dof_efforts(indices=indices, dof_indices=dof_indices)
                     check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
                     check_allclose(expected_v0, output, given=(v0,))
-                # projected joint forces
-                with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
-                    output = prim.get_dof_projected_joint_forces(indices=indices, dof_indices=dof_indices)
-                check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
-            # link-related
-            for link_indices, expected_link_count in draw_indices(count=prim.num_links, step=2):
-                cprint(f"  |    |    |-- link_indices: {type(link_indices).__name__}, count: {expected_link_count}")
-                # measured forces
-                with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
-                    output = prim.get_link_incoming_joint_force(indices=indices, link_indices=link_indices)
-                check_array(output, shape=(expected_count, expected_link_count, 3), dtype=wp.float32, device=device)
+
+    @parametrize(
+        devices=["cpu"],
+        backends=["tensor"],
+        instances=["one"],
+        operations=["wrap"],
+        supported_engines=["physx"],
+        prim_class=Articulation,
+        populate_stage_func=populate_stage,
+    )
+    async def test_dof_getters_return_independent_arrays(
+        self, prim: Any, num_prims: Any, device: Any, backend: Any
+    ) -> None:
+        """No-index DOF getters must not expose mutable physics buffers.
+
+        Args:
+            prim: Prim wrapper under test.
+            num_prims: Number of prims under test.
+            device: Device under test.
+            backend: Backend name under test.
+        """
+        getters = [
+            prim.get_dof_positions,
+            prim.get_dof_velocities,
+            prim.get_dof_position_targets,
+            prim.get_dof_velocity_targets,
+        ]
+        with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+            for getter in getters:
+                first = getter()
+                second = getter()
+                self.assertIsNot(first, second)
+                self.assertNotEqual(int(first.ptr), int(second.ptr))
+
+            held = prim.get_dof_positions()
+            expected = held.numpy().copy()
+            prim.set_dof_positions(np.full((num_prims, prim.num_dofs), 0.123, dtype=np.float32))
+        np.testing.assert_array_equal(held.numpy(), expected)
 
     @parametrize(
         backends=["tensor", "usd"],
@@ -949,7 +1345,7 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
     @parametrize(
         backends=["tensor", "usd"],
         operations=["wrap"],
-        supported_engines=["physx"],
+        supported_engines=["physx", "newton"],
         prim_class=Articulation,
         populate_stage_func=populate_stage,
     )
@@ -978,7 +1374,34 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                         prim.set_dof_friction_properties(v0, v1, v2, indices=indices, dof_indices=dof_indices)
                         output = prim.get_dof_friction_properties(indices=indices, dof_indices=dof_indices)
                     check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
-                    check_allclose((expected_v0, expected_v1, expected_v2), output, given=(v0, v1, v2))
+                    if SimulationManager.get_active_physics_engine() == "newton":
+                        check_allclose(
+                            (expected_v0, expected_v0, np.zeros(output[2].shape, dtype=np.float32)),
+                            output,
+                            given=(v0, v1, v2),
+                        )
+                    else:
+                        check_allclose((expected_v0, expected_v1, expected_v2), output, given=(v0, v1, v2))
+
+        if SimulationManager.get_active_physics_engine() == "newton":
+            with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                before = prim.get_dof_friction_properties(indices=[0], dof_indices=[0])[0].numpy()
+            with patch("isaacsim.core.experimental.prims.impl.articulation.carb.log_warn") as log_warn:
+                with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                    prim.set_dof_friction_properties(
+                        dynamic_frictions=0.2, viscous_frictions=0.1, indices=[0], dof_indices=[0]
+                    )
+                    prim.set_dof_friction_properties(
+                        dynamic_frictions=0.2, viscous_frictions=0.1, indices=[0], dof_indices=[0]
+                    )
+            log_warn.assert_called_once()
+            warning = " ".join(call.args[0] for call in log_warn.call_args_list)
+            self.assertIn("No value will be changed because static_frictions was not provided", warning)
+            self.assertIn("dynamic_frictions and viscous_frictions are ignored", warning)
+            self.assertIn("XPBD and VBD solvers ignore joint friction", warning)
+            with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                after = prim.get_dof_friction_properties(indices=[0], dof_indices=[0])[0].numpy()
+            self.assertTrue(np.allclose(before, after))
 
     @parametrize(
         backends=["tensor", "usd"],

@@ -316,3 +316,11 @@ class TestAuthorSPG(omni.kit.test.AsyncTestCase):
                 self.assertEqual(shader.GetSourceAsset("spg").path, copied_cu)
         finally:
             shutil.rmtree(copy_dir, ignore_errors=True)
+
+    async def test_rejects_multiple_prims(self) -> None:
+        """Reject SPG authoring when the camera wrapper holds more than one prim."""
+        RtxCamera("/World/camera_1")
+        batched = RtxCamera("/World/camera.*")
+        self.assertGreater(len(batched), 1)
+        with self.assertRaisesRegex(ValueError, "author_spg supports a single sensor prim"):
+            batched.author_spg(self._grayscale_node())

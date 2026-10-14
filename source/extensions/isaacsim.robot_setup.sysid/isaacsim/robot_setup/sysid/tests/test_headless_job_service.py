@@ -28,6 +28,7 @@ import tempfile
 import types
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import isaacsim.robot_setup.sysid.headless_job as headless_job
@@ -47,10 +48,12 @@ class TestHeadlessSysIdJob(omni.kit.test.AsyncTestCase):
         )
         stage = object()
         trajectory = object()
-        prepared = object()
         solve_result = object()
         preflight = SimpleNamespace(raise_for_errors=Mock())
+        # Preparation assesses telemetry quality while building the check report,
+        # and hands the assessment back on the prepared run for everyone after it.
         quality = object()
+        prepared = SimpleNamespace(telemetry_quality=quality)
         schema_issues = [object()]
         raw_spec_payload = {"solver": {"max_iteration": 3}}
         controller = SimpleNamespace(
@@ -59,15 +62,20 @@ class TestHeadlessSysIdJob(omni.kit.test.AsyncTestCase):
             prepare=Mock(return_value=prepared),
         )
         on_prepared = Mock()
+        progress: list[tuple[str, float]] = []
+
+        async def _solve(*_args: Any, on_progress: Any = None, **_kwargs: Any) -> object:
+            # The optimizer reports its own progress starting from zero.
+            on_progress("Solving", 0.0)
+            return solve_result
+
         execution_module = types.ModuleType("isaacsim.robot_setup.sysid.execution")
-        execution_module.run_sysid = AsyncMock(return_value=solve_result)
+        execution_module.run_sysid = AsyncMock(side_effect=_solve)
         controller_module = types.ModuleType("isaacsim.robot_setup.sysid.run_controller")
         controller_module.SysIdRunController = Mock(return_value=controller)
         schema_module = types.ModuleType("isaacsim.robot_setup.sysid.schema_validation")
         schema_module.validate_sysid_run_spec_payload = Mock(return_value=schema_issues)
         schema_module.raise_for_schema_errors = Mock()
-        quality_module = types.ModuleType("isaacsim.robot_setup.sysid.telemetry_quality")
-        quality_module.build_telemetry_quality_report = Mock(return_value=quality)
 
         with (
             patch.dict(
@@ -76,10 +84,14 @@ class TestHeadlessSysIdJob(omni.kit.test.AsyncTestCase):
                     execution_module.__name__: execution_module,
                     controller_module.__name__: controller_module,
                     schema_module.__name__: schema_module,
-                    quality_module.__name__: quality_module,
                 },
             ),
             patch.object(headless_job, "_enable_backend_extension", AsyncMock()) as enable,
+            patch(
+                "isaacsim.robot_setup.sysid.runtime.ensure_required_runtime_extensions_async",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as ensure_runtime,
             patch.object(headless_job, "_resolve_stage", AsyncMock(return_value=stage)) as resolve,
             patch.object(headless_job, "_start_timeline", AsyncMock()) as start,
             patch.object(headless_job, "_save_stage", AsyncMock(return_value=True)) as save,
@@ -92,10 +104,18 @@ class TestHeadlessSysIdJob(omni.kit.test.AsyncTestCase):
                     save_stage=True,
                 ),
                 on_prepared=on_prepared,
+                on_progress=lambda message, fraction: progress.append((message, fraction)),
             )
 
         enable.assert_awaited_once_with()
+        ensure_runtime.assert_awaited_once_with(spec.simulation)
         resolve.assert_awaited_once_with("robot.usd")
+        self.assertEqual(
+            [message for message, _ in progress],
+            ["Opening stage", "Loading telemetry", "Running preflight", "Preparing run and pre-solve check", "Solving"],
+        )
+        fractions = [fraction for _, fraction in progress]
+        self.assertEqual(fractions, sorted(fractions), "Reported progress must never move backward.")
         start.assert_awaited_once_with(3)
         save.assert_awaited_once_with(stage)
         preflight.raise_for_errors.assert_called_once_with()
@@ -103,7 +123,74 @@ class TestHeadlessSysIdJob(omni.kit.test.AsyncTestCase):
         on_prepared.assert_called_once_with(prepared, preflight, quality, schema_issues)
         execution_module.run_sysid.assert_awaited_once()
         self.assertIs(outcome.result, solve_result)
+        self.assertIs(outcome.telemetry_quality, quality)
         self.assertTrue(outcome.stage_saved)
+
+    async def test_required_runtime_extension_enables_isaac_newton(self) -> None:
+        """Enable Isaac-hosted Newton before a headless preflight uses it."""
+        from isaacsim.robot_setup.sysid import runtime
+
+        # Keyed by extension name rather than call order so an extra probe does
+        # not exhaust a positional `side_effect` list.
+        manager = Mock()
+        enabled_extensions: set[str] = set()
+
+        def _is_enabled(name: str) -> bool:
+            return name in enabled_extensions
+
+        def _enable(name: str, value: bool) -> bool:
+            enabled_extensions.add(name) if value else enabled_extensions.discard(name)
+            return True
+
+        manager.is_extension_enabled.side_effect = _is_enabled
+        manager.set_extension_enabled_immediate.side_effect = _enable
+        app = SimpleNamespace(get_extension_manager=Mock(return_value=manager))
+        simulation = SimpleNamespace(
+            engine="isaac_sim",
+            physics_backend="newton",
+            actuator_runtime="newton_explicit",
+            newton=SimpleNamespace(solver="mujoco"),
+        )
+
+        with (
+            patch.object(runtime, "require_kit_runtime"),
+            patch("omni.kit.app.get_app", return_value=app),
+        ):
+            enabled = runtime.ensure_required_runtime_extensions(simulation)
+
+        self.assertEqual(enabled, ["isaacsim.physics.newton", "isaacsim.physics.newton.tensors"])
+        self.assertEqual(manager.set_extension_enabled_immediate.call_count, 2)
+        manager.set_extension_enabled_immediate.assert_any_call("isaacsim.physics.newton", True)
+        manager.set_extension_enabled_immediate.assert_any_call("isaacsim.physics.newton.tensors", True)
+
+    async def test_required_runtime_extension_ignores_standalone_newton(self) -> None:
+        """Keep standalone Newton independent of the Isaac-hosted physics extension."""
+        from isaacsim.robot_setup.sysid import runtime
+
+        simulation = SimpleNamespace(
+            engine="newton",
+            physics_backend="newton",
+            actuator_runtime="newton_explicit",
+            newton=SimpleNamespace(solver="mujoco"),
+        )
+        with patch.object(runtime, "require_kit_runtime"):
+            enabled = runtime.ensure_required_runtime_extensions(simulation)
+
+        self.assertEqual(enabled, [])
+
+    async def test_async_runtime_activation_waits_for_extension_registration(self) -> None:
+        from isaacsim.robot_setup.sysid import runtime
+
+        simulation = object()
+        app = SimpleNamespace(next_update_async=AsyncMock())
+        with (
+            patch.object(runtime, "ensure_required_runtime_extensions", return_value=["optional.ext"]),
+            patch("omni.kit.app.get_app", return_value=app),
+        ):
+            enabled = await runtime.ensure_required_runtime_extensions_async(simulation)
+
+        self.assertEqual(enabled, ["optional.ext"])
+        app.next_update_async.assert_awaited_once_with()
 
     async def test_save_stage_targets_explicit_non_current_stage(self) -> None:
         from isaacsim.core.experimental.utils import stage as stage_utils

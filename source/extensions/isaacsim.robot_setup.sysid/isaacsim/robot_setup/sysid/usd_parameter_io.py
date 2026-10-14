@@ -74,6 +74,8 @@ class JointUsdSnapshot:
     max_force: float = float("inf")
     dof_index: int = -1
     uses_newton_friction: bool = False
+    # Always False: drive damping is read from and written to the drive attribute on every backend,
+    # because Newton applies ``newton:damping`` as passive damping on top of the drive gain.
     uses_newton_damping: bool = False
     uses_newton_armature: bool = False
 
@@ -96,6 +98,47 @@ def _mass_api(prim: Usd.Prim, *, apply: bool = False) -> UsdPhysics.MassAPI | No
     # link snapshots, and applying a schema there would author into the user's
     # layer before any solve has been accepted.
     return UsdPhysics.MassAPI.Apply(prim) if apply else None
+
+
+def _normalize_physics_backend(physics_backend: str) -> str:
+    """Validate a physics backend name used to pick solver-specific joint properties.
+
+    Args:
+        physics_backend: Backend name, or an empty string or ``"auto"`` when unspecified.
+
+    Returns:
+        The lowercase backend name, or an empty string when unspecified.
+
+    Raises:
+        ValueError: If the backend is not empty, ``"auto"``, ``"newton"``, or ``"physx"``.
+    """
+    backend = str(physics_backend).strip().lower()
+    if backend == "auto":
+        return ""
+    if backend not in {"", "newton", "physx"}:
+        raise ValueError(f"Unsupported physics backend for USD joint properties: {physics_backend!r}")
+    return backend
+
+
+def _uses_newton_attr(newton_attr: Usd.Attribute, physx_attr: Usd.Attribute | None, backend: str) -> bool:
+    """Decide whether an authored ``newton:*`` joint property supplies the snapshot value.
+
+    Args:
+        newton_attr: Newton-namespaced joint attribute.
+        physx_attr: Matching PhysX attribute, if any.
+        backend: Normalized physics backend name.
+
+    Returns:
+        True when the Newton value is authored and either the backend is Newton, or the backend is
+        unspecified and the matching PhysX value is unauthored.
+    """
+    if backend == "physx" or not (newton_attr.IsValid() and newton_attr.HasAuthoredValueOpinion()):
+        return False
+    if backend == "newton":
+        return True
+    # Newton writeback leaves the source PhysX value in place, so only a Newton
+    # read may prefer the Newton value when both are authored.
+    return not (physx_attr is not None and physx_attr.IsValid() and physx_attr.HasAuthoredValueOpinion())
 
 
 def _drive_instance_for_joint(prim: Usd.Prim) -> str | None:
@@ -369,19 +412,36 @@ def write_link_usd_snapshot(
         _set_float_attr(prim, "physxCollision:contactOffset", snapshot.contact_offset, custom=False)
 
 
-def read_joint_usd_snapshot(stage: Usd.Stage, dof_path: str, *, dof_index: int = -1) -> Optional[JointUsdSnapshot]:
+def read_joint_usd_snapshot(
+    stage: Usd.Stage,
+    dof_path: str,
+    *,
+    dof_index: int = -1,
+    physics_backend: str = "",
+) -> Optional[JointUsdSnapshot]:
     """Read revolute/prismatic joint limits, drive gains, and friction from a DOF prim path.
+
+    When ``physics_backend`` is ``"newton"``, authored ``newton:friction`` and ``newton:armature``
+    values take precedence over their PhysX counterparts. When it is ``"physx"``, Newton values are
+    ignored. When it is unspecified, a Newton value is used only when the matching PhysX value is
+    unauthored. A Newton-sourced friction reports zero static, dynamic, and viscous friction because
+    Newton does not apply the PhysX per-axis friction. Drive damping is always read from the drive.
 
     Args:
         stage: USD stage used by the operation.
         dof_path: Value supplied for ``dof_path``.
         dof_index: Value supplied for ``dof_index``.
+        physics_backend: Backend whose solver-specific joint properties are read.
 
     Returns:
         Result produced by the operation.
+
+    Raises:
+        ValueError: If ``physics_backend`` is not empty, ``"auto"``, ``"newton"``, or ``"physx"``.
     """
     from pxr import UsdPhysics
 
+    backend = _normalize_physics_backend(physics_backend)
     prim = stage.GetPrimAtPath(dof_path)
     if not prim.IsValid():
         return None
@@ -400,23 +460,17 @@ def read_joint_usd_snapshot(stage: Usd.Stage, dof_path: str, *, dof_index: int =
 
     newton_friction_attr = prim.GetAttribute("newton:friction")
     newton_armature_attr = prim.GetAttribute("newton:armature")
-    uses_newton_friction = bool(
-        newton_friction_attr.IsValid()
-        and newton_friction_attr.HasAuthoredValueOpinion()
-        and not (physx_friction_attr.IsValid() and physx_friction_attr.HasAuthoredValueOpinion())
-    )
-    uses_newton_armature = bool(
-        newton_armature_attr.IsValid()
-        and newton_armature_attr.HasAuthoredValueOpinion()
-        and not (physx_armature_attr.IsValid() and physx_armature_attr.HasAuthoredValueOpinion())
-    )
+    uses_newton_friction = _uses_newton_attr(newton_friction_attr, physx_friction_attr, backend)
+    uses_newton_armature = _uses_newton_attr(newton_armature_attr, physx_armature_attr, backend)
     if uses_newton_friction:
         friction = _float_attr(newton_friction_attr)
     if uses_newton_armature:
         armature = _float_attr(newton_armature_attr)
 
     drive_type = _drive_instance_for_joint(prim)
-    static_friction, dynamic_friction, viscous_friction = _read_joint_axis_friction(prim, drive_type)
+    static_friction, dynamic_friction, viscous_friction = (
+        (0.0, 0.0, 0.0) if uses_newton_friction else _read_joint_axis_friction(prim, drive_type)
+    )
     # Keep ``friction`` as the authored physxJoint:jointFriction and preserve the
     # per-axis dynamic friction separately. Overwriting one with the other here
     # silently dropped a real baseline; write_usd_from_baselines already
@@ -426,19 +480,10 @@ def read_joint_usd_snapshot(stage: Usd.Stage, dof_path: str, *, dof_index: int =
         _float_attr(drive.GetStiffnessAttr()) if drive is not None else 0.0,
         drive_type,
     )
-    drive_damping_attr = drive.GetDampingAttr() if drive is not None else None
-    newton_damping_attr = prim.GetAttribute("newton:damping")
-    uses_newton_damping = bool(
-        newton_damping_attr.IsValid()
-        and newton_damping_attr.HasAuthoredValueOpinion()
-        and not (
-            drive_damping_attr is not None
-            and drive_damping_attr.IsValid()
-            and drive_damping_attr.HasAuthoredValueOpinion()
-        )
+    damping = _drive_attr_to_effective(
+        _float_attr(drive.GetDampingAttr()) if drive is not None else 0.0,
+        drive_type,
     )
-    damping_attr = newton_damping_attr if uses_newton_damping else drive_damping_attr
-    damping = _drive_attr_to_effective(_float_attr(damping_attr), drive_type)
     max_force = (
         _float_attr(_drive_max_force_attr(drive, prim, drive_type), float("inf")) if drive is not None else float("inf")
     )
@@ -462,7 +507,6 @@ def read_joint_usd_snapshot(stage: Usd.Stage, dof_path: str, *, dof_index: int =
             max_force=max_force,
             dof_index=dof_index,
             uses_newton_friction=uses_newton_friction,
-            uses_newton_damping=uses_newton_damping,
             uses_newton_armature=uses_newton_armature,
         )
 
@@ -485,7 +529,6 @@ def read_joint_usd_snapshot(stage: Usd.Stage, dof_path: str, *, dof_index: int =
             max_force=max_force,
             dof_index=dof_index,
             uses_newton_friction=uses_newton_friction,
-            uses_newton_damping=uses_newton_damping,
             uses_newton_armature=uses_newton_armature,
         )
 
@@ -534,21 +577,17 @@ def write_joint_usd_snapshot(
     elif write_limits:
         raise ValueError(f"Unsupported joint prim for limit write: {snapshot.path}")
 
-    backend = str(physics_backend).strip().lower()
-    if backend not in {"", "newton", "physx"}:
-        raise ValueError(f"Unsupported physics backend for USD writeback: {physics_backend!r}")
+    backend = _normalize_physics_backend(physics_backend)
     use_newton_friction = snapshot.uses_newton_friction if not backend else backend == "newton"
-    use_newton_damping = snapshot.uses_newton_damping if not backend else backend == "newton"
     use_newton_armature = snapshot.uses_newton_armature if not backend else backend == "newton"
 
-    write_drive_damping = bool(write_damping and not use_newton_damping)
-    write_drive = bool(write_stiffness or write_drive_damping)
+    write_drive = bool(write_stiffness or write_damping)
     drive = _drive_api(prim, apply=write_drive) if write_drive else None
     drive_type = _drive_instance_for_joint(prim)
     if drive is not None:
         if write_stiffness:
             drive.CreateStiffnessAttr().Set(float(max(_effective_to_drive_attr(snapshot.stiffness, drive_type), 0.0)))
-        if write_drive_damping:
+        if write_damping:
             drive.CreateDampingAttr().Set(float(max(_effective_to_drive_attr(snapshot.damping, drive_type), 0.0)))
         if np.isfinite(snapshot.max_force):
             attr = _drive_max_force_attr(drive, prim, drive_type, create=True)
@@ -561,21 +600,10 @@ def write_joint_usd_snapshot(
         static_friction = snapshot.friction
     if dynamic_friction == 0.0 and snapshot.friction != 0.0:
         dynamic_friction = snapshot.friction
-    writes_newton = bool(
-        (write_friction and use_newton_friction)
-        or (write_damping and use_newton_damping)
-        or (write_armature and use_newton_armature)
-    )
+    writes_newton = bool((write_friction and use_newton_friction) or (write_armature and use_newton_armature))
     if writes_newton and "NewtonJointAPI" not in prim.GetAppliedSchemas():
         if not prim.ApplyAPI("NewtonJointAPI"):
             raise RuntimeError(f"Could not apply NewtonJointAPI to joint prim: {snapshot.path}")
-    if write_damping and use_newton_damping:
-        _set_float_attr(
-            prim,
-            "newton:damping",
-            max(_effective_to_drive_attr(snapshot.damping, drive_type), 0.0),
-            custom=False,
-        )
 
     write_physx_friction = bool(write_friction and not use_newton_friction)
     write_physx_armature = bool(write_armature and not use_newton_armature)
@@ -620,6 +648,8 @@ def read_articulation_usd_snapshots(
     stage: Usd.Stage,
     link_paths: list[str],
     dof_paths: list[str],
+    *,
+    physics_backend: str = "",
 ) -> tuple[list[LinkUsdSnapshot], list[Optional[JointUsdSnapshot]]]:
     """Bulk-read link and joint USD snapshots for an articulation.
 
@@ -627,12 +657,16 @@ def read_articulation_usd_snapshots(
         stage: USD stage used by the operation.
         link_paths: Value supplied for ``link_paths``.
         dof_paths: Value supplied for ``dof_paths``.
+        physics_backend: Backend whose solver-specific joint properties are read.
 
     Returns:
         Result produced by the operation.
     """
     links = [read_link_usd_snapshot(stage, path) for path in link_paths]
-    joints = [read_joint_usd_snapshot(stage, path, dof_index=index) for index, path in enumerate(dof_paths)]
+    joints = [
+        read_joint_usd_snapshot(stage, path, dof_index=index, physics_backend=physics_backend)
+        for index, path in enumerate(dof_paths)
+    ]
     return links, joints
 
 

@@ -26,7 +26,8 @@ import omni.timeline
 import omni.usd
 import warp as wp
 from isaacsim.core.experimental.objects import Cube
-from isaacsim.core.experimental.prims import BufferDtype, GeomPrim, RigidPrim, XformPrim
+from isaacsim.core.experimental.prims import Articulation, BufferDtype, GeomPrim, RigidPrim, XformPrim
+from isaacsim.storage.native import get_assets_root_path
 from pxr import UsdGeom, UsdPhysics, UsdUtils
 
 
@@ -376,6 +377,47 @@ class TestPrimDataReaderInterface(omni.kit.test.AsyncTestCase):
             _prims_reader.release_prim_data_reader_manager_interface(manager_b)
             _prims_reader.release_prim_data_reader_manager_interface(manager_a)
             timeline.stop()
+            await omni.kit.app.get_app().next_update_async()
+
+    async def test_prim_wrappers_share_manager_initialization(self) -> None:
+        """Rigid and articulation views must not reinitialize their shared reader."""
+        from isaacsim.core.simulation_manager import SimulationManager
+
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self.skipTest("Wrapper-level shared-reader coverage runs in the PhysX test configuration")
+
+        await self._setup_stage()
+        stage_utils.add_reference_to_stage(
+            usd_path=(f"{get_assets_root_path()}/Isaac/Robots/IsaacSim/SimpleArticulation/simple_articulation.usd"),
+            path="/World/Articulation",
+        )
+        await omni.kit.app.get_app().next_update_async()
+        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
+            await omni.kit.app.get_app().next_update_async()
+        await omni.kit.app.get_app().next_update_async()
+
+        Cube("/World/Rigid", positions=[0.0, 0.0, 1.0], sizes=0.25)
+        rigid = RigidPrim("/World/Rigid", masses=[1.0])
+        articulation = Articulation("/World/Articulation")
+        self.timeline.play()
+        for _ in range(5):
+            await omni.kit.app.get_app().next_update_async()
+
+        try:
+            self.assertTrue(rigid.is_physics_tensor_entity_valid())
+            self.assertTrue(articulation.is_physics_tensor_entity_valid())
+            rigid.initialize_cpp_data_view()
+            generation_after_rigid = self.reader.get_generation()
+            articulation.initialize_cpp_data_view()
+            generation_after_articulation = self.reader.get_generation()
+
+            self.assertIsNotNone(rigid._cpp_data_view)
+            self.assertIsNotNone(articulation._cpp_data_view)
+            self.assertEqual(generation_after_rigid, generation_after_articulation)
+        finally:
+            rigid._teardown_cpp_data_view()
+            articulation._teardown_cpp_data_view()
+            self.timeline.stop()
             await omni.kit.app.get_app().next_update_async()
 
     # -- getArticulationLinks / getPrimFrameName / getPrimWorldTransform (on view interfaces) --

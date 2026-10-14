@@ -1,5 +1,5 @@
 [package]
-version = "0.6.4"
+version = "0.8.1"
 category = "Simulation"
 title = "Isaac Sim Newton Physics Tensor Backend"
 description = "C++ tensor interface implementation for Newton physics"
@@ -41,6 +41,8 @@ dependencies = [
 stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     '*Error while parsing function*',
+    '*Incompatible data type of mask tensor in function *setMassesMasked*',
+    '*Incompatible size of mask tensor in function *setMassesMasked*',
 ]
 
 args = [

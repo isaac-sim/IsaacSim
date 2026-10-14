@@ -1,5 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """Bootstrap the repository-pinned Pixi executable and run standalone library workflows."""
 
@@ -48,6 +60,9 @@ APPROVED_REDIRECT_HOSTS = frozenset(
 )
 SCRUBBED_BUILD_VARIABLES = frozenset(
     {
+        "CC",
+        "CXX",
+        "CUDAHOSTCXX",
         "CMAKE_PREFIX_PATH",
         "CPATH",
         "CPLUS_INCLUDE_PATH",
@@ -446,7 +461,7 @@ def _select_library_environments(arguments: Sequence[str]) -> tuple[str, ...]:
     selected = ["build-driver", "native-runtime"]
     if python_enabled:
         selected.extend((runtime_environment, "schema-build", test_environment))
-    if _has_option(arguments, "--wheel", "--carrier"):
+    if _has_option(arguments, "--wheel", "--stage-wheel"):
         selected.append(wheel_environment)
     return tuple(selected)
 
@@ -519,6 +534,62 @@ def _install_locked_environment(
         )
 
 
+def _install_internal_ovperf_collector(
+    executable: Path, repository_root: Path, runtime_prefix: Path, version: str, find_links: str
+) -> None:
+    """Install CI's optional collector after the locked runtime environment is synced."""
+    if _detect_platform() != "linux-x86_64" or VERSION_PATTERN.fullmatch(version) is None or not find_links:
+        raise PixiBootstrapError("Internal ovperf collector requires Linux x86_64, an exact version, and wheel source")
+    site_packages = _python_site_packages(runtime_prefix)
+    status = _run_pixi(
+        executable,
+        [
+            "run",
+            "--locked",
+            "--environment",
+            "build-driver",
+            "--",
+            "python",
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-deps",
+            "--upgrade",
+            "--no-index",
+            "--find-links",
+            find_links,
+            "--target",
+            str(site_packages),
+            f"ovperf-collector=={version}",
+        ],
+        repository_root=repository_root,
+    )
+    if status != 0:
+        raise PixiBootstrapError(f"Internal ovperf-collector {version} installation failed (exit code {status})")
+    runtime_python = runtime_prefix / "bin" / "python"
+    try:
+        subprocess.run(
+            [
+                str(runtime_python),
+                "-I",
+                "-c",
+                "import ovperf_collector as collector\n"
+                f"if (collector.__version__ != {version!r}\n"
+                f"    or collector.get_version() != tuple(map(int, {version!r}.split('.')))\n"
+                "    or not collector.SUPPORTED):\n"
+                "    raise SystemExit('ovperf-collector verification failed: version or platform mismatch')",
+            ],
+            check=True,
+            cwd=repository_root,
+            env=_create_pixi_environment(),
+        )
+    except subprocess.CalledProcessError as error:
+        raise PixiBootstrapError(
+            f"Internal ovperf-collector {version} verification failed (exit code {error.returncode})"
+        ) from error
+
+
 def _run_libraries(arguments: Sequence[str]) -> int:
     """Run the library build with isolated Pixi dependency prefixes."""
     repository_root = _repository_root()
@@ -526,7 +597,11 @@ def _run_libraries(arguments: Sequence[str]) -> int:
         environment = os.environ.copy()
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         return subprocess.run(
-            [sys.executable, str(repository_root / "source" / "libraries" / "tools" / "build.py"), *arguments],
+            [
+                sys.executable,
+                str(repository_root / "source" / "libraries" / "tools" / "build.py"),
+                *arguments,
+            ],
             cwd=repository_root,
             env=environment,
             check=False,
@@ -539,7 +614,7 @@ def _run_libraries(arguments: Sequence[str]) -> int:
         _install_locked_environment(executable, repository_root, environment_name, offline=offline)
     prefixes = {name: _pixi_environment_prefix(repository_root, name) for name in selected_environments}
     license_output = None
-    if not _has_option(arguments, "--pull-only", "--test-only"):
+    if not _has_option(arguments, "--pull-only", "--test-only", "--validate-wheelhouse"):
         license_output = _license_output_path(repository_root)
         _collect_native_runtime_licenses(prefixes["native-runtime"], license_output)
     environment = _create_pixi_environment()
@@ -560,6 +635,15 @@ def _run_libraries(arguments: Sequence[str]) -> int:
         runtime_name = "runtime"
         test_name = "test"
         wheel_name = "wheel-build"
+    internal_version = os.environ.get("ISAACSIM_CI_OVPERF_COLLECTOR_VERSION")
+    if internal_version and runtime_name in selected_environments:
+        _install_internal_ovperf_collector(
+            executable,
+            repository_root,
+            prefixes[runtime_name],
+            internal_version,
+            os.environ.get("ISAACSIM_CI_OVPERF_FIND_LINKS", ""),
+        )
     for variable, environment_name in (
         ("ISAACSIM_PIXI_RUNTIME_DEPS", runtime_name),
         ("ISAACSIM_PIXI_TEST_DEPS", test_name),
@@ -588,6 +672,10 @@ def _run_examples(arguments: Sequence[str]) -> int:
     """Run source examples with the locked runner environment."""
     repository_root = _repository_root()
     executable = ensure_pixi(repository_root=repository_root)
+    if arguments and arguments[0] == "tui":
+        command = [str(repository_root / "source" / "installer" / "_run.py"), *arguments]
+    else:
+        command = [str(repository_root / "source" / "examples" / "examples.py"), "--dev", *arguments]
     return _run_pixi(
         executable,
         [
@@ -597,8 +685,27 @@ def _run_examples(arguments: Sequence[str]) -> int:
             "examples-runner",
             "--",
             "python",
-            str(repository_root / "source" / "examples" / "examples.py"),
-            "--dev",
+            *command,
+        ],
+        repository_root=repository_root,
+        environment=_create_pixi_environment(),
+    )
+
+
+def _run_installer(arguments: Sequence[str]) -> int:
+    """Build installer wheels with a locked, pure-Python tool environment."""
+    repository_root = _repository_root()
+    executable = ensure_pixi(repository_root=repository_root)
+    return _run_pixi(
+        executable,
+        [
+            "run",
+            "--locked",
+            "--environment",
+            "installer-build",
+            "--",
+            "python",
+            str(repository_root / "source" / "installer" / "build.py"),
             *arguments,
         ],
         repository_root=repository_root,
@@ -615,6 +722,8 @@ def _create_argument_parser() -> argparse.ArgumentParser:
     examples_parser.add_argument("arguments", nargs=argparse.REMAINDER)
     libraries_parser = subparsers.add_parser("libraries", help="Run the standalone library build.")
     libraries_parser.add_argument("arguments", nargs=argparse.REMAINDER)
+    installer_parser = subparsers.add_parser("installer", help="Build and test the installer wheel.")
+    installer_parser.add_argument("arguments", nargs=argparse.REMAINDER)
     return parser
 
 
@@ -629,6 +738,8 @@ def _main() -> int:
         command = command[1:]
     if arguments.command == "examples":
         return _run_examples(command)
+    if arguments.command == "installer":
+        return _run_installer(command)
     return _run_libraries(command)
 
 

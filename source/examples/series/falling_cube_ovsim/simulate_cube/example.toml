@@ -19,14 +19,10 @@ path = "main.py"
 
 [requirements]
 system = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_ovsim"
-surfaces = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_physics_engines"
-surfaces = ["python"]
+modules = [
+    { name = "isaacsim_ovsim", surfaces = ["python"] },
+    { name = "isaacsim_physics_engines", surfaces = ["python"] },
+]
 
 [[test]]
 name = "default"

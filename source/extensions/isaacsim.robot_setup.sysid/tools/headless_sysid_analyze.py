@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -94,8 +95,6 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     controller = SysIdRunController(spec)
     print(f"[sysid-analysis] loading trajectory: {spec.telemetry.source_path}", flush=True)
     trajectory = controller.load_trajectory()
-    telemetry_quality = build_telemetry_quality_report(trajectory, spec.telemetry.chunks)
-    print(f"[telemetry] {telemetry_quality.compact_summary()}", flush=True)
     if args.skip_timeline_start:
         print("[sysid-analysis] skipping timeline start; diagnostics may fail if physics tensors are unavailable.")
     else:
@@ -109,14 +108,22 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     )
     for line in preflight.summary_lines():
         print(f"[preflight] {line}", flush=True)
-    preflight.raise_for_errors()
-
-    prepared = controller.prepare(
-        stage,
-        trajectory=trajectory,
-        timeline_playing=(None if args.skip_timeline_start else True),
-        allow_empty_parameters=True,
-    )
+    try:
+        preflight.raise_for_errors()
+        prepared = controller.prepare(
+            stage,
+            trajectory=trajectory,
+            timeline_playing=(None if args.skip_timeline_start else True),
+            allow_empty_parameters=True,
+        )
+    except Exception:
+        # Preparation failures are often caused by the telemetry, so still surface its summary.
+        with contextlib.suppress(Exception):
+            summary = build_telemetry_quality_report(trajectory, spec.telemetry.chunks).compact_summary()
+            print(f"[telemetry] {summary}", flush=True)
+        raise
+    telemetry_quality = prepared.telemetry_quality
+    print(f"[telemetry] {telemetry_quality.compact_summary()}", flush=True)
     optimizer = prepared.optimizer
     try:
         print(
@@ -334,6 +341,7 @@ def main() -> int:  # noqa: D103
             "disable_viewport_updates": True,
         }
     )
+    exit_code = 1
     try:
         loop = asyncio.get_event_loop()
         task = loop.create_task(_run(args))
@@ -342,10 +350,10 @@ def main() -> int:  # noqa: D103
             simulation_app.update()
         print("[sysid-analysis] Kit update pump stopped.", flush=True)
         print(json.dumps(task.result(), indent=2), flush=True)
-        return 0
+        exit_code = 0
     except Exception as exc:
         print(f"[sysid-analysis] ERROR: {exc}", file=sys.stderr, flush=True)
-        return 1
+        exit_code = 1
     finally:
         try:
             import omni.timeline
@@ -358,7 +366,9 @@ def main() -> int:  # noqa: D103
                 loop.run_until_complete(_next_updates(2))
         except Exception:
             pass
-        simulation_app.close()
+        # Fast shutdown terminates the process inside `close()`, so the status must be passed here.
+        simulation_app.close(exit_code=exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

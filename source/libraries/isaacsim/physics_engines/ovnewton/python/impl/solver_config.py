@@ -30,14 +30,15 @@ class SolverType(str, Enum):
 
     XPBD = "xpbd"
     MUJOCO = "mujoco"
+    FEATHERSTONE = "featherstone"
 
 
 @dataclass
 class SolverConfig:
     """Store solver-specific tuning requested by an integration.
 
-    These values do not affect Newton stage construction or stepping. The stage constructs an XPBD solver with its
-    internal iteration setting.
+    The Newton stage uses ``solver_type`` when constructing its solver. Other settings are retained for carrier
+    integrations and do not yet affect stage construction or stepping.
 
     Args:
         solver_type: Requested Newton solver family.

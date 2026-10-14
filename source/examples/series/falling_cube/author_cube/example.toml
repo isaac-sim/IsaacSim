@@ -16,10 +16,9 @@ path = "main.py"
 
 [requirements]
 system = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_foundation"
-surfaces = ["python"]
+modules = [
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+]
 
 [[test]]
 name = "default"

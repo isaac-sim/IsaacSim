@@ -21,6 +21,7 @@ import argparse
 import base64
 import hashlib
 import importlib.util
+import json
 import os
 import shutil
 import stat
@@ -111,7 +112,52 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--generator-toolset", default="")
     parser.add_argument("--make-program", default="")
     parser.add_argument("--config", default="Release")
+    parser.add_argument("--metrics-output", type=Path)
     return parser.parse_args()
+
+
+def _directory_storage(path: Path) -> dict[str, int]:
+    """Measure unique regular files in a directory tree.
+
+    Args:
+        path: Directory to measure.
+
+    Returns:
+        Logical size, allocated disk size, and unique file count.
+    """
+    logical_size = 0
+    disk_size = 0
+    file_count = 0
+    seen_files: set[tuple[int, int]] = set()
+    for candidate in path.rglob("*"):
+        if not candidate.is_file() or candidate.is_symlink():
+            continue
+        file_stat = candidate.stat()
+        identity = (file_stat.st_dev, file_stat.st_ino)
+        if identity in seen_files:
+            continue
+        seen_files.add(identity)
+        logical_size += file_stat.st_size
+        disk_size += getattr(file_stat, "st_blocks", 0) * 512 or file_stat.st_size
+        file_count += 1
+    return {
+        "logical_size_bytes": logical_size,
+        "disk_size_bytes": disk_size,
+        "file_count": file_count,
+    }
+
+
+def _write_metrics(path: Path, metrics: dict[str, object]) -> None:
+    """Write a metrics document atomically.
+
+    Args:
+        path: Output JSON path.
+        metrics: Metrics document.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def _run_checked(
@@ -471,11 +517,20 @@ def _runtime_environment(
         Runtime environment for the materialized examples.
     """
     environment = os.environ.copy()
-    environment["CMAKE_PREFIX_PATH"] = str(sdk_prefix)
+    # Some third-party runtime distributions ship a CMake package inside the Python
+    # distribution, so an example that links one finds it where the environment installed
+    # it. The SDK prefix comes first, so an installed Isaac Sim package always wins over a
+    # same-named dependency package.
+    environment["CMAKE_PREFIX_PATH"] = os.pathsep.join((str(sdk_prefix), str(arguments.python_runtime_deps_dir)))
     environment["PATH"] = os.pathsep.join((str(sdk_prefix / "bin"), environment.get("PATH", "")))
     if os.name != "nt":
         python_library_dir = arguments.python.parent.parent / "lib"
         library_paths = [str(python_library_dir), str(sdk_prefix / "lib")]
+        # Some wheels ship native libraries inside the package instead of a directory the
+        # loader already searches, so an import that links them fails without help. The
+        # NVIDIA CUDA wheels use the nvidia/<component>/lib layout; ovui's native _ui
+        # extension links libcudart from nvidia-cuda-runtime-cu12 this way.
+        library_paths.extend(str(path) for path in sorted(arguments.python_runtime_deps_dir.glob("nvidia/*/lib")))
         inherited_library_path = environment.get("LD_LIBRARY_PATH")
         if inherited_library_path:
             library_paths.append(inherited_library_path)
@@ -544,7 +599,7 @@ def _materialize_selected_workspace(
     destination_libraries = destination_examples.parent / "libraries"
     destination_libraries.mkdir()
     shutil.copy2(system_requirements_file, destination_libraries / system_requirements_file.name)
-    for filename in ("README.md", "examples.py"):
+    for filename in ("README.md", "examples.py", "nsys.py"):
         shutil.copy2(source_examples / filename, destination_examples / filename)
     for relative_path in series_paths:
         _copy_authored_tree(source_examples / relative_path, destination_examples / relative_path)
@@ -1051,6 +1106,13 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         materialized_repository,
     )
     _validate_materialized_roots(materialized_examples)
+    if arguments.metrics_output is not None:
+        metrics = {
+            "schema_version": 1,
+            **_directory_storage(build_root),
+        }
+        _write_metrics(arguments.metrics_output.resolve(), metrics)
+        print(f"Source examples build: {metrics['disk_size_bytes'] / (1024 * 1024 * 1024):.2f} GiB on disk")
     dependency_index = _create_dependency_probe_index(arguments.test_root)
     environment["PIP_FIND_LINKS"] = str(dependency_index)
     _add_series_fixture(materialized_examples)
@@ -1062,7 +1124,10 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         materialized_examples,
         arguments.system_requirements_file,
         selected_external_examples,
-        ("libraries/runner_external/declared",),
+        (
+            "libraries/runner_external/declared",
+            "libraries/runner_external/consumer",
+        ),
     )
     selected_external_sdk_prefix = arguments.test_root / "selected-external-sdk"
     selected_external_python_prefix = arguments.test_root / "selected-external-python-package"
@@ -1147,7 +1212,7 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
     )
     selected_series_environment["PIP_NO_INDEX"] = "1"
     selected_series_environment["PIP_FIND_LINKS"] = str(dependency_index)
-    _run_checked(
+    selected_series_output = _run_checked(
         "Test a minimal installer-selected series workspace",
         [
             str(arguments.python),
@@ -1158,6 +1223,12 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         selected_series_environment,
         selected_series_repository,
     )
+    if "Examples environment: installed" not in selected_series_output:
+        raise RuntimeError(f"Materialized examples did not select installed mode\n{selected_series_output}")
+    if "runner_smoke.independent_practice: skipped" not in selected_series_output:
+        raise RuntimeError(
+            f"Default-all test did not report the unconfigured example as skipped\n{selected_series_output}"
+        )
     selected_series_environment["ISAACSIM_SERIES_SMOKE"] = "enabled"
     _run_checked(
         "Run a series step through the shared external dependency environment",
@@ -1171,16 +1242,6 @@ def _run_full_integration(arguments: argparse.Namespace) -> None:
         selected_series_environment,
         selected_series_repository,
     )
-    all_test_output = _run_checked(
-        "Build and test all examples",
-        [*common_arguments, "test"],
-        environment,
-        materialized_repository,
-    )
-    if "Examples environment: installed" not in all_test_output:
-        raise RuntimeError(f"Materialized examples did not select installed mode\n{all_test_output}")
-    if "runner_smoke.independent_practice: skipped" not in all_test_output:
-        raise RuntimeError(f"Default-all test did not report the unconfigured example as skipped\n{all_test_output}")
     _run_checked(
         "Run one named test configuration with an explicit installed environment",
         [*common_arguments, "test", "--installed", "runner_smoke.introduction:override"],

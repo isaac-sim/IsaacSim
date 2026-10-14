@@ -1,6 +1,6 @@
 ---
 name: profile-isaac-sim
-description: "Profile Isaac Sim with benchmark scripts and Tracy captures. Use when measuring or optimizing frame times."
+description: "Profile standalone Isaac Sim libraries or Kit workloads. Use when measuring runtime performance with benchmarks or Tracy captures."
 license: Apache-2.0
 metadata:
   author: Chris Dodd <info@nvidia.com>
@@ -14,7 +14,7 @@ Measure Isaac Sim performance with in-repo benchmarks, Tracy profiling, CSV expo
 
 ## Limitations
 
-- Targets Isaac Sim 6 / Kit 110 unless a section states otherwise.
+- Kit-specific guidance targets Isaac Sim 6 / Kit 110 unless stated otherwise.
 - Does not replace official NVIDIA documentation for unsupported edge cases.
 
 ## Troubleshooting
@@ -25,7 +25,7 @@ Measure Isaac Sim performance with in-repo benchmarks, Tracy profiling, CSV expo
 | No Tracy CSV | Capture wrapper flags omitted | Use `tracy_capture.py --csv` per skill steps |
 | Noisy frame times | Too few `--num-frames` | Use >= 100 frames for stable GPU measurements |
 
-Iterative profiling workflow: run a benchmark with GPU frame-time recording, capture a Tracy profile, export to CSV, compare against a reference, make changes, and repeat.
+For GPU-backed Kit benchmarks, record GPU frame time, capture Tracy, export to CSV, compare, and repeat.
 
 ## Running scripts
 
@@ -35,9 +35,15 @@ From agent runtimes that expose skill execution helpers, invoke helpers with `ru
 run_script("scripts/compare_tracy_csvs.py", args=["--help"])
 ```
 
-From a built Isaac Sim tree, run the same file with `./python.sh` (Linux) or `python.bat` (Windows) from `_build/*/release`, or execute shell helpers directly when they do not require the simulator.
+Run helpers with normal Python; use `python.sh`/`python.bat` only for Kit-dependent benchmarks.
 
 ## Prerequisites
+
+For a standalone library, use its configured or installed environment and
+`isaacsim.common.profiling` in a normal process. Do not require `SimulationApp`,
+a GPU, or `--gpu-frametime` for a CPU-only workload.
+
+The Kit benchmarks below use the release build:
 
 All commands run from the release build directory:
 
@@ -47,10 +53,10 @@ cd _build/linux-x86_64/release
 
 ### Asset root / Nucleus authentication
 
-Benchmarks load scenes from an asset server. If `OMNI_USER` and `OMNI_PASS` are set, Nucleus authentication is automatic. Otherwise, add the S3 fallback flag to every benchmark invocation (after `--`) to skip interactive auth:
+Benchmarks use the configured asset root. Isaac Sim 6.2 defaults to production S3 assets. If a saved Nucleus override prompts for authentication, add this flag to the benchmark invocation (after `--`) to use production assets:
 
 ```
---/persistent/isaac/asset_root/default=https://omniverse-content-staging.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0
+--/persistent/isaac/asset_root/default=https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2
 ```
 
 ### ROS2 environment variables
@@ -69,7 +75,7 @@ These are printed in the startup log by `isaacsim.ros2.core` if missing. Set the
 
 When the user asks to profile a benchmark, check:
 
-1. **`--gpu-frametime`** — must always be present. Add it if the user omitted it.
+1. **`--gpu-frametime`** — must be present for these GPU-backed Kit benchmarks. Add it if the user omitted it.
 2. **`--num-frames`** — should be >= 100 for stable measurements (default in most benchmarks is 600, which is fine). If the user explicitly passes a low value like `--num-frames 10`, warn them and suggest at least 100.
 3. **Benchmark short name** — resolve from the available set (see list below).
 
@@ -238,7 +244,6 @@ Or connect the Tracy GUI profiler to the running process.
 
 ## Guidelines
 
-- **Never skip `--gpu-frametime`** for standalone benchmarks — GPU-side timing is essential for rendering-heavy workloads.
 - **Keep arguments identical** across runs for fair comparison. If the user changes arguments mid-iteration, note it clearly and treat it as a new baseline.
 - **Use `--csv-self`** when you need to isolate a zone's own cost from its children.
 - **Read the `.log` file** for the full benchmark stdout (summary report, warnings, errors) — it is always produced alongside the `.tracy` and `.csv`.

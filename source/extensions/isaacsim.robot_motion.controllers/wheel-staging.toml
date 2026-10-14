@@ -1,0 +1,8 @@
+[wheel]
+distribution = "isaacsim_robot_motion"
+python-modules = ["isaacsim.robot_motion.controllers"]
+
+[wheel.dependency-extensions]
+isaacsim_deprecated = [
+    "isaacsim.core.experimental.utils",
+]

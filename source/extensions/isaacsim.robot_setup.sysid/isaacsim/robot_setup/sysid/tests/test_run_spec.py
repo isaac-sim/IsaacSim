@@ -20,6 +20,7 @@ from __future__ import annotations
 import omni.kit.test
 from isaacsim.robot_setup.sysid.run_spec import (
     NewtonSimulationRunSpec,
+    OutputsRunSpec,
     ParameterRunSpec,
     ParametersRunSpec,
     SimulationRunSpec,
@@ -65,12 +66,18 @@ class RunSpecSerializationTests(omni.kit.test.AsyncTestCase):
                     )
                 ]
             ),
+            outputs=OutputsRunSpec(
+                validation_relative_change_threshold=0.05,
+                validation_absolute_change_threshold=1.0e-6,
+            ),
         )
         canonical_payload = spec.to_dict()
 
         restored = SysIdRunSpec.from_dict(canonical_payload)
 
         self.assertEqual(restored.to_dict(), canonical_payload)
+        self.assertEqual(restored.outputs.validation_relative_change_threshold, 0.05)
+        self.assertEqual(restored.outputs.validation_absolute_change_threshold, 1.0e-6)
 
     async def test_command_alignment_round_trips(self) -> None:
         """Preserve telemetry command alignment across serialization."""

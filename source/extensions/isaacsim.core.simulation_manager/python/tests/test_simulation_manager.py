@@ -151,6 +151,33 @@ class TestSimulationManagerDefaultCallbacks(omni.kit.test.AsyncTestCase):
         # Test invalid callback name returns False
         self.assertFalse(SimulationManager.is_default_callback_enabled("nonexistent_callback"))
 
+    async def test_enable_default_callbacks_updates_only_requested_callback(self) -> None:
+        """Test omitted callback arguments remain enabled when another callback is disabled."""
+        callbacks = {
+            "warm_start": ("enable_warm_start", "_default_callback_warm_start"),
+            "on_stop": ("enable_on_stop", "_default_callback_on_stop"),
+            "stage_open": ("enable_stage_open", "_default_callback_stage_open"),
+            "stage_close": ("enable_stage_close", "_default_callback_stage_close"),
+        }
+
+        for callback_name, (argument_name, subscription_name) in callbacks.items():
+            with self.subTest(callback_name=callback_name):
+                SimulationManager.enable_all_default_callbacks(True)
+                original_subscriptions = {
+                    name: getattr(SimulationManager, subscription) for name, (_, subscription) in callbacks.items()
+                }
+
+                with mock.patch.object(SimulationManager, "_reset") as reset:
+                    SimulationManager.enable_default_callbacks(**{argument_name: False})
+
+                self.assertFalse(SimulationManager.is_default_callback_enabled(callback_name))
+                self.assertIsNone(getattr(SimulationManager, subscription_name))
+                self.assertEqual(reset.call_count, int(callback_name in {"stage_open", "stage_close"}))
+                for omitted_name, omitted_subscription in original_subscriptions.items():
+                    if omitted_name != callback_name:
+                        self.assertTrue(SimulationManager.is_default_callback_enabled(omitted_name))
+                        self.assertIs(getattr(SimulationManager, callbacks[omitted_name][1]), omitted_subscription)
+
     async def test_startup_honors_enable_default_callbacks_setting(self) -> None:
         """Test configuring default callback registration during startup."""
         setting_path = self._ENABLE_DEFAULT_CALLBACKS_SETTING

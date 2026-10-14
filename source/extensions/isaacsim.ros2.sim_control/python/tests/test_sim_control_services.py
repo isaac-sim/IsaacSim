@@ -755,6 +755,22 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
+    async def test_set_entity_state_without_stage(self) -> None:
+        """Return an operation failure when no stage is open."""
+        from simulation_interfaces.msg import Result
+        from simulation_interfaces.srv import SetEntityState
+
+        self.assertTrue(stage_utils.close_stage())
+        await omni.kit.app.get_app().next_update_async()
+
+        request = SetEntityState.Request()
+        request.entity = "/World/Missing"
+        response = await self._call_service_async(SetEntityState, "/set_entity_state", request)
+
+        self.assertIsNotNone(response)
+        self.assertEqual(response.result.result, Result.RESULT_OPERATION_FAILED)
+        self.assertEqual(response.result.error_message, "Stage not available")
+
     async def test_set_entity_state_service(self) -> None:
         """Test that SetEntityState service correctly sets entity states.
 
@@ -1160,6 +1176,36 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         # Verify the empty Xform exists
         spawned_prim = stage.GetPrimAtPath("/EmptyXform")
         self.assertTrue(spawned_prim.IsValid(), "EmptyXform should exist in the stage")
+
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
+
+    async def test_spawn_entity_empty_name_auto_renaming(self) -> None:
+        """Test that an empty name is replaced with an absolute generated prim path."""
+        # fmt: off
+        from simulation_interfaces.msg import Result
+
+        # fmt: on
+        from simulation_interfaces.srv import SpawnEntity
+
+        self.create_test_stage()
+        await omni.kit.app.get_app().next_update_async()
+
+        request = SpawnEntity.Request()
+        request.name = ""
+        request.allow_renaming = True
+        request.uri = ""
+
+        result = await self._call_service_async(SpawnEntity, "/spawn_entity", request)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.result.result, Result.RESULT_OK)
+        self.assertEqual(result.entity_name, "/SpawnedEntity_0")
+
+        stage = omni.usd.get_context().get_stage()
+        spawned_prim = stage.GetPrimAtPath(result.entity_name)
+        self.assertTrue(spawned_prim.IsValid(), "Generated entity should exist at the returned absolute path")
+        self.assertTrue(spawned_prim.GetAttribute("simulationInterfacesSpawned").Get())
 
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
@@ -2123,6 +2169,46 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
+    async def test_spawn_entities_empty_name_auto_renaming(self) -> None:
+        """Test that batch spawning returns an absolute generated prim path for an empty name."""
+        from geometry_msgs.msg import PoseStamped
+
+        # fmt: off
+        from simulation_interfaces.msg import Resource, Result
+        from simulation_interfaces.msg import SpawnEntity as SpawnEntityMsg
+
+        # fmt: on
+        from simulation_interfaces.srv import SpawnEntities
+
+        self.create_test_stage()
+        await omni.kit.app.get_app().next_update_async()
+
+        spawn_request = SpawnEntityMsg()
+        spawn_request.name = ""
+        spawn_request.allow_renaming = True
+        spawn_request.entity_resource = Resource()
+        spawn_request.entity_resource.uri = ""
+        spawn_request.initial_pose = PoseStamped()
+
+        request = SpawnEntities.Request()
+        request.spawn_requests = [spawn_request]
+
+        result = await self._call_service_async(SpawnEntities, "/spawn_entities", request)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.result.result, Result.RESULT_OK)
+        self.assertEqual(len(result.results), 1)
+        self.assertEqual(result.results[0].result.result, Result.RESULT_OK)
+        self.assertEqual(result.results[0].entity_name, "/SpawnedEntity_0")
+
+        stage = omni.usd.get_context().get_stage()
+        spawned_prim = stage.GetPrimAtPath(result.results[0].entity_name)
+        self.assertTrue(spawned_prim.IsValid(), "Generated entity should exist at the returned absolute path")
+        self.assertTrue(spawned_prim.GetAttribute("simulationInterfacesSpawned").Get())
+
+        self._timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
+
     async def test_get_entity_bounds_service(self) -> None:
         """Test GetEntityBounds service returns correct bounding boxes.
 
@@ -2243,3 +2329,37 @@ class TestSimControlServices(omni.kit.test.AsyncTestCase):
 
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
+
+    async def test_entity_state_name_override_precedence(self) -> None:
+        """Entity frames honor canonical joint names and retain link and legacy names."""
+        from unittest.mock import patch
+
+        from isaacsim.ros2.sim_control.impl.entity_utils import get_entity_state
+        from pxr import Sdf, UsdGeom
+
+        stage = omni.usd.get_context().get_stage()
+        for index, (canonical, is_link, expected, warns) in enumerate(
+            (
+                (None, False, "legacy", True),
+                ("new", False, "new", False),
+                ("", False, "Entity2", False),
+                (Sdf.ValueBlock(), False, "Entity3", False),
+                ("joint", True, "legacy", False),
+            )
+        ):
+            path = f"/Entity{index}"
+            prim = UsdGeom.Xform.Define(stage, path).GetPrim()
+            prim.ApplyAPI("IsaacJointAPI")
+            if is_link:
+                prim.ApplyAPI("IsaacLinkAPI")
+            prim.CreateAttribute("isaac:nameOverride", Sdf.ValueTypeNames.String).Set("legacy")
+            if canonical is not None:
+                prim.CreateAttribute("isaac:NameOverride", Sdf.ValueTypeNames.String).Set(canonical)
+            with patch("isaacsim.ros2.sim_control.impl.entity_utils.carb.log_warn") as warning:
+                state, error, _ = await get_entity_state(path)
+            self.assertEqual(error, "")
+            self.assertIsNotNone(state)
+            self.assertEqual(state.header.frame_id, expected)
+            self.assertEqual(warning.call_count, int(warns))
+            if warns:
+                self.assertIn("legacy support will be removed in a future version", warning.call_args.args[0])

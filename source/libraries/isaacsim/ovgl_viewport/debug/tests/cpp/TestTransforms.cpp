@@ -58,8 +58,13 @@ public:
             throw std::runtime_error("Unable to create OVStage test instance");
         }
         const ovx_string_t source{ text.c_str(), text.size() };
+        const ovx_string_t stageMetadata[]{ { "metersPerUnit", 13 }, { "upAxis", 6 } };
+        ovstage_population_desc_t populationDescription{};
+        populationDescription.domains = OVSTAGE_POPULATION_DOMAIN_ALL;
+        populationDescription.stage_metadata_paths = stageMetadata;
+        populationDescription.stage_metadata_path_count = 2;
         const ovstage_population_enqueue_result_t population =
-            ovstage_population_open_usd_from_string(m_stage, source, 1, 0.0, OVSTAGE_POPULATION_DOMAIN_ALL);
+            ovstage_population_open_usd_from_string_with_desc(m_stage, source, 1, 0.0, &populationDescription, 1);
         if (population.status != OVSTAGE_OK ||
             ovstage_population_wait_op(m_stage, population.op_index, OVSTAGE_TIMEOUT_INFINITE, nullptr) != OVSTAGE_OK)
         {

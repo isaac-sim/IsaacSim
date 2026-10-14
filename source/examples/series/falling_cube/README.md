@@ -3,6 +3,7 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Falling Cube
+# Falling cube
 
-Each independently runnable step adds one concern: Foundation authoring, OvPhysX simulation, or OVGL visualization.
+Each step runs independently and adds one capability: Foundation authoring, OvPhysX simulation, OVGL visualization, or
+`ovrtx` rendering.

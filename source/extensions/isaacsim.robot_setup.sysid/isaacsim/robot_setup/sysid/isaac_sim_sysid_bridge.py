@@ -50,6 +50,12 @@ from .actuator_compatibility import (
 )
 from .analytical_presolve import build_fixed_base_context_from_usd
 from .articulation_utils import find_articulation_root
+from .backend_capabilities import (
+    RESIDUAL_CONTACT_FORCE,
+    RESIDUAL_END_EFFECTOR_POSE,
+    RESIDUAL_TORQUE,
+    get_backend_capabilities,
+)
 from .env_bridge import SysIdEnvironmentBridgeError
 from .explicit_pd_actuator_compat import (
     ExplicitPdActuatorCompat,
@@ -205,6 +211,14 @@ class IsaacSimSysIdBridge:
         self.physics_backend = str(physics_backend).lower()
         if self.physics_backend not in (PHYSICS_BACKEND_PHYSX, PHYSICS_BACKEND_NEWTON):
             raise SysIdEnvironmentBridgeError(f"Unknown Isaac Sim physics backend: {self.physics_backend!r}.")
+        self._backend_capabilities = get_backend_capabilities(
+            engine="isaac_sim",
+            physics_backend=self.physics_backend,
+        )
+        if self._backend_capabilities is None:
+            raise SysIdEnvironmentBridgeError(
+                f"No SysID capabilities are defined for Isaac Sim backend {self.physics_backend!r}."
+            )
         self.actuator_runtime = str(actuator_runtime).lower()
         if self.actuator_runtime not in (
             ACTUATOR_RUNTIME_IMPLICIT,
@@ -241,6 +255,9 @@ class IsaacSimSysIdBridge:
         self._articulation_root: Optional[str] = None
         self._num_envs = 0
         self._num_joints = 0
+        # Friction baselines stay `None` when friction is unselected, so capture
+        # completion needs its own sentinel rather than a `None` check.
+        self._baselines_captured = False
         self._baseline_static_friction: Optional[np.ndarray] = None
         self._baseline_dynamic_friction: Optional[np.ndarray] = None
         self._baseline_stiffness: Optional[np.ndarray] = None
@@ -268,11 +285,11 @@ class IsaacSimSysIdBridge:
             "yes",
             "on",
         }
-        # Direct bridge users retain the historical full-state behavior.  The
+        # Direct bridge users collect every trustworthy backend signal. The
         # rollout optimizer narrows these flags from the active residual config.
-        self._collect_torque = True
-        self._collect_end_effector_pose = True
-        self._collect_contact_force = True
+        self._collect_torque = self._backend_capabilities.supports_residual(RESIDUAL_TORQUE)
+        self._collect_end_effector_pose = self._backend_capabilities.supports_residual(RESIDUAL_END_EFFECTOR_POSE)
+        self._collect_contact_force = self._backend_capabilities.supports_residual(RESIDUAL_CONTACT_FORCE)
         self._physics_subscription = None
         self._rollout_active = False
         self._rollout_cancel_requested = False
@@ -333,6 +350,19 @@ class IsaacSimSysIdBridge:
     def _uses_explicit_actuators(self) -> bool:
         return self.actuator_runtime in (ACTUATOR_RUNTIME_EXPLICIT, ACTUATOR_RUNTIME_MIXED)
 
+    def _active_trajectory_dof_paths(self) -> list[str]:
+        """Return only the USD joints represented by trajectory columns.
+
+        Returns:
+            Ordered USD joint paths matching the active telemetry columns.
+        """
+        paths = list(self._selected_dof_paths or self.source_parameter_paths()[1])
+        if len(paths) < self._num_joints:
+            raise SysIdEnvironmentBridgeError(
+                f"The trajectory has {self._num_joints} DOFs but only {len(paths)} joint paths were resolved."
+            )
+        return paths[: self._num_joints]
+
     @property
     def actuator_metadata(self) -> dict:
         """Get metadata for the configured actuator runtime.
@@ -368,6 +398,11 @@ class IsaacSimSysIdBridge:
         """
         self._pending_param_entries = list(param_entries)
         selected_types = {entry.param_type for entry in param_entries}
+        unsupported = self._backend_capabilities.unsupported_parameter_types(param_entries)
+        if unsupported:
+            raise SysIdEnvironmentBridgeError(
+                f"{self._backend_capabilities.label} does not support parameters: {', '.join(unsupported)}."
+            )
         if any(is_actuator_delay_parameter(value) for value in selected_types) and not self._uses_explicit_actuators:
             raise SysIdEnvironmentBridgeError(
                 "actuator_command_delay_seconds requires actuator_runtime='newton_explicit' or 'mixed' in Isaac Sim."
@@ -414,9 +449,23 @@ class IsaacSimSysIdBridge:
             end_effector_pose: Whether to collect the end-effector pose.
             contact_force: Whether to collect contact force.
         """
-        self._collect_torque = bool(torque)
-        self._collect_end_effector_pose = bool(end_effector_pose)
-        self._collect_contact_force = bool(contact_force)
+        requested = {
+            RESIDUAL_TORQUE: bool(torque),
+            RESIDUAL_END_EFFECTOR_POSE: bool(end_effector_pose),
+            RESIDUAL_CONTACT_FORCE: bool(contact_force),
+        }
+        unsupported = sorted(
+            channel
+            for channel, enabled in requested.items()
+            if enabled and not self._backend_capabilities.supports_residual(channel)
+        )
+        if unsupported:
+            raise SysIdEnvironmentBridgeError(
+                f"{self._backend_capabilities.label} does not produce rollout signals: {', '.join(unsupported)}."
+            )
+        self._collect_torque = requested[RESIDUAL_TORQUE]
+        self._collect_end_effector_pose = requested[RESIDUAL_END_EFFECTOR_POSE]
+        self._collect_contact_force = requested[RESIDUAL_CONTACT_FORCE]
 
     def _validate_pending_parameter_entries(self) -> None:
         if self._pending_param_entries:
@@ -510,15 +559,13 @@ class IsaacSimSysIdBridge:
         stage = omni.usd.get_context().get_stage()
         if stage is None:
             raise SysIdEnvironmentBridgeError("No USD stage is open for explicit actuator discovery.")
+        all_paths = self._active_trajectory_dof_paths()
         if self._explicit_dof_paths is not None:
             dof_paths = list(self._explicit_dof_paths)
-        elif self._selected_dof_paths is None:
-            _link_paths, dof_paths = self.source_parameter_paths()
         else:
-            dof_paths = list(self._selected_dof_paths)
+            dof_paths = list(all_paths)
         if not dof_paths:
             return
-        all_paths = list(self._selected_dof_paths or self.source_parameter_paths()[1])
         by_path = {path: index for index, path in enumerate(all_paths)}
         try:
             self._explicit_dof_columns = [by_path[path] for path in dof_paths]
@@ -1257,6 +1304,7 @@ class IsaacSimSysIdBridge:
             await self._clone_environments_async(clone_target)
             self._cloned_for_count = clone_target
             self._articulation = None
+            self._baselines_captured = False
             self._baseline_static_friction = None
             self._baseline_armature = None
         self._ensure_timeline_playing()
@@ -1287,7 +1335,12 @@ class IsaacSimSysIdBridge:
                 "(SO101-style nested Geometry/base robots often need spaced grid copies)."
             )
         self._ensure_explicit_pd_compat()
-        if self._baseline_static_friction is None:
+        # Friction is only read from the backend when it is selected, so a bridge
+        # reused with a newly selected friction parameter must capture again.
+        needs_friction = SysIdParameterType.JOINT_FRICTION in {
+            entry.param_type for entry in self._pending_param_entries
+        }
+        if not self._baselines_captured or (needs_friction and self._baseline_static_friction is None):
             self._capture_baselines()
         self._validate_pending_parameter_entries()
 
@@ -1296,8 +1349,23 @@ class IsaacSimSysIdBridge:
         art = self._articulation
         n = self._physics_env_count()
         dof_idx = self._joint_dof_indices
+        selected_types = {entry.param_type for entry in self._pending_param_entries}
+        capture_friction = SysIdParameterType.JOINT_FRICTION in selected_types
         with self._articulation_backend_context():
-            static_fric, dyn_fric, _ = art.get_dof_friction_properties(indices=list(range(n)), dof_indices=dof_idx)
+            if capture_friction:
+                try:
+                    static_fric, dyn_fric, _ = art.get_dof_friction_properties(
+                        indices=list(range(n)), dof_indices=dof_idx
+                    )
+                except Exception as exc:
+                    raise SysIdEnvironmentBridgeError(
+                        f"Physics backend {self.physics_backend!r} cannot read the selected joint-friction parameters: {exc}"
+                    ) from exc
+            else:
+                # Leave friction unset rather than inventing a baseline: a
+                # fabricated value would overwrite the authored USD friction
+                # through `refresh_parameter_space_baselines`.
+                static_fric = dyn_fric = None
             stiffnesses, dampings = art.get_dof_gains(indices=list(range(n)), dof_indices=dof_idx)
             try:
                 armatures = art.get_dof_armatures(indices=list(range(n)), dof_indices=dof_idx)
@@ -1314,14 +1382,18 @@ class IsaacSimSysIdBridge:
             except Exception:
                 inertias = None
             lower, upper = art.get_dof_limits(indices=list(range(n)), dof_indices=dof_idx)
-        static_np = _warp_array_to_numpy(static_fric)
-        dyn_np = _warp_array_to_numpy(dyn_fric)
-        if static_np.ndim == 1:
-            static_np = static_np.reshape(n, -1)
-        if dyn_np.ndim == 1:
-            dyn_np = dyn_np.reshape(n, -1)
-        self._baseline_dynamic_friction = np.maximum(dyn_np, 1e-6)
-        self._baseline_static_friction = np.maximum(static_np, self._baseline_dynamic_friction * 1.01)
+        if static_fric is None or dyn_fric is None:
+            self._baseline_dynamic_friction = None
+            self._baseline_static_friction = None
+        else:
+            static_np = _warp_array_to_numpy(static_fric)
+            dyn_np = _warp_array_to_numpy(dyn_fric)
+            if static_np.ndim == 1:
+                static_np = static_np.reshape(n, -1)
+            if dyn_np.ndim == 1:
+                dyn_np = dyn_np.reshape(n, -1)
+            self._baseline_dynamic_friction = np.maximum(dyn_np, 1e-6)
+            self._baseline_static_friction = np.maximum(static_np, self._baseline_dynamic_friction * 1.01)
         stiff_np = _warp_array_to_numpy(stiffnesses)
         damp_np = _warp_array_to_numpy(dampings)
         if stiff_np.ndim == 1:
@@ -1415,6 +1487,7 @@ class IsaacSimSysIdBridge:
         self._baseline_dof_upper = upper_np[0].astype(np.float32)
 
         self._link_prim_paths = self._collect_link_prim_paths()
+        self._baselines_captured = True
 
     def _source_articulation_index(self) -> int:
         art = self._articulation
@@ -1481,7 +1554,7 @@ class IsaacSimSysIdBridge:
         """  # noqa: DOC107
         link_paths, dof_paths = self.source_parameter_paths()
         if link_paths or dof_paths:
-            space.read_usd_baselines(stage, link_paths, dof_paths)
+            space.read_usd_baselines(stage, link_paths, dof_paths, physics_backend=self.physics_backend)
         override = getattr(space, "override_joint_runtime_baselines", None)
         if callable(override):
             override(
@@ -1561,6 +1634,260 @@ class IsaacSimSysIdBridge:
             ki=ki,
             delay_seconds=delay_seconds,
         )
+
+    def apply_accepted_parameters_to_live_articulation(
+        self,
+        theta_row: list[float] | torch.Tensor,
+        param_entries: list[SysIdParameterEntry],
+    ) -> bool:
+        """Apply and verify accepted parameters on an implicit-drive PhysX articulation.
+
+        Args:
+            theta_row: Accepted optimizer parameter values.
+            param_entries: Parameter definitions corresponding to ``theta_row``.
+
+        Returns:
+            Whether the accepted values remain applied and were verified. Explicit
+            actuator candidates return ``False`` because their temporary runtime
+            manager is removed during run cleanup.
+
+        Raises:
+            SysIdEnvironmentBridgeError: If the live articulation cannot be updated or verified.
+        """
+        if self.physics_backend != PHYSICS_BACKEND_PHYSX or self._uses_explicit_actuators:
+            return False
+        self._apply_and_verify_live_parameters(theta_row, param_entries)
+        return True
+
+    def restore_parameters_on_live_articulation(
+        self,
+        theta_row: list[float] | torch.Tensor,
+        param_entries: list[SysIdParameterEntry],
+    ) -> bool:
+        """Restore parameters after a failed implicit-drive PhysX writeback.
+
+        Args:
+            theta_row: Authored parameter values captured before optimization.
+            param_entries: Parameter definitions corresponding to ``theta_row``.
+
+        Returns:
+            Whether the authored values were restored and verified.
+        """
+        if self.physics_backend != PHYSICS_BACKEND_PHYSX or self._uses_explicit_actuators:
+            return False
+        self._apply_and_verify_live_parameters(theta_row, param_entries)
+        return True
+
+    def _apply_and_verify_live_parameters(
+        self,
+        theta_row: list[float] | torch.Tensor,
+        param_entries: list[SysIdParameterEntry],
+    ) -> None:
+        """Apply one parameter vector to the live articulation and verify gains.
+
+        Args:
+            theta_row: Parameter values to apply.
+            param_entries: Parameter definitions corresponding to ``theta_row``.
+        """
+        if self._articulation is None:
+            raise SysIdEnvironmentBridgeError("The live PhysX articulation is unavailable for accepted writeback.")
+        theta = torch.as_tensor(theta_row, device=self._device, dtype=torch.float32).reshape(1, -1)
+        self.apply_parameter_vector(theta, param_entries)
+        self._flush_physics_changes()
+        self._verify_live_parameters(theta[0], param_entries)
+
+    def _verify_live_parameters(
+        self,
+        theta_row: torch.Tensor,
+        param_entries: list[SysIdParameterEntry],
+    ) -> None:
+        """Verify every selected implicit PhysX parameter through live readback.
+
+        Args:
+            theta_row: Accepted optimizer parameter values.
+            param_entries: Parameter definitions corresponding to ``theta_row``.
+
+        Raises:
+            SysIdEnvironmentBridgeError: If any live readback differs from the accepted values.
+        """
+        selected_types = {entry.param_type for entry in param_entries}
+        if not selected_types:
+            return
+        state = decode_theta_to_apply_state(
+            num_dof=len(self._joint_dof_indices),
+            num_links=max(self._num_links, 1),
+            param_entries=param_entries,
+            theta_row=theta_row.detach().cpu().numpy(),
+            baseline_link_inertia_lc=self._baseline_link_inertia_lc,
+        )
+        failures: list[str] = []
+
+        def require_baseline(name: str, value: np.ndarray | None) -> np.ndarray | None:
+            if value is None:
+                failures.append(f"{name} baseline is unavailable")
+            return value
+
+        def source_row(value: object, expected: np.ndarray) -> np.ndarray:
+            expected_array = np.asarray(expected)
+            return _warp_array_to_numpy(value).reshape((-1, *expected_array.shape))[0]
+
+        def compare(label: str, actual: float, expected: float) -> None:
+            if not np.isclose(actual, expected, rtol=1e-5, atol=1e-6):
+                failures.append(f"{label} expected {expected:.9g}, live {actual:.9g}")
+
+        def selected_dofs(param_type: SysIdParameterType) -> set[int]:
+            return {
+                dof_index
+                for entry in param_entries
+                if entry.param_type == param_type
+                for dof_index in (
+                    range(len(self._joint_dof_indices)) if int(entry.dof_index) < 0 else (int(entry.dof_index),)
+                )
+            }
+
+        def selected_links(param_types: set[SysIdParameterType]) -> set[int]:
+            return {
+                link_index
+                for entry in param_entries
+                if entry.param_type in param_types
+                for link_index in (
+                    range(max(self._num_links, 1)) if int(entry.link_index) < 0 else (int(entry.link_index),)
+                )
+            }
+
+        art = self._articulation
+        dof_indices = self._joint_dof_indices
+        num_links = max(self._num_links, 1)
+        try:
+            with self._articulation_backend_context():
+                if SysIdParameterType.JOINT_FRICTION in selected_types:
+                    baseline_dynamic = require_baseline("joint friction", self._baseline_dynamic_friction)
+                    baseline_static = require_baseline("joint friction", self._baseline_static_friction)
+                    if baseline_dynamic is not None and baseline_static is not None:
+                        static, dynamic, _viscous = art.get_dof_friction_properties(
+                            indices=[0], dof_indices=dof_indices
+                        )
+                        expected_dynamic = baseline_dynamic[0] * state.friction_scale
+                        expected_static = np.maximum(
+                            baseline_static[0] * state.friction_scale,
+                            expected_dynamic * 1.01,
+                        )
+                        actual_dynamic = source_row(dynamic, expected_dynamic)
+                        actual_static = source_row(static, expected_static)
+                        for index in sorted(selected_dofs(SysIdParameterType.JOINT_FRICTION)):
+                            compare(f"joint_friction.dynamic[{index}]", actual_dynamic[index], expected_dynamic[index])
+                            compare(f"joint_friction.static[{index}]", actual_static[index], expected_static[index])
+
+                gain_types = selected_types & {
+                    SysIdParameterType.JOINT_STIFFNESS,
+                    SysIdParameterType.JOINT_DAMPING,
+                }
+                if gain_types:
+                    baseline_stiffness = require_baseline("joint gain", self._baseline_stiffness)
+                    baseline_damping = require_baseline("joint gain", self._baseline_damping)
+                    if baseline_stiffness is not None and baseline_damping is not None:
+                        stiffness, damping = art.get_dof_gains(indices=[0], dof_indices=dof_indices)
+                        expected_stiffness = baseline_stiffness[0] * state.stiffness_scale
+                        expected_damping = baseline_damping[0] * state.damping_scale
+                        actual_stiffness = source_row(stiffness, expected_stiffness)
+                        actual_damping = source_row(damping, expected_damping)
+                        for param_type, actual_values, expected_values in (
+                            (SysIdParameterType.JOINT_STIFFNESS, actual_stiffness, expected_stiffness),
+                            (SysIdParameterType.JOINT_DAMPING, actual_damping, expected_damping),
+                        ):
+                            for index in sorted(selected_dofs(param_type)):
+                                compare(f"{param_type.value}[{index}]", actual_values[index], expected_values[index])
+
+                if SysIdParameterType.JOINT_ARMATURE in selected_types:
+                    baseline_armature = require_baseline("joint armature", self._baseline_armature)
+                    if baseline_armature is not None and state.joint_armature is not None:
+                        expected_armature = baseline_armature[0].copy()
+                        mask = np.isfinite(state.joint_armature)
+                        expected_armature[mask] = np.maximum(state.joint_armature[mask], 0.0)
+                        actual_armature = source_row(
+                            art.get_dof_armatures(indices=[0], dof_indices=dof_indices),
+                            expected_armature,
+                        )
+                        for index in sorted(selected_dofs(SysIdParameterType.JOINT_ARMATURE)):
+                            compare(f"joint_armature[{index}]", actual_armature[index], expected_armature[index])
+
+                if SysIdParameterType.LINK_MASS in selected_types:
+                    baseline_masses = require_baseline("link mass", self._baseline_link_masses)
+                    if baseline_masses is not None:
+                        expected_masses = np.maximum(
+                            baseline_masses[0, :num_links] * state.link_mass_scale[:num_links],
+                            1e-6,
+                        )
+                        actual_masses = source_row(art.get_link_masses(indices=[0]), expected_masses)
+                        for index in sorted(selected_links({SysIdParameterType.LINK_MASS})):
+                            compare(f"link_mass[{index}]", actual_masses[index], expected_masses[index])
+
+                com_types = selected_types & {
+                    SysIdParameterType.LINK_COM_OFFSET_X,
+                    SysIdParameterType.LINK_COM_OFFSET_Y,
+                    SysIdParameterType.LINK_COM_OFFSET_Z,
+                }
+                if com_types:
+                    baseline_com = require_baseline("link COM", self._baseline_link_com)
+                    if baseline_com is not None:
+                        expected_com = baseline_com[:num_links] + state.link_com_delta[:num_links]
+                        actual_com, _orientations = art.get_link_coms(indices=[0])
+                        actual_com = source_row(actual_com, expected_com)
+                        axes = {
+                            SysIdParameterType.LINK_COM_OFFSET_X: 0,
+                            SysIdParameterType.LINK_COM_OFFSET_Y: 1,
+                            SysIdParameterType.LINK_COM_OFFSET_Z: 2,
+                        }
+                        for param_type in com_types:
+                            axis = axes[param_type]
+                            for index in sorted(selected_links({param_type})):
+                                compare(
+                                    f"{param_type.value}[{index}]",
+                                    actual_com[index, axis],
+                                    expected_com[index, axis],
+                                )
+
+                if SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY in selected_types:
+                    baseline_inertia = require_baseline("link inertia", self._baseline_link_inertia)
+                    if baseline_inertia is not None:
+                        expected_inertia = baseline_inertia[:num_links].copy()
+                        for index, values in state.link_inertia_flat.items():
+                            if 0 <= index < num_links:
+                                expected_inertia[index] = values
+                        actual_inertia = source_row(art.get_link_inertias(indices=[0]), expected_inertia)
+                        for index in sorted(selected_links({SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY})):
+                            for component, (actual, expected) in enumerate(
+                                zip(actual_inertia[index].reshape(-1), expected_inertia[index].reshape(-1))
+                            ):
+                                compare(f"link_inertia[{index},{component}]", actual, expected)
+
+                limit_types = selected_types & {
+                    SysIdParameterType.JOINT_LIMIT_LOWER_SCALE,
+                    SysIdParameterType.JOINT_LIMIT_UPPER_SCALE,
+                }
+                if limit_types:
+                    baseline_lower = require_baseline("joint limit", self._baseline_dof_lower)
+                    baseline_upper = require_baseline("joint limit", self._baseline_dof_upper)
+                    if baseline_lower is not None and baseline_upper is not None:
+                        expected_lower = baseline_lower * state.joint_limit_lower_scale
+                        expected_upper = baseline_upper * state.joint_limit_upper_scale
+                        lower, upper = art.get_dof_limits(indices=[0], dof_indices=dof_indices)
+                        actual_lower = source_row(lower, expected_lower)
+                        actual_upper = source_row(upper, expected_upper)
+                        for param_type, actual_values, expected_values in (
+                            (SysIdParameterType.JOINT_LIMIT_LOWER_SCALE, actual_lower, expected_lower),
+                            (SysIdParameterType.JOINT_LIMIT_UPPER_SCALE, actual_upper, expected_upper),
+                        ):
+                            for index in sorted(selected_dofs(param_type)):
+                                compare(f"{param_type.value}[{index}]", actual_values[index], expected_values[index])
+        except SysIdEnvironmentBridgeError:
+            raise
+        except Exception as exc:
+            raise SysIdEnvironmentBridgeError(f"Could not read back accepted PhysX parameters: {exc}") from exc
+        if failures:
+            raise SysIdEnvironmentBridgeError(
+                "Accepted PhysX parameters did not survive live readback: " + "; ".join(failures)
+            )
 
     def _collect_link_prim_paths(self) -> list[str]:
         stage = runtime.get_current_stage()
@@ -1688,14 +2015,21 @@ class IsaacSimSysIdBridge:
             for env_i in range(n_phys)
         ]
         indices = list(range(n_phys))
+        selected_types = {entry.param_type for entry in param_entries}
+        gain_selected = bool(selected_types & {SysIdParameterType.JOINT_STIFFNESS, SysIdParameterType.JOINT_DAMPING})
 
-        friction_scale = np.stack([state.friction_scale for state in apply_states], axis=0)
-        dynamic = (self._baseline_dynamic_friction[:n_phys] * friction_scale).astype(np.float32)
-        static = (self._baseline_static_friction[:n_phys] * friction_scale).astype(np.float32)
-        static = np.maximum(static, dynamic * 1.01)
+        static = dynamic = None
+        if SysIdParameterType.JOINT_FRICTION in selected_types:
+            friction_scale = np.stack([state.friction_scale for state in apply_states], axis=0)
+            dynamic = (self._baseline_dynamic_friction[:n_phys] * friction_scale).astype(np.float32)
+            static = (self._baseline_static_friction[:n_phys] * friction_scale).astype(np.float32)
+            static = np.maximum(static, dynamic * 1.01)
 
-        stiffness_scale = np.stack([state.stiffness_scale for state in apply_states], axis=0)
-        damping_scale = np.stack([state.damping_scale for state in apply_states], axis=0)
+        stiffness_scale = None
+        damping_scale = None
+        if gain_selected or self._explicit_pd_compat is not None:
+            stiffness_scale = np.stack([state.stiffness_scale for state in apply_states], axis=0)
+            damping_scale = np.stack([state.damping_scale for state in apply_states], axis=0)
         if self._explicit_pd_compat is not None:
             if self._explicit_pd_compat.env_count != n_phys:
                 raise SysIdEnvironmentBridgeError(
@@ -1744,21 +2078,28 @@ class IsaacSimSysIdBridge:
             except Exception as exc:
                 raise SysIdEnvironmentBridgeError(f"Failed to apply explicit PD actuator candidate: {exc}") from exc
         with self._articulation_backend_context():
-            art.set_dof_friction_properties(
-                static_frictions=static,
-                dynamic_frictions=dynamic,
-                indices=indices,
-                dof_indices=dof_idx,
-            )
+            if static is not None and dynamic is not None:
+                try:
+                    art.set_dof_friction_properties(
+                        static_frictions=static,
+                        dynamic_frictions=dynamic,
+                        indices=indices,
+                        dof_indices=dof_idx,
+                    )
+                except Exception as exc:
+                    raise SysIdEnvironmentBridgeError(
+                        f"Physics backend {self.physics_backend!r} cannot apply the selected "
+                        f"joint-friction parameters: {exc}"
+                    ) from exc
 
-            if self._explicit_pd_compat is None:
+            if self._explicit_pd_compat is None and gain_selected:
                 art.set_dof_gains(
                     stiffnesses=(self._baseline_stiffness[:n_phys] * stiffness_scale).astype(np.float32),
                     dampings=(self._baseline_damping[:n_phys] * damping_scale).astype(np.float32),
                     indices=indices,
                     dof_indices=dof_idx,
                 )
-            elif len(self._explicit_dof_columns) < n_dof:
+            elif gain_selected and len(self._explicit_dof_columns) < n_dof:
                 explicit_columns = set(self._explicit_dof_columns)
                 implicit_columns = [column for column in range(n_dof) if column not in explicit_columns]
                 implicit_indices = [dof_idx[column] for column in implicit_columns]
@@ -1787,7 +2128,7 @@ class IsaacSimSysIdBridge:
                     dof_indices=dof_idx,
                 )
 
-            if self._baseline_link_masses is not None:
+            if self._baseline_link_masses is not None and SysIdParameterType.LINK_MASS in selected_types:
                 mass_scale = np.stack([state.link_mass_scale[:num_links] for state in apply_states], axis=0)
                 masses = self._baseline_link_masses[:n_phys, :num_links] * mass_scale
                 art.set_link_masses(np.maximum(masses, 1e-6).astype(np.float32), indices=indices)

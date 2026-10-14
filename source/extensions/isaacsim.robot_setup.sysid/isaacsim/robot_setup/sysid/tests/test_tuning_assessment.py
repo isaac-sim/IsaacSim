@@ -25,8 +25,10 @@ import numpy as np
 import omni.kit.test
 from isaacsim.robot_setup.sysid.tuning_assessment import (
     ASSESSMENT_PASS,
+    ASSESSMENT_UNAVAILABLE,
     ASSESSMENT_WARN,
     _check_validation_holdout,
+    _check_validation_improvement,
     _recommended_next_parameters,
     _training_normalized_cost,
 )
@@ -76,11 +78,27 @@ class TuningAssessmentCostTests(omni.kit.test.AsyncTestCase):
 
 
 class ValidationHoldoutAssessmentTests(omni.kit.test.AsyncTestCase):
+    async def test_validation_regression_is_reported(self) -> None:
+        checks = {}
+        issues = []
+        comparison = {
+            "available": True,
+            "overall": {
+                "position_rmse": {"status": "regressed"},
+                "velocity_rmse": {"status": "improved"},
+            },
+        }
+
+        _check_validation_improvement(checks, issues, comparison)
+
+        self.assertEqual(checks["validation_improvement"]["status"], ASSESSMENT_WARN)
+        self.assertEqual([issue.code for issue in issues], ["validation_rmse_regression"])
+
     async def test_metrics_not_from_configured_holdout_have_distinct_issue(self) -> None:
         checks = {}
         issues = []
         prepared = SimpleNamespace(validation_chunks=[])
-        result = SimpleNamespace(validation_artifact_source="full_telemetry_fallback")
+        result = SimpleNamespace(validation_artifact_source="training_chunks_fallback")
 
         _check_validation_holdout(checks, issues, prepared, result, [object()])
 
@@ -90,6 +108,43 @@ class ValidationHoldoutAssessmentTests(omni.kit.test.AsyncTestCase):
             "add_independent_validation_chunks_before_broadening_parameters",
             _recommended_next_parameters(None, issues, [object()]),
         )
+
+    async def test_unpaired_channel_cannot_pass_validation_improvement(self) -> None:
+        """A channel that diverged on one chunk is a warning, not a clean pass."""
+        checks = {}
+        issues = []
+        comparison = {
+            "available": True,
+            "holdout": True,
+            "overall": {
+                "position_rmse": {
+                    "status": "unavailable",
+                    "unpaired_chunks": ["chunk_b"],
+                }
+            },
+        }
+
+        _check_validation_improvement(checks, issues, comparison)
+
+        self.assertEqual(checks["validation_improvement"]["status"], ASSESSMENT_WARN)
+        self.assertEqual(checks["validation_improvement"]["reason_code"], "unpaired_channels")
+        self.assertEqual(checks["validation_improvement"]["unpaired_channels"], ["position_rmse"])
+        self.assertEqual([issue.code for issue in issues], ["validation_rmse_unpaired"])
+
+    async def test_training_replay_cannot_pass_validation_improvement(self) -> None:
+        checks = {}
+        issues = []
+        comparison = {
+            "available": True,
+            "holdout": False,
+            "overall": {"position_rmse": {"status": "improved"}},
+        }
+
+        _check_validation_improvement(checks, issues, comparison)
+
+        self.assertEqual(checks["validation_improvement"]["status"], ASSESSMENT_UNAVAILABLE)
+        self.assertEqual(checks["validation_improvement"]["reason_code"], "training_data_replay")
+        self.assertEqual(issues, [])
 
     async def test_missing_metrics_have_distinct_issue(self) -> None:
         checks = {}

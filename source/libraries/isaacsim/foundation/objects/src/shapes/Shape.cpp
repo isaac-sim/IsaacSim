@@ -13,11 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <isaacsim/common/string/String.hpp>
 #include <isaacsim/foundation/objects/shapes/Shape.hpp>
 
 #include <cctype>
+#include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <type_traits>
+#include <variant>
 
 namespace isaacsim
 {
@@ -27,6 +31,8 @@ namespace objects
 {
 namespace shapes
 {
+
+namespace string = isaacsim::common::string;
 
 Shape::Shape(const std::variant<std::string, std::vector<std::string>>& paths,
              const std::string& shapeType,
@@ -66,22 +72,53 @@ Shape::Shape(const std::variant<std::string, std::vector<std::string>>& paths,
     }
 }
 
+array::Array Shape::getDisplayColors(const std::optional<array::Array>& indices)
+{
+    (void)indices;
+    return array::Array(std::vector<double>{ 0.0, 0.0, 0.0 });
+}
+
 void Shape::updateExtents()
 {
 }
 
 void Shape::setDisplayColors(const ColorType& colors, const std::optional<array::Array>& indices)
 {
-    // TODO: implementation.
-    (void)colors;
-    (void)indices;
-}
-
-array::Array Shape::getDisplayColors(const std::optional<array::Array>& indices)
-{
-    // TODO: implementation.
-    (void)indices;
-    return array::Array(std::vector<double>{ 0.0, 0.0, 0.0 });
+    const int64_t batchSize = _resolveIndexedSize(indices);
+    // Color tokens resolve to one RGB triple per selected prim, while numeric values are taken as given.
+    const array::Array values = std::visit(
+        [this, &indices](const auto& value) -> array::Array
+        {
+            if constexpr (std::is_same_v<std::decay_t<decltype(value)>, array::Array>)
+            {
+                return value;
+            }
+            else
+            {
+                const std::vector<std::string> tokens = _resolveStringList(value, indices);
+                std::vector<std::vector<float>> components;
+                components.reserve(tokens.size());
+                for (const std::string& token : tokens)
+                {
+                    components.push_back(string::resolveColor(token));
+                }
+                return array::Array(components);
+            }
+        },
+        colors);
+    // Array-typed attributes are not broadcast by 'setAttributeValues', so the values are laid out here: a
+    // scalar or flat input describes a single color (an RGB triple, or a grayscale value that spreads over the
+    // three channels), which a leading axis of one keeps apart from an input holding one color per prim. The
+    // primvar itself holds an array of colors per prim, hence the trailing one-element axis.
+    // TODO: Set the 'interpolation' metadata of 'primvars:displayColor' to 'constant'. USD stores it as
+    //       attribute metadata, which no stage backend exposes yet, so a prim already authored with a
+    //       per-point interpolation keeps it even though it now holds a single color.
+    const array::Array shapedValues =
+        values.ndim() <= 1 ? values.reshape(array::Shape({ int64_t{ 1 }, static_cast<int64_t>(values.size()) })) : values;
+    this->setAttributeValues("primvars:displayColor",
+                             shapedValues.broadcastTo(array::Shape({ batchSize, int64_t{ 3 } }))
+                                 .reshape(array::Shape({ batchSize, int64_t{ 1 }, int64_t{ 3 } })),
+                             indices);
 }
 
 std::vector<std::string> Shape::_resolveAxes(const std::variant<std::string, std::vector<std::string>>& axes)

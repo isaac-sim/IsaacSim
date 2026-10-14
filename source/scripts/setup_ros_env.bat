@@ -37,23 +37,34 @@ if "%ROS_DISTRO%"=="" (
 
 set BUNDLED_ROS_PREFIX=%BRIDGE_EXT_PATH%\%ROS_DISTRO%
 
-if "%USE_BUNDLED_ROS%"=="true" (
-    REM Prefer the bundled ROS2 libraries over unrelated DLLs already on PATH
-    set "PATH=%BUNDLED_ROS_PREFIX%\lib;%PATH%"
+REM Expand path variables outside parenthesized blocks so quoted entries with parentheses remain valid
+if "%USE_BUNDLED_ROS%"=="true" set "PATH=%BUNDLED_ROS_PREFIX%\lib;%PATH%"
 
-    REM Keep custom workspace overlays first and add the bundled ROS2 package index
-    if defined AMENT_PREFIX_PATH (
-        if "%AMENT_PREFIX_PATH:~-1%"==";" (
-            set "AMENT_PREFIX_PATH=%AMENT_PREFIX_PATH%%BUNDLED_ROS_PREFIX%"
-        ) else (
-            set "AMENT_PREFIX_PATH=%AMENT_PREFIX_PATH%;%BUNDLED_ROS_PREFIX%"
-        )
-    ) else (
-        set "AMENT_PREFIX_PATH=%BUNDLED_ROS_PREFIX%"
-    )
-)
+REM Keep custom workspace overlays first and add the bundled ROS2 package index
+if not "%USE_BUNDLED_ROS%"=="true" goto :ros_overlay_done
+if not defined AMENT_PREFIX_PATH goto :ros_overlay_default
+call :ament_has_trailing_separator
+if not errorlevel 1 goto :ros_overlay_trailing_separator
+set "AMENT_PREFIX_PATH=%AMENT_PREFIX_PATH%;%BUNDLED_ROS_PREFIX%"
+goto :ros_overlay_done
+:ros_overlay_trailing_separator
+set "AMENT_PREFIX_PATH=%AMENT_PREFIX_PATH%%BUNDLED_ROS_PREFIX%"
+goto :ros_overlay_done
+:ros_overlay_default
+set "AMENT_PREFIX_PATH=%BUNDLED_ROS_PREFIX%"
+:ros_overlay_done
 
 REM Set RMW implementation to Zenoh if not already set
 if "%RMW_IMPLEMENTATION%"=="" (
     set RMW_IMPLEMENTATION=%DEFAULT_RMW_IMPLEMENTATION%
 )
+goto :eof
+
+:ament_has_trailing_separator
+setlocal EnableDelayedExpansion
+if "!AMENT_PREFIX_PATH:~-1!"==";" goto :ament_trailing_separator
+endlocal
+exit /b 1
+:ament_trailing_separator
+endlocal
+exit /b 0

@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.7] - 2026-09-22
+### Fixed
+- `load_config` skips malformed `grasp_phases` entries with a warning instead of raising `TypeError`.
+- `load_config` reports unknown component names as failed; `save_config` warns about them.
+
 ## [1.1.6] - 2026-06-26
 ### Changed
 - Replace package-root star imports with explicit public API imports.

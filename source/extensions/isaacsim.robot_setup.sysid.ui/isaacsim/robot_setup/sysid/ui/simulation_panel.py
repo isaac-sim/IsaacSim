@@ -21,20 +21,29 @@ from collections.abc import Callable
 from typing import Any, Optional
 
 import omni.ui as ui
-from isaacsim.gui.components.element_wrappers import CheckBox, IntField, StringField
+from isaacsim.gui.components.element_wrappers import CheckBox, StringField
 from isaacsim.gui.components.ui_utils import dropdown_builder
-
-from ..actuator_compatibility import ACTUATOR_RUNTIME_EXPLICIT, ACTUATOR_RUNTIME_IMPLICIT
-from ..run_spec import (
+from isaacsim.robot_setup.sysid.actuator_compatibility import (
+    ACTUATOR_RUNTIME_AUTO,
+    ACTUATOR_RUNTIME_EXPLICIT,
+    ACTUATOR_RUNTIME_IMPLICIT,
+    ACTUATOR_RUNTIME_MIXED,
+    EXPLICIT_ACTUATOR_POLICY_AUTHORED_ONLY,
+    EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED,
+    PHYSICS_BACKEND_NEWTON,
+    PHYSICS_BACKEND_PHYSX,
+)
+from isaacsim.robot_setup.sysid.run_spec import (
     NEWTON_SOLVER_FEATHERSTONE_DIFF,
     NEWTON_SOLVER_MUJOCO,
     SIMULATION_ENGINE_ISAAC_SIM,
     SIMULATION_ENGINE_NEWTON,
     NewtonSimulationRunSpec,
 )
-from .styles import HINT_LABEL_STYLE as _HINT_LABEL_STYLE
+from isaacsim.robot_setup.sysid.ui.numeric_inputs import ExactIntField
+from isaacsim.robot_setup.sysid.ui.styles import HINT_LABEL_STYLE as _HINT_LABEL_STYLE
 
-_ENGINE_LABELS = ("Isaac Sim (PhysX)", "Newton (MuJoCo)", "Newton differentiable (Featherstone)")
+_ENGINE_LABELS = ("Isaac Sim (in-app)", "Newton (MuJoCo)", "Newton differentiable (Featherstone)")
 _ENGINE_SELECTION_BY_LABEL = {
     _ENGINE_LABELS[0]: (SIMULATION_ENGINE_ISAAC_SIM, NEWTON_SOLVER_MUJOCO),
     _ENGINE_LABELS[1]: (SIMULATION_ENGINE_NEWTON, NEWTON_SOLVER_MUJOCO),
@@ -44,6 +53,17 @@ _NEWTON_DEVICE_LABELS = ("cpu", "cuda")
 _NEWTON_CONTROLLER_MODES = ("pd", "pid")
 _FEEDFORWARD_MODES = ("none", "gravity", "inverse_dynamics")
 _EFFORT_CLAMP_MODES = ("max_effort", "dc_motor", "none")
+_PHYSICS_BACKENDS = (PHYSICS_BACKEND_PHYSX, PHYSICS_BACKEND_NEWTON)
+_ACTUATOR_RUNTIMES = (
+    ACTUATOR_RUNTIME_AUTO,
+    ACTUATOR_RUNTIME_IMPLICIT,
+    ACTUATOR_RUNTIME_EXPLICIT,
+    ACTUATOR_RUNTIME_MIXED,
+)
+_EXPLICIT_ACTUATOR_POLICIES = (
+    EXPLICIT_ACTUATOR_POLICY_AUTHORED_ONLY,
+    EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED,
+)
 
 
 def engine_selection_from_label(label: str) -> tuple[str, str]:
@@ -100,11 +120,17 @@ class SimulationPanel:
         self._controller_label: str = _NEWTON_CONTROLLER_MODES[0]
         self._feedforward_label: str = _FEEDFORWARD_MODES[0]
         self._effort_clamp_label: str = _EFFORT_CLAMP_MODES[0]
+        self._physics_backend_label: str = PHYSICS_BACKEND_PHYSX
+        self._actuator_runtime_label: str = ACTUATOR_RUNTIME_AUTO
+        self._explicit_actuator_policy_label: str = EXPLICIT_ACTUATOR_POLICY_AUTHORED_ONLY
 
         self._engine_model = None
         self._controller_model = None
         self._feedforward_model = None
         self._effort_clamp_model = None
+        self._physics_backend_model = None
+        self._actuator_runtime_model = None
+        self._explicit_actuator_policy_model = None
         self._feedforward_hint_label: Optional[ui.Label] = None
         self._newton_compatibility_hint_label: Optional[ui.Label] = None
         self._offline_stepping_cb: Optional[CheckBox] = None
@@ -115,11 +141,13 @@ class SimulationPanel:
         self._parallel_clones_cb: Optional[CheckBox] = None
         self._co_locate_clones_cb: Optional[CheckBox] = None
         self._fabric_clones_cb: Optional[CheckBox] = None
-        self._explicit_pd_cb: Optional[CheckBox] = None
-        self._featherstone_substeps_field: Optional[IntField] = None
+        self._featherstone_substeps_field: Optional[ExactIntField] = None
+        self._mujoco_substeps_field: Optional[ExactIntField] = None
+        self._execution_axes_group: Optional[ui.Frame] = None
         self._clone_group: Optional[ui.Frame] = None
         self._newton_group: Optional[ui.Frame] = None
         self._diff_group: Optional[ui.Frame] = None
+        self._mujoco_group: Optional[ui.Frame] = None
 
         self.wrapped_ui_elements: list = []
 
@@ -133,7 +161,7 @@ class SimulationPanel:
                 default_val=_ENGINE_LABELS.index(self._engine_label),
                 items=list(_ENGINE_LABELS),
                 tooltip=(
-                    "Isaac Sim (PhysX): full-scene rollouts with parallel clones. "
+                    "Isaac Sim (in-app): full-scene PhysX or Newton rollouts with parallel clones. "
                     "Newton (MuJoCo): replicated-world Newton rollouts. "
                     "Newton differentiable: contact-free Featherstone rollouts with exact gradients "
                     "(pairs with the Gradient Descent optimizer)."
@@ -148,6 +176,7 @@ class SimulationPanel:
             )
             with ui.CollapsableFrame("Advanced simulation settings", collapsed=True):
                 with ui.VStack(spacing=6):
+                    self._build_execution_axes_group()
                     self._build_clone_group()
                     self._build_newton_group()
             self.wrapped_ui_elements.extend(
@@ -158,14 +187,50 @@ class SimulationPanel:
                     self._parallel_clones_cb,
                     self._co_locate_clones_cb,
                     self._fabric_clones_cb,
-                    self._explicit_pd_cb,
                     self._featherstone_substeps_field,
+                    self._mujoco_substeps_field,
                     self._offline_stepping_cb,
                     self._cuda_graph_capture_cb,
                 ]
             )
             self._on_parallel_clones_changed(self._parallel_clones_cb.get_value())
         self._refresh_engine_group_visibility()
+
+    def _build_execution_axes_group(self) -> None:
+        """Build physics and actuator controls shared by in-app and standalone runs."""
+        self._execution_axes_group = ui.Frame()
+        with self._execution_axes_group:
+            with ui.VStack(spacing=6):
+                self._physics_backend_model = dropdown_builder(
+                    label="In-app physics backend",
+                    default_val=_PHYSICS_BACKENDS.index(self._physics_backend_label),
+                    items=list(_PHYSICS_BACKENDS),
+                    tooltip=(
+                        "Physics engine used inside Isaac Sim. Standalone Newton always uses Newton; "
+                        "this selection is retained for the next in-app run."
+                    ),
+                    on_clicked_fn=self._on_physics_backend_changed,
+                )
+                self._actuator_runtime_model = dropdown_builder(
+                    label="Actuator runtime",
+                    default_val=_ACTUATOR_RUNTIMES.index(self._actuator_runtime_label),
+                    items=list(_ACTUATOR_RUNTIMES),
+                    tooltip=(
+                        "auto resolves to implicit drives in Isaac Sim, mixed in standalone MuJoCo, "
+                        "and explicit in Featherstone. mixed assigns exactly one owner per DOF."
+                    ),
+                    on_clicked_fn=self._on_actuator_runtime_changed,
+                )
+                self._explicit_actuator_policy_model = dropdown_builder(
+                    label="Missing explicit actuator policy",
+                    default_val=_EXPLICIT_ACTUATOR_POLICIES.index(self._explicit_actuator_policy_label),
+                    items=list(_EXPLICIT_ACTUATOR_POLICIES),
+                    tooltip=(
+                        "authored_only rejects missing actuator schemas. promote_selected creates "
+                        "session-layer actuators for selected stateful parameters and commits them only on success."
+                    ),
+                    on_clicked_fn=self._on_explicit_actuator_policy_changed,
+                )
 
     def _build_clone_group(self) -> None:
         self._clone_group = ui.Frame()
@@ -207,15 +272,6 @@ class SimulationPanel:
                         "Can reduce clone setup overhead for many envs; leave off if clone creation behaves "
                         "unexpectedly."
                     ),
-                )
-                self._explicit_pd_cb = CheckBox(
-                    "Explicit Newton PD actuators (compat)",
-                    default_value=False,
-                    tooltip=(
-                        "Drive selected joints through USD-authored NewtonPDControlAPI actuators, "
-                        "with optional per-candidate command delay."
-                    ),
-                    on_click_fn=self._on_explicit_pd_changed,
                 )
                 self._offline_stepping_cb = CheckBox(
                     "Offline stepping",
@@ -291,10 +347,23 @@ class SimulationPanel:
                 self._diff_group = ui.Frame(visible=False)
                 with self._diff_group:
                     with ui.VStack(spacing=6):
-                        self._featherstone_substeps_field = IntField(
+                        self._featherstone_substeps_field = ExactIntField(
                             "Featherstone substeps",
                             default_value=4,
+                            lower_limit=1,
                             tooltip="Symplectic-Euler substeps per command sample (differentiable bridge)",
+                        )
+                self._mujoco_group = ui.Frame(visible=False)
+                with self._mujoco_group:
+                    with ui.VStack(spacing=6):
+                        self._mujoco_substeps_field = ExactIntField(
+                            "MuJoCo substeps",
+                            default_value=1,
+                            lower_limit=1,
+                            tooltip=(
+                                "MuJoCo physics steps per command sample. MuJoCo integrates drive stiffness "
+                                "explicitly; raise this when a rollout reports divergence for a stiff drive."
+                            ),
                         )
 
     # ---------------------------------------------------------------- getters
@@ -369,13 +438,46 @@ class SimulationPanel:
         Returns:
             The resulting value.
         """
-        if (
-            self.get_engine() == SIMULATION_ENGINE_ISAAC_SIM
-            and self._explicit_pd_cb is not None
-            and bool(self._explicit_pd_cb.get_value())
-        ):
-            return ACTUATOR_RUNTIME_EXPLICIT
-        return ACTUATOR_RUNTIME_IMPLICIT
+        if self._actuator_runtime_model is not None:
+            try:
+                index = int(self._actuator_runtime_model.get_item_value_model().as_int)
+                if 0 <= index < len(_ACTUATOR_RUNTIMES):
+                    self._actuator_runtime_label = _ACTUATOR_RUNTIMES[index]
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pass
+        return self._actuator_runtime_label
+
+    def get_physics_backend(self) -> str:
+        """Return the selected physics backend for the current execution host.
+
+        Returns:
+            Selected physics backend.
+        """
+        if self.get_engine() == SIMULATION_ENGINE_NEWTON:
+            return PHYSICS_BACKEND_NEWTON
+        if self._physics_backend_model is not None:
+            try:
+                index = int(self._physics_backend_model.get_item_value_model().as_int)
+                if 0 <= index < len(_PHYSICS_BACKENDS):
+                    self._physics_backend_label = _PHYSICS_BACKENDS[index]
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pass
+        return self._physics_backend_label
+
+    def get_explicit_actuator_policy(self) -> str:
+        """Return how missing explicit actuators are handled.
+
+        Returns:
+            Selected missing-actuator policy.
+        """
+        if self._explicit_actuator_policy_model is not None:
+            try:
+                index = int(self._explicit_actuator_policy_model.get_item_value_model().as_int)
+                if 0 <= index < len(_EXPLICIT_ACTUATOR_POLICIES):
+                    self._explicit_actuator_policy_label = _EXPLICIT_ACTUATOR_POLICIES[index]
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pass
+        return self._explicit_actuator_policy_label
 
     def get_newton_spec(self) -> NewtonSimulationRunSpec:
         """Return the Newton settings implied by the current engine selection.
@@ -385,12 +487,14 @@ class SimulationPanel:
         """
         _engine, newton_solver = engine_selection_from_label(self._engine_label)
         substeps = int(self._featherstone_substeps_field.get_value()) if self._featherstone_substeps_field else 4
+        mujoco_substeps = int(self._mujoco_substeps_field.get_value()) if self._mujoco_substeps_field else 1
         return NewtonSimulationRunSpec(
             device=self._newton_device_label,
             controller=self.get_controller_mode(),
             effort_clamp=self.get_effort_clamp_mode(),
             solver=newton_solver,
             featherstone_substeps=max(1, substeps),
+            mujoco_substeps=max(1, mujoco_substeps),
             # Read the ComboBox model directly so Check sees the selection even
             # if its item-changed callback has not updated the cached label yet.
             feedforward=self.get_feedforward_mode(),
@@ -491,8 +595,44 @@ class SimulationPanel:
         Args:
             runtime: Runtime value.
         """
-        if self._explicit_pd_cb is not None:
-            self._explicit_pd_cb.set_value(runtime == ACTUATOR_RUNTIME_EXPLICIT)
+        if runtime not in _ACTUATOR_RUNTIMES:
+            return
+        self._actuator_runtime_label = runtime
+        if self._actuator_runtime_model is not None:
+            value_model = self._actuator_runtime_model.get_item_value_model()
+            index = _ACTUATOR_RUNTIMES.index(runtime)
+            if int(value_model.as_int) != index:
+                value_model.set_value(index)
+
+    def set_physics_backend(self, backend: str) -> None:
+        """Select the in-app physics backend.
+
+        Args:
+            backend: Physics backend to select.
+        """
+        if backend not in _PHYSICS_BACKENDS:
+            return
+        self._physics_backend_label = backend
+        if self._physics_backend_model is not None:
+            value_model = self._physics_backend_model.get_item_value_model()
+            index = _PHYSICS_BACKENDS.index(backend)
+            if int(value_model.as_int) != index:
+                value_model.set_value(index)
+
+    def set_explicit_actuator_policy(self, policy: str) -> None:
+        """Select how missing explicit actuator schemas are handled.
+
+        Args:
+            policy: Missing-actuator policy to select.
+        """
+        if policy not in _EXPLICIT_ACTUATOR_POLICIES:
+            return
+        self._explicit_actuator_policy_label = policy
+        if self._explicit_actuator_policy_model is not None:
+            value_model = self._explicit_actuator_policy_model.get_item_value_model()
+            index = _EXPLICIT_ACTUATOR_POLICIES.index(policy)
+            if int(value_model.as_int) != index:
+                value_model.set_value(index)
 
     def set_feedforward_mode(self, mode: str) -> None:
         """Select the feedforward dropdown entry (Check-suggestion apply / recipes).
@@ -577,6 +717,8 @@ class SimulationPanel:
         for element in self.wrapped_ui_elements:
             if element is not None:
                 element.enabled = enabled
+        if self._execution_axes_group is not None:
+            self._execution_axes_group.enabled = enabled
         if enabled and self._parallel_clones_cb is not None:
             self._on_parallel_clones_changed(self._parallel_clones_cb.get_value())
 
@@ -595,8 +737,11 @@ class SimulationPanel:
         self._parallel_clones_cb = None
         self._co_locate_clones_cb = None
         self._fabric_clones_cb = None
-        self._explicit_pd_cb = None
+        self._physics_backend_model = None
+        self._actuator_runtime_model = None
+        self._explicit_actuator_policy_model = None
         self._featherstone_substeps_field = None
+        self._mujoco_substeps_field = None
         self._offline_stepping_cb = None
         self._cuda_graph_capture_cb = None
         self._controller_model = None
@@ -607,6 +752,8 @@ class SimulationPanel:
         self._clone_group = None
         self._newton_group = None
         self._diff_group = None
+        self._mujoco_group = None
+        self._execution_axes_group = None
 
     # --------------------------------------------------------------- private
 
@@ -657,7 +804,17 @@ class SimulationPanel:
     def _on_offline_stepping_changed(self, _value: Any) -> None:
         self._notify_newton_settings_changed()
 
-    def _on_explicit_pd_changed(self, _value: Any) -> None:
+    def _on_physics_backend_changed(self, label: str) -> None:
+        self._physics_backend_label = label
+        self._notify_newton_settings_changed()
+
+    def _on_actuator_runtime_changed(self, label: str) -> None:
+        self._actuator_runtime_label = label
+        self._refresh_engine_group_visibility()
+        self._notify_newton_settings_changed()
+
+    def _on_explicit_actuator_policy_changed(self, label: str) -> None:
+        self._explicit_actuator_policy_label = label
         self._notify_newton_settings_changed()
 
     def _notify_newton_settings_changed(self) -> None:
@@ -672,5 +829,19 @@ class SimulationPanel:
             self._newton_group.visible = engine == SIMULATION_ENGINE_NEWTON
         if self._diff_group is not None:
             self._diff_group.visible = newton_solver == NEWTON_SOLVER_FEATHERSTONE_DIFF
+        if self._mujoco_group is not None:
+            self._mujoco_group.visible = engine == SIMULATION_ENGINE_NEWTON and newton_solver == NEWTON_SOLVER_MUJOCO
         if self._newton_compatibility_hint_label is not None:
-            self._newton_compatibility_hint_label.visible = newton_solver == NEWTON_SOLVER_FEATHERSTONE_DIFF
+            differentiable = newton_solver == NEWTON_SOLVER_FEATHERSTONE_DIFF
+            invalid_runtime = differentiable and self.get_actuator_runtime() not in (
+                ACTUATOR_RUNTIME_AUTO,
+                ACTUATOR_RUNTIME_EXPLICIT,
+            )
+            self._newton_compatibility_hint_label.text = (
+                "Featherstone requires actuator runtime auto or newton_explicit, Controller=pd, and "
+                "Effort clamp=max_effort or none. Re-run Check after changing these settings."
+                if invalid_runtime
+                else "Differentiable Featherstone resolves auto to explicit actuators and requires "
+                "Controller=pd and Effort clamp=max_effort or none."
+            )
+            self._newton_compatibility_hint_label.visible = differentiable

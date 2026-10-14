@@ -20,12 +20,12 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
-import logging
 import os
 import sys
 from pathlib import Path
 from typing import Any
 
+import carb
 import numpy as np
 
 from ..trajectory_csv import TrajectoryDataset
@@ -41,7 +41,6 @@ _CONTACT_COLUMNS = ("observation.contact_force", "observation.contact_forces")
 _ORDER_COLUMNS = ("frame_index", "index")
 _TORQUE_SEMANTICS_VALUES = ("link_side", "external")
 _PYARROW_DLL_DIRECTORIES: list[Any] = []
-_LOGGER = logging.getLogger(__name__)
 
 
 def _resolve_torque_semantics(info: dict[str, Any], has_torques: bool) -> str | None:
@@ -68,7 +67,7 @@ def _resolve_torque_semantics(info: dict[str, Any], has_torques: bool) -> str | 
             f"got {value!r}."
         )
     if has_torques:
-        _LOGGER.warning(
+        carb.log_warn(
             "SysId: LeRobot dataset provides a torque column but meta/info.json declares no 'torque_semantics'; "
             'torque residuals will be rejected. Add "torque_semantics": "link_side" (or "external") to the '
             "dataset metadata."

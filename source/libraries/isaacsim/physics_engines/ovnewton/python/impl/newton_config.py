@@ -27,17 +27,37 @@ from .solver_config import SolverConfig
 
 
 @dataclass
+class NewtonSolverOutputConfig:
+    """Configure optional solver-computed outputs.
+
+    Args:
+        contact_forces: Whether to compute forces used by contact tensor queries.
+        link_incoming_joint_force: Whether to compute joint wrenches used by incoming-link and projected-DOF-force
+            queries.
+
+    """
+
+    contact_forces: bool = True
+    #: Compute contact forces. Enabled by default for compatibility.
+
+    link_incoming_joint_force: bool = False
+    #: Compute joint wrenches for incoming-link and projected-DOF-force queries. Disabled by default because it adds
+    #: per-step solver work.
+
+
+@dataclass
 class NewtonConfig:
     """Configure the Newton physics backend.
 
-    Only ``default_steps_per_second`` and ``device`` affect backend behavior. The remaining integration options do not
-    affect stage construction or stepping.
+    ``device``, ``solver``, and ``solver_outputs`` affect stage construction or stepping. The remaining integration
+    options are consumed by carrier applications.
 
     Args:
         use_cuda_graph: Whether an integration should request CUDA-graph capture.
         auto_switch_on_startup: Whether a carrier application should request Newton activation after registration.
         default_steps_per_second: Simulation frequency reported through the registration callbacks.
         solver: Requested solver settings, or None to create the default settings.
+        solver_outputs: Optional solver-computed outputs requested before state creation.
         device: Warp device used while ``ovnewton`` finalizes the Newton model, or None to use Newton's process default.
 
     """
@@ -52,7 +72,10 @@ class NewtonConfig:
     #: Simulation frequency reported through the registration callbacks.
 
     solver: SolverConfig | None = field(default=None)
-    #: Requested solver settings; these do not affect stage construction or stepping.
+    #: Requested solver settings. Solver selection affects stage construction.
+
+    solver_outputs: NewtonSolverOutputConfig = field(default_factory=NewtonSolverOutputConfig)
+    #: Optional solver-computed outputs requested before state creation.
 
     device: str | None = None
     #: Warp device active while ``ovnewton`` builds the Newton model, or None to preserve Newton's process default.

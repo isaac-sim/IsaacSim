@@ -194,8 +194,8 @@ for config in cube_configs:
         colors=config["color"],
     )
 
-    # Create a non-visual material and apply it to the cube. NonVisualMaterial authors a minimal
-    # surface shader when the material has none, so the non-visual IDs survive a cold stage load.
+    # Create a non-visual material and apply it to the cube. The material carries only the SimReady
+    # semantic attributes; no surface shader is needed for the renderer to resolve the material ID.
     material = NonVisualMaterial(
         f"{config['path']}/material",
         bases=config["base"],

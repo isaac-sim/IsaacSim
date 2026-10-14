@@ -23,6 +23,7 @@ import re
 import tempfile
 import xml.etree.ElementTree as ET
 from typing import Any
+from unittest import mock
 
 import carb
 import isaacsim.core.experimental.utils.stage as stage_utils
@@ -34,8 +35,9 @@ from isaacsim.asset.exporter.urdf.converter.inertia_utils import (
     reconstruct_inertia_tensor,
 )
 from isaacsim.asset.exporter.urdf.converter.joint_reader import _read_joint_velocity_limit
+from isaacsim.asset.exporter.urdf.converter.material_reader import copy_texture_payload
 from isaacsim.storage.native import get_assets_root_path
-from pxr import Usd, UsdPhysics
+from pxr import Ar, Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 
 class TestUrdfExporter(omni.kit.test.AsyncTestCase):
@@ -178,6 +180,7 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         from pxr import Sdf, UsdGeom
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         robot = UsdGeom.Xform.Define(stage, "/robot")
         stage.SetDefaultPrim(robot.GetPrim())
         UsdPhysics.ArticulationRootAPI.Apply(robot.GetPrim())
@@ -223,18 +226,13 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         self.assertAlmostEqual(float(limit.get("effort")), 42.0)
         self.assertAlmostEqual(float(limit.get("velocity")), 3.5, places=6)
 
-    async def test_missing_joint_velocity_is_omitted(self) -> None:
-        """Omit the URDF velocity when no supported source is authored."""
+    async def test_partial_continuous_limits_require_velocity(self) -> None:
+        """Reject a partial continuous limit instead of writing invalid URDF."""
         stage, _ = self._create_continuous_joint_stage()
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
-            _, root = await self._export_to_urdf(stage, temp_dir)
-
-        continuous_joint = root.find("joint[@name='continuous_joint']")
-        self.assertIsNotNone(continuous_joint)
-        limit = continuous_joint.find("limit")
-        self.assertIsNotNone(limit)
-        self.assertIsNone(limit.get("velocity"))
+            with self.assertRaisesRegex(ValueError, "velocity"):
+                await self._export_to_urdf(stage, temp_dir)
 
     async def test_joint_velocity_falls_back_to_legacy_urdf(self) -> None:
         """Use the legacy URDF velocity when Newton has no authored value."""
@@ -268,19 +266,15 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         physx_joint.CreateMaxJointVelocityAttr().Set(math.degrees(1.0))
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
-            _, root = await self._export_to_urdf(stage, temp_dir)
-
-        continuous_joint = root.find("joint[@name='continuous_joint']")
-        self.assertIsNotNone(continuous_joint)
-        limit = continuous_joint.find("limit")
-        self.assertIsNotNone(limit)
-        self.assertIsNone(limit.get("velocity"))
+            with self.assertRaisesRegex(ValueError, "velocity"):
+                await self._export_to_urdf(stage, temp_dir)
 
     async def test_prismatic_velocity_uses_linear_units(self) -> None:
         """Read a Newton prismatic velocity without angular conversion."""
-        from pxr import Sdf
+        from pxr import Sdf, UsdGeom
 
         stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         slider = UsdPhysics.PrismaticJoint.Define(stage, "/slider_joint").GetPrim()
         slider.CreateAttribute("newton:velocityLimit", Sdf.ValueTypeNames.Float).Set(0.25)
 
@@ -698,7 +692,7 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         """Create a minimal in-memory USD stage with MuJoCo-authored physics.
 
         Builds a two-link robot (base -> child) with a revolute joint that
-        has ONLY mjc:* attributes -- no urdf:* custom attrs, no DriveAPI,
+        has mjc:* dynamics with explicit URDF limits and no DriveAPI,
         no PhysxJointAPI.  Also creates an MjcActuator targeting the joint.
 
         Returns:
@@ -730,6 +724,8 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         joint.GetAxisAttr().Set("Z")
         joint.GetLowerLimitAttr().Set(-90.0)
         joint.GetUpperLimitAttr().Set(90.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:effort", Sdf.ValueTypeNames.Float).Set(10.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:velocity", Sdf.ValueTypeNames.Float).Set(2.0)
 
         jp = joint.GetPrim()
         jp.CreateAttribute("mjc:damping", Sdf.ValueTypeNames.Float).Set(2.5)
@@ -819,15 +815,10 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         """mjc:actuatorfrcrange:max is actuation data; it must NOT appear in <limit effort>."""
         stage = self._build_mjc_stage()
 
+        stage.GetPrimAtPath("/robot/base/child/joint").RemoveProperty("urdf:limit:effort")
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
-            root = self._export_mjc_stage(stage, temp_dir)
-
-            revolute_joints = [j for j in root.findall("joint") if j.get("type") == "revolute"]
-            self.assertEqual(len(revolute_joints), 1)
-
-            limit = revolute_joints[0].find("limit")
-            if limit is not None:
-                self.assertIsNone(limit.get("effort"), "Actuator effort should NOT be in <limit>")
+            with self.assertRaisesRegex(ValueError, "effort"):
+                self._export_mjc_stage(stage, temp_dir)
 
     async def test_mjc_ref_calibration_export(self) -> None:
         """Verify that mjc:ref is exported as URDF <calibration reference_position>."""
@@ -969,6 +960,10 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         drv_rx.CreateStiffnessAttr().Set(100.0)
 
         UsdGeom.Scope.Define(stage, "/robot/Physics")
+        for path in ("/robot/spherical_hip", "/robot/d6_shoulder"):
+            prim = stage.GetPrimAtPath(path)
+            prim.CreateAttribute("urdf:limit:effort", Sdf.ValueTypeNames.Float).Set(10.0)
+            prim.CreateAttribute("urdf:limit:velocity", Sdf.ValueTypeNames.Float).Set(2.0)
         return stage
 
     async def test_multi_dof_joint_export(self) -> None:
@@ -1053,6 +1048,7 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         joint.GetUpperLimitAttr().Set(90.0)
 
         jp = joint.GetPrim()
+        jp.CreateAttribute("newton:velocityLimit", Sdf.ValueTypeNames.Float).Set(180.0)
         drv = UsdPhysics.DriveAPI.Apply(jp, "angular")
         drv.CreateStiffnessAttr().Set(1000.0)
         drv.CreateDampingAttr().Set(100.0)
@@ -1141,29 +1137,25 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
             self.assertIsNotNone(limit)
             self.assertAlmostEqual(float(limit.get("effort")), 50.0, places=4)
 
-    async def test_drive_effort_limit_ignores_unauthored_fallback(self) -> None:
-        """Do not export the infinite DriveAPI schema fallback as a URDF effort limit."""
+    async def test_drive_effort_limit_replaces_unauthored_fallback(self) -> None:
+        """Export finite effort with provenance for an unauthored drive force limit."""
+        from isaacsim.asset.importer.urdf.impl.drive_reconstruction import parse_source_drive_breadcrumbs
+
         stage = self._build_drive_stage(max_force=None)
-
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
-            _, root = await self._export_to_urdf(stage, temp_dir)
-
-            joints = [j for j in root.findall("joint") if j.get("type") == "revolute"]
-            limit = joints[0].find("limit")
-            self.assertIsNotNone(limit)
-            self.assertIsNone(limit.get("effort"))
+            output, root = await self._export_to_urdf(stage, temp_dir)
+            limit = root.find("./joint[@type='revolute']/limit")
+            self.assertEqual(float(limit.get("effort")), 1e6)
+            record = next(record for record in parse_source_drive_breadcrumbs(output) if record.joint_name == "joint1")
+            self.assertTrue(record.unauthored_effort)
 
     async def test_drive_effort_limit_ignores_authored_infinity(self) -> None:
         """Do not export an infinite DriveAPI maxForce as a URDF effort limit."""
         stage = self._build_drive_stage(max_force=math.inf)
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
-            _, root = await self._export_to_urdf(stage, temp_dir)
-
-            joints = [j for j in root.findall("joint") if j.get("type") == "revolute"]
-            limit = joints[0].find("limit")
-            self.assertIsNotNone(limit)
-            self.assertIsNone(limit.get("effort"))
+            with self.assertRaisesRegex(ValueError, "effort"):
+                await self._export_to_urdf(stage, temp_dir)
 
     async def test_drive_effort_limit_falls_back_to_legacy_urdf_attr(self) -> None:
         """Use a finite legacy URDF effort limit when DriveAPI maxForce is not authored."""
@@ -1293,6 +1285,8 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         joint.GetAxisAttr().Set("Z")
         joint.GetLowerLimitAttr().Set(-90.0)
         joint.GetUpperLimitAttr().Set(90.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:effort", Sdf.ValueTypeNames.Float).Set(10.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:velocity", Sdf.ValueTypeNames.Float).Set(2.0)
 
         PhysxSchema.PhysxJointAPI.Apply(joint.GetPrim()).CreateArmatureAttr().Set(0.05)
 
@@ -1343,6 +1337,8 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         joint.GetAxisAttr().Set("Z")
         joint.GetLowerLimitAttr().Set(-90.0)
         joint.GetUpperLimitAttr().Set(90.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:effort", Sdf.ValueTypeNames.Float).Set(10.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:velocity", Sdf.ValueTypeNames.Float).Set(2.0)
 
         UsdGeom.Scope.Define(stage, "/robot/Physics")
 
@@ -1467,6 +1463,7 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         cube = UsdGeom.Cube.Define(stage, "/robot/base/geometry/cube")
         cube.CreateSizeAttr().Set(1.0)
         cube.AddScaleOp().Set(Gf.Vec3f(0.5, 0.25, 0.1))
+        UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
 
         sphere = UsdGeom.Sphere.Define(stage, "/robot/base/geometry/sphere")
         sphere.CreateRadiusAttr().Set(0.5)
@@ -1504,6 +1501,11 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
             cube = root.find("./link/visual[@name='cube']/geometry/box")
             self.assertIsNotNone(cube)
             for actual, expected in zip(self._parse_xyz(cube.get("size", "")), (3.0, 2.0, 1.0)):
+                self.assertAlmostEqual(actual, expected, places=6)
+
+            collision_cube = root.find("./link/collision[@name='cube']/geometry/box")
+            self.assertIsNotNone(collision_cube)
+            for actual, expected in zip(self._parse_xyz(collision_cube.get("size", "")), (3.0, 2.0, 1.0)):
                 self.assertAlmostEqual(actual, expected, places=6)
 
             sphere = root.find("./link/visual[@name='sphere']/geometry/sphere")
@@ -2065,6 +2067,8 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
         joint.GetAxisAttr().Set("Z")
         joint.GetLowerLimitAttr().Set(-90.0)
         joint.GetUpperLimitAttr().Set(90.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:effort", Sdf.ValueTypeNames.Float).Set(10.0)
+        joint.GetPrim().CreateAttribute("urdf:limit:velocity", Sdf.ValueTypeNames.Float).Set(2.0)
 
         UsdGeom.Scope.Define(stage, "/robot/Physics")
         return stage
@@ -2222,3 +2226,487 @@ class TestUrdfExporter(omni.kit.test.AsyncTestCase):
                 self.assertAlmostEqual(actual, expected, places=6)
             for actual in joint_rpy:
                 self.assertAlmostEqual(actual, 0.0, places=6)
+
+    @staticmethod
+    def _build_collision_role_stage() -> Usd.Stage:
+        """Create visual-only, collision-only, and visible dual-role controls.
+
+        Returns:
+            Stage containing controls for each visual and collision role.
+        """
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
+        robot = UsdGeom.Xform.Define(stage, "/robot")
+        stage.SetDefaultPrim(robot.GetPrim())
+        UsdPhysics.ArticulationRootAPI.Apply(robot.GetPrim())
+
+        base = UsdGeom.Xform.Define(stage, "/robot/base")
+        UsdPhysics.RigidBodyAPI.Apply(base.GetPrim())
+        mass_api = UsdPhysics.MassAPI.Apply(base.GetPrim())
+        mass_api.CreateMassAttr().Set(1.0)
+        mass_api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(0.001, 0.001, 0.001))
+
+        world_joint = UsdPhysics.FixedJoint.Define(stage, "/robot/world_joint")
+        world_joint.GetBody1Rel().SetTargets([Sdf.Path("/robot/base")])
+
+        visual = UsdGeom.Cube.Define(stage, "/robot/base/visual_marker")
+        visual.CreateSizeAttr().Set(0.1)
+        visual.CreatePurposeAttr().Set(UsdGeom.Tokens.render)
+        visual.AddTranslateOp().Set(Gf.Vec3d(-0.2, 0.0, 0.0))
+
+        collision_default = UsdGeom.Cube.Define(stage, "/robot/base/collision_marker_default_purpose")
+        collision_default.CreateSizeAttr().Set(0.1)
+        collision_default.CreateVisibilityAttr().Set(UsdGeom.Tokens.invisible)
+        UsdPhysics.CollisionAPI.Apply(collision_default.GetPrim())
+
+        collision_dual_role = UsdGeom.Cube.Define(stage, "/robot/base/collision_dual_role_visible")
+        collision_dual_role.CreateSizeAttr().Set(0.1)
+        collision_dual_role.AddTranslateOp().Set(Gf.Vec3d(0.2, 0.0, 0.0))
+        UsdPhysics.CollisionAPI.Apply(collision_dual_role.GetPrim())
+
+        collision_guide = UsdGeom.Cube.Define(stage, "/robot/base/collision_guide_control")
+        collision_guide.CreateSizeAttr().Set(0.1)
+        collision_guide.CreatePurposeAttr().Set(UsdGeom.Tokens.guide)
+        collision_guide.AddTranslateOp().Set(Gf.Vec3d(0.4, 0.0, 0.0))
+        UsdPhysics.CollisionAPI.Apply(collision_guide.GetPrim())
+
+        UsdGeom.Scope.Define(stage, "/robot/Physics")
+        return stage
+
+    @staticmethod
+    def _build_udim_stage(texture_path: str, stage_path: str | None = None) -> Usd.Stage:
+        """Create a one-link mesh using a UsdPreviewSurface UDIM texture.
+
+        Args:
+            texture_path: UDIM texture identifier for the shader.
+            stage_path: Optional path for a file-backed stage.
+
+        Returns:
+            Stage containing a one-link textured robot.
+        """
+        stage = Usd.Stage.CreateNew(stage_path) if stage_path else Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
+        robot = UsdGeom.Xform.Define(stage, "/robot")
+        stage.SetDefaultPrim(robot.GetPrim())
+        UsdPhysics.ArticulationRootAPI.Apply(robot.GetPrim())
+
+        base = UsdGeom.Xform.Define(stage, "/robot/base")
+        UsdPhysics.RigidBodyAPI.Apply(base.GetPrim())
+        mass_api = UsdPhysics.MassAPI.Apply(base.GetPrim())
+        mass_api.CreateMassAttr().Set(1.0)
+        mass_api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(0.001, 0.001, 0.001))
+
+        world_joint = UsdPhysics.FixedJoint.Define(stage, "/robot/world_joint")
+        world_joint.GetBody1Rel().SetTargets([Sdf.Path("/robot/base")])
+
+        mesh = UsdGeom.Mesh.Define(stage, "/robot/base/udim_mesh")
+        mesh.CreatePointsAttr().Set(
+            [
+                Gf.Vec3f(0.0, 0.0, 0.0),
+                Gf.Vec3f(0.1, 0.0, 0.0),
+                Gf.Vec3f(0.0, 0.1, 0.0),
+                Gf.Vec3f(0.2, 0.0, 0.0),
+                Gf.Vec3f(0.3, 0.0, 0.0),
+                Gf.Vec3f(0.2, 0.1, 0.0),
+            ]
+        )
+        mesh.CreateFaceVertexCountsAttr().Set([3, 3])
+        mesh.CreateFaceVertexIndicesAttr().Set([0, 1, 2, 3, 4, 5])
+        st = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+            "st",
+            Sdf.ValueTypeNames.TexCoord2fArray,
+            UsdGeom.Tokens.faceVarying,
+        )
+        st.Set(
+            [
+                Gf.Vec2f(0.1, 0.1),
+                Gf.Vec2f(0.9, 0.1),
+                Gf.Vec2f(0.1, 0.9),
+                Gf.Vec2f(1.1, 0.1),
+                Gf.Vec2f(1.9, 0.1),
+                Gf.Vec2f(1.1, 0.9),
+            ]
+        )
+
+        material = UsdShade.Material.Define(stage, "/robot/Looks/material")
+        surface = UsdShade.Shader.Define(stage, "/robot/Looks/material/preview_surface")
+        surface.CreateIdAttr("UsdPreviewSurface")
+        material.CreateSurfaceOutput().ConnectToSource(surface.ConnectableAPI(), "surface")
+
+        texture = UsdShade.Shader.Define(stage, "/robot/Looks/material/albedo_texture")
+        texture.CreateIdAttr("UsdUVTexture")
+        texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(Sdf.AssetPath(texture_path))
+        texture.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+        surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(texture.ConnectableAPI(), "rgb")
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
+
+        UsdGeom.Scope.Define(stage, "/robot/Physics")
+        if stage_path:
+            stage.GetRootLayer().Save()
+        return stage
+
+    @staticmethod
+    def _map_kd_references(mesh_dir: str) -> list[tuple[str, str]]:
+        """Return MTL path and map_Kd payload pairs in deterministic order.
+
+        Args:
+            mesh_dir: Directory containing exported material libraries.
+
+        Returns:
+            Material-library paths paired with their diffuse texture references.
+        """
+        references: list[tuple[str, str]] = []
+        for root_dir, dir_names, file_names in os.walk(mesh_dir):
+            dir_names.sort()
+            for file_name in sorted(file_names):
+                if not file_name.lower().endswith(".mtl"):
+                    continue
+                mtl_path = os.path.join(root_dir, file_name)
+                with open(mtl_path, encoding="utf-8") as stream:
+                    for line in stream:
+                        if line.lstrip().startswith("map_Kd "):
+                            references.append((mtl_path, line.split(maxsplit=1)[1].strip()))
+        return references
+
+    async def test_udim_supports_constant_uniform_and_varying_texcoords(self) -> None:
+        """Resolve UDIM tiles from valid non-face-varying texture coordinates."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+        cases = (
+            (UsdGeom.Tokens.constant, [Gf.Vec2f(0.1, 0.1)], ["albedo_1001.png"]),
+            (
+                UsdGeom.Tokens.uniform,
+                [Gf.Vec2f(0.1, 0.1), Gf.Vec2f(1.1, 0.1)],
+                ["albedo_1001.png", "albedo_1002.png"],
+            ),
+            (
+                UsdGeom.Tokens.varying,
+                [
+                    Gf.Vec2f(0.1, 0.1),
+                    Gf.Vec2f(0.9, 0.1),
+                    Gf.Vec2f(0.1, 0.9),
+                    Gf.Vec2f(1.1, 0.1),
+                    Gf.Vec2f(1.9, 0.1),
+                    Gf.Vec2f(1.1, 0.9),
+                ],
+                ["albedo_1001.png", "albedo_1002.png"],
+            ),
+        )
+
+        for interpolation, texcoords, expected_references in cases:
+            with self.subTest(interpolation=interpolation):
+                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+                    source_dir = os.path.join(temp_dir, "source")
+                    output_dir = os.path.join(temp_dir, "export")
+                    os.makedirs(source_dir)
+                    os.makedirs(output_dir)
+
+                    for tile in ("1001", "1002"):
+                        with open(os.path.join(source_dir, f"albedo_{tile}.png"), "wb") as stream:
+                            stream.write(png_bytes)
+
+                    stage = self._build_udim_stage(
+                        "albedo_<UDIM>.png",
+                        os.path.join(source_dir, "robot.usda"),
+                    )
+                    st = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/robot/base/udim_mesh")).GetPrimvar("st")
+                    st.SetInterpolation(interpolation)
+                    st.Set(texcoords)
+
+                    await self._export_to_urdf(stage, output_dir)
+
+                    references = self._map_kd_references(os.path.join(output_dir, "meshes"))
+                    self.assertEqual(
+                        sorted(reference for _, reference in references),
+                        expected_references,
+                    )
+
+    async def test_collision_only_geometry_respects_visualization_option(self) -> None:
+        """Keep hidden and guide collisions out of visuals unless visualization is enabled."""
+        stage = self._build_collision_role_stage()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            disabled_dir = os.path.join(temp_dir, "disabled")
+            enabled_dir = os.path.join(temp_dir, "enabled")
+            os.makedirs(disabled_dir)
+            os.makedirs(enabled_dir)
+            _, disabled_root = await self._export_to_urdf(
+                stage,
+                disabled_dir,
+                visualize_collision_meshes=False,
+            )
+            _, enabled_root = await self._export_to_urdf(
+                stage,
+                enabled_dir,
+                visualize_collision_meshes=True,
+            )
+
+            disabled_visuals = {element.get("name") for element in disabled_root.findall(".//visual")}
+            collision_names = {element.get("name") for element in disabled_root.findall(".//collision")}
+            enabled_visuals = {element.get("name") for element in enabled_root.findall(".//visual")}
+
+            self.assertIn("visual_marker", disabled_visuals)
+            self.assertNotIn("collision_marker_default_purpose", disabled_visuals)
+            self.assertNotIn("collision_guide_control", disabled_visuals)
+            self.assertIn("collision_dual_role_visible", disabled_visuals)
+            self.assertIn("collision_marker_default_purpose", collision_names)
+            self.assertIn("collision_guide_control", collision_names)
+            self.assertIn("collision_dual_role_visible", collision_names)
+            self.assertIn("collision_marker_default_purpose", enabled_visuals)
+            self.assertIn("collision_guide_control", enabled_visuals)
+
+    async def test_remote_texture_is_copied_with_usd_resolver(self) -> None:
+        """Copy remote texture bytes without requiring an OmniClient import."""
+        remote_url = "omniverse://example.test/Textures/albedo.png"
+        resolver = mock.Mock()
+        resolver.Resolve.return_value = Ar.ResolvedPath(remote_url)
+        asset = resolver.OpenAsset.return_value
+        asset.GetBuffer.return_value = b"texture-data"
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            with mock.patch(
+                "isaacsim.asset.exporter.urdf.converter.material_reader.Ar.GetResolver",
+                return_value=resolver,
+            ):
+                filename = copy_texture_payload(remote_url, temp_dir)
+
+            self.assertEqual(filename, "albedo.png")
+            with open(os.path.join(temp_dir, "albedo.png"), "rb") as stream:
+                self.assertEqual(stream.read(), b"texture-data")
+
+    async def test_encoded_remote_texture_path_traversal_is_rejected(self) -> None:
+        """Reject a remote texture whose decoded filename contains path traversal."""
+        remote_url = "omniverse://example.test/Textures/%2e%2e%2foutside.png"
+        resolver = mock.Mock()
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            output_dir = os.path.join(temp_dir, "export")
+            with mock.patch(
+                "isaacsim.asset.exporter.urdf.converter.material_reader.Ar.GetResolver",
+                return_value=resolver,
+            ):
+                filename = copy_texture_payload(remote_url, output_dir)
+
+            self.assertIsNone(filename)
+            resolver.OpenAsset.assert_not_called()
+            self.assertFalse(os.path.exists(os.path.join(temp_dir, "outside.png")))
+
+    async def test_decoded_remote_texture_filename_collision_is_disambiguated(self) -> None:
+        """Preserve different remote payloads whose decoded filenames collide."""
+        first_url = "omniverse://example.test/first/%61lbedo.png"
+        second_url = "omniverse://example.test/second/albedo.png"
+        resolver = mock.Mock()
+        resolver.Resolve.side_effect = lambda source: Ar.ResolvedPath(source)
+        first_asset = mock.Mock()
+        first_asset.GetBuffer.return_value = b"first-texture"
+        second_asset = mock.Mock()
+        second_asset.GetBuffer.return_value = b"second-texture"
+        resolver.OpenAsset.side_effect = [first_asset, second_asset]
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            with mock.patch(
+                "isaacsim.asset.exporter.urdf.converter.material_reader.Ar.GetResolver",
+                return_value=resolver,
+            ):
+                self.assertEqual(copy_texture_payload(first_url, temp_dir), "albedo.png")
+                self.assertEqual(copy_texture_payload(second_url, temp_dir), "albedo_1.png")
+
+            with open(os.path.join(temp_dir, "albedo_1.png"), "rb") as stream:
+                self.assertEqual(stream.read(), b"second-texture")
+
+            with open(os.path.join(temp_dir, "albedo.png"), "rb") as stream:
+                self.assertEqual(stream.read(), b"first-texture")
+
+    async def test_texture_filename_collision_is_disambiguated(self) -> None:
+        """Preserve distinct local textures that share an export filename."""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            first_dir = os.path.join(temp_dir, "first")
+            second_dir = os.path.join(temp_dir, "second")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(first_dir)
+            os.makedirs(second_dir)
+
+            first_source = os.path.join(first_dir, "albedo_1001.png")
+            second_source = os.path.join(second_dir, "albedo_1001.png")
+            with open(first_source, "wb") as stream:
+                stream.write(b"first-texture")
+            with open(second_source, "wb") as stream:
+                stream.write(b"second-texture")
+
+            self.assertEqual(copy_texture_payload(first_source, output_dir), "albedo_1001.png")
+            self.assertEqual(copy_texture_payload(second_source, output_dir), "albedo_1001_1.png")
+            self.assertEqual(copy_texture_payload(second_source, output_dir), "albedo_1001_1.png")
+            with open(os.path.join(output_dir, "albedo_1001_1.png"), "rb") as stream:
+                self.assertEqual(stream.read(), b"second-texture")
+
+            with open(os.path.join(output_dir, "albedo_1001.png"), "rb") as stream:
+                self.assertEqual(stream.read(), b"first-texture")
+
+    async def test_identical_texture_filename_is_reused(self) -> None:
+        """Reuse identical texture payloads that share an export filename."""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            first_dir = os.path.join(temp_dir, "first")
+            second_dir = os.path.join(temp_dir, "second")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(first_dir)
+            os.makedirs(second_dir)
+
+            first_source = os.path.join(first_dir, "albedo.png")
+            second_source = os.path.join(second_dir, "albedo.png")
+            for source in (first_source, second_source):
+                with open(source, "wb") as stream:
+                    stream.write(b"shared-texture")
+
+            self.assertEqual(copy_texture_payload(first_source, output_dir), "albedo.png")
+            self.assertEqual(copy_texture_payload(second_source, output_dir), "albedo.png")
+
+    async def test_relative_udim_tiles_are_delivered_from_authoring_layer(self) -> None:
+        """Resolve a relative UDIM template against the layer that authored it."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            for tile in ("1001", "1002", "1011"):
+                with open(os.path.join(source_dir, f"albedo_{tile}.png"), "wb") as stream:
+                    stream.write(png_bytes)
+
+            stage = self._build_udim_stage(
+                "albedo_<UDIM>.png",
+                os.path.join(source_dir, "robot.usda"),
+            )
+            await self._export_to_urdf(stage, output_dir)
+
+            mesh_dir = os.path.join(output_dir, "meshes")
+            references = self._map_kd_references(mesh_dir)
+            self.assertEqual(
+                sorted(reference for _, reference in references),
+                ["albedo_1001.png", "albedo_1002.png"],
+            )
+            for tile in ("1001", "1002", "1011"):
+                self.assertTrue(os.path.isfile(os.path.join(mesh_dir, f"albedo_{tile}.png")))
+            for mtl_path, reference in references:
+                self.assertNotIn("<UDIM>", reference)
+                self.assertTrue(os.path.isfile(os.path.join(os.path.dirname(mtl_path), reference)))
+
+    async def test_percent_encoded_udim_tiles_are_delivered(self) -> None:
+        """Resolve a percent-encoded UDIM token to concrete delivered tiles."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            for tile in ("1001", "1002"):
+                with open(os.path.join(source_dir, f"albedo_{tile}.png"), "wb") as stream:
+                    stream.write(png_bytes)
+
+            stage = self._build_udim_stage(
+                "albedo_%3CUDIM%3E.png",
+                os.path.join(source_dir, "robot.usda"),
+            )
+            await self._export_to_urdf(stage, output_dir)
+
+            references = self._map_kd_references(os.path.join(output_dir, "meshes"))
+            self.assertEqual(
+                sorted(reference for _, reference in references),
+                ["albedo_1001.png", "albedo_1002.png"],
+            )
+            for mtl_path, reference in references:
+                self.assertNotIn("%3CUDIM%3E", reference)
+                self.assertTrue(os.path.isfile(os.path.join(os.path.dirname(mtl_path), reference)))
+
+    async def test_udim_face_crossing_tile_boundary_is_rejected(self) -> None:
+        """Reject a face spanning multiple UDIM tiles."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            for tile in ("1001", "1002"):
+                with open(os.path.join(source_dir, f"albedo_{tile}.png"), "wb") as stream:
+                    stream.write(png_bytes)
+
+            stage = self._build_udim_stage(
+                "albedo_<UDIM>.png",
+                os.path.join(source_dir, "robot.usda"),
+            )
+            st = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/robot/base/udim_mesh")).GetPrimvar("st")
+            st.Set(
+                [
+                    Gf.Vec2f(0.9, 0.1),
+                    Gf.Vec2f(1.1, 0.1),
+                    Gf.Vec2f(0.9, 0.9),
+                    Gf.Vec2f(1.1, 0.1),
+                    Gf.Vec2f(1.9, 0.1),
+                    Gf.Vec2f(1.1, 0.9),
+                ]
+            )
+
+            with self.assertRaisesRegex(ValueError, "crosses tile boundaries"):
+                await self._export_to_urdf(stage, output_dir)
+
+    async def test_udim_faces_without_uvs_are_rejected(self) -> None:
+        """Reject UDIM faces that do not have texture coordinates."""
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d4944415408996360000002000154a24f5d0000000049454e44ae426082"
+        )
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            with open(os.path.join(source_dir, "albedo_1001.png"), "wb") as stream:
+                stream.write(png_bytes)
+
+            stage = self._build_udim_stage(
+                "albedo_<UDIM>.png",
+                os.path.join(source_dir, "robot.usda"),
+            )
+            stage.GetPrimAtPath("/robot/base/udim_mesh").RemoveProperty("primvars:st")
+
+            with self.assertRaisesRegex(ValueError, "requires complete texture coordinates"):
+                await self._export_to_urdf(stage, output_dir)
+
+    async def test_unresolved_udim_does_not_emit_broken_map_reference(self) -> None:
+        """Avoid emitting a map_Kd reference for an unresolved UDIM template."""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            source_dir = os.path.join(temp_dir, "source")
+            output_dir = os.path.join(temp_dir, "export")
+            os.makedirs(source_dir)
+            os.makedirs(output_dir)
+
+            stage = self._build_udim_stage(
+                "missing_<UDIM>.png",
+                os.path.join(source_dir, "robot.usda"),
+            )
+            await self._export_to_urdf(stage, output_dir)
+
+            references = self._map_kd_references(os.path.join(output_dir, "meshes"))
+            self.assertFalse(references, f"Exporter emitted a map_Kd without a complete UDIM payload: {references}")

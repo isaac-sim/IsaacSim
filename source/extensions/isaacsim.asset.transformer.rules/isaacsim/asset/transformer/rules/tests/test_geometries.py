@@ -1416,11 +1416,13 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         self._success = True
 
     async def test_process_rule_preserves_physics_material_bindings(self) -> None:
-        """Verify physics material bindings survive geometry routing unchanged.
+        """Verify physics material bindings survive geometry routing.
 
         A mesh with both a visual ``material:binding`` and a physics-purpose
-        ``material:binding:physics`` must have the physics binding preserved
-        in the instance delta with its original target path, while the visual
+        ``material:binding:physics`` must have the physics binding lifted out of
+        the instances layer (a physics binding cannot target a material outside
+        the referenced instance scope) and re-authored on the instanceable root
+        in the source stage with its original target path, while the visual
         binding is routed through VisualMaterials as usual.
         """
         os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
@@ -1484,10 +1486,21 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
         instances_root = instances_stage.GetPrimAtPath("/Instances")
         self.assertTrue(instances_root.IsValid())
 
-        # Walk instance children to find a prim with material:binding:physics
-        phys_binding_found = False
+        # The physics binding must NOT remain inside the instances layer: an
+        # instance prototype cannot bind a material that lives outside the
+        # referenced scope, so the routing rule strips it here.
         for inst_child in Usd.PrimRange(instances_root):
             rel = inst_child.GetRelationship("material:binding:physics")
+            self.assertFalse(
+                bool(rel and rel.GetTargets()),
+                f"Physics binding targets must be cleared in instances layer on {inst_child.GetPath()}",
+            )
+
+        # It must instead be re-authored on the instanceable root in the source
+        # stage, still pointing at the original physics material path.
+        phys_binding_found = False
+        for prim in rule.source_stage.Traverse():
+            rel = prim.GetRelationship("material:binding:physics")
             if rel and rel.HasAuthoredTargets():
                 targets = rel.GetTargets()
                 self.assertEqual(len(targets), 1)
@@ -1496,10 +1509,14 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
                     "/root/Physics/PhysicsMat",
                     "Physics material binding must point to the original path",
                 )
+                self.assertTrue(
+                    prim.IsInstanceable(),
+                    "Physics binding should be authored on the instanceable root",
+                )
                 phys_binding_found = True
                 break
 
-        self.assertTrue(phys_binding_found, "No material:binding:physics found in instances layer")
+        self.assertTrue(phys_binding_found, "No material:binding:physics found on source instance root")
 
         # Visual material binding must NOT point to the original material path
         # (it should go through VisualMaterials instead)

@@ -1,5 +1,5 @@
 [package]
-version = "2.2.6"
+version = "2.2.10"
 category = "Simulation"
 title = "Isaac Sim USD to URDF exporter"
 description = "Extension that exports USD articulated robots to URDF. UI is in isaacsim.asset.exporter.urdf.ui."
@@ -14,6 +14,9 @@ writeTarget.kit = true
 "isaacsim.asset.importer.utils" = {}
 "isaacsim.robot.schema" = {}
 "omni.physics.physx" = {}
+
+[[python.module]]
+path = "pip_prebundle"
 
 [[python.module]]
 name = "isaacsim.asset.exporter.urdf"

@@ -26,7 +26,11 @@ import omni.timeline
 import usd.schema.isaac.robot_schema as robot_schema
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
-from .session_layer_util import start_assembly_session_sublayer, stop_assembly_session_sublayer
+from .session_layer_util import (
+    save_assembly_session_sublayer,
+    start_assembly_session_sublayer,
+    stop_assembly_session_sublayer,
+)
 
 # ------------------------------------------
 # JW - this code is from omni\extensions\ux\source\omni.physx.ui\python\scripts\utils.py
@@ -374,6 +378,7 @@ class RobotAssembler:
         # ``_status`` must be initialized BEFORE ``reset()`` so the
         # cancel-if-assembling guard in ``reset()`` has a defined value to read.
         self._status = AssemblyStatus.IDLE
+        self._finish_task = None
         self.reset()
 
     def reset(self) -> None:
@@ -391,6 +396,8 @@ class RobotAssembler:
            ``_variant_name``) to safe defaults so that :meth:`cancel_assembly`
            remains valid to call on a fresh or already-reset instance.
         """
+        if self._finish_task is not None and not self._finish_task.done():
+            raise RuntimeError("Cannot reset while assembly is being saved")
         if self._status == AssemblyStatus.ASSEMBLING:
             self.cancel_assembly()
         self._assembly_session = None
@@ -418,6 +425,7 @@ class RobotAssembler:
         self._direct_edit = False
         self._variant_set = None
         self._variant_name = None
+        self._session_variant_selection = None
 
     def is_root_joint(self, prim: object) -> bool:
         """Check if a prim is a root joint (has no body0 or body1 target).
@@ -445,6 +453,97 @@ class RobotAssembler:
         predicate = lambda prim, path: prim.HasAPI(UsdPhysics.ArticulationRootAPI)
         prim = prim_utils.get_first_matching_child_prim(prim_path, predicate=predicate, include_self=True)
         return prim_utils.get_prim_path(prim) if prim is not None else ""
+
+    def _validate_base_articulation(self, base_path: str, attach_path: str) -> str:
+        """Require a base articulation before removing an articulated attachment's root.
+
+        Args:
+            base_path: Path to the base robot.
+            attach_path: Path to the attachment, which may be nested under the base.
+
+        Returns:
+            Path to the base articulation root, or an empty string for non-articulated bodies.
+
+        Raises:
+            ValueError: If the attachment is articulated but the base has no articulation root.
+        """
+        attachment_path = Sdf.Path(attach_path)
+        base_root_path = ""
+        for prim in Usd.PrimRange(prim_utils.get_prim_at_path(base_path)):
+            if not prim.GetPath().HasPrefix(attachment_path) and prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+                base_root_path = prim.GetPath().pathString
+                break
+        if self.get_articulation_root_api_path(attach_path) and not base_root_path:
+            raise ValueError(
+                f"Base '{base_path}' has no active articulation root outside the attachment. "
+                "Select the base robot's Physics variant (physx for PhysX simulation) before "
+                "assembling an articulated attachment."
+            )
+        return base_root_path
+
+    def resolve_joint_body_path(self, prim_path: str) -> str:
+        """Resolve the rigid body that a joint body target at ``prim_path`` binds to.
+
+        Physics resolves a joint's ``body0``/``body1`` target to the nearest rigid body at or
+        above the target prim, so a mount frame that is not itself a rigid body is still a valid
+        target as long as one of its ancestors is one.
+
+        Args:
+            prim_path: Path to a prim used as a joint body target.
+
+        Returns:
+            Path of the nearest prim at or above ``prim_path`` that has the Rigid Body API
+            applied, or an empty string if there is no such prim.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> from isaacsim.robot_setup.assembler import RobotAssembler
+
+            >>> assembler = RobotAssembler()
+            >>> # A frame nested under a link resolves to that link.
+            >>> assembler.resolve_joint_body_path("/World/ur10e/wrist_3_link/flange")  # doctest: +NO_CHECK
+            '/World/ur10e/wrist_3_link'
+            >>> # A frame with no rigid body in its ancestry cannot anchor a joint.
+            >>> assembler.resolve_joint_body_path("/World/ur10e/ee_link")  # doctest: +NO_CHECK
+            ''
+        """
+        if not prim_path:
+            return ""
+        prim = prim_utils.get_prim_at_path(prim_path)
+        while prim is not None and prim.IsValid():
+            if prim.HasAPI(UsdPhysics.RigidBodyAPI):
+                return prim_utils.get_prim_path(prim)
+            prim = prim.GetParent()
+        return ""
+
+    def _validate_mount_frame(self, mount_path: str, role: str) -> None:
+        """Check that a mount frame can anchor the fixed joint that welds the robots together.
+
+        Args:
+            mount_path: Path to the mount frame prim to validate.
+            role: Role of the frame (``"base"`` or ``"attachment"``), used in error messages.
+
+        Raises:
+            ValueError: If no mount frame was provided, if the mount frame prim does not exist,
+                or if neither the mount frame nor any of its ancestors is a rigid body.
+        """
+        if not mount_path:
+            raise ValueError(
+                f"No {role} mount frame was provided. Automatic mount frame creation is not "
+                "implemented; pass the path of a robot link or of a prim nested under one."
+            )
+        prim = prim_utils.get_prim_at_path(mount_path)
+        if prim is None or not prim.IsValid():
+            raise ValueError(f"The {role} mount frame '{mount_path}' does not exist on the stage.")
+        if not self.resolve_joint_body_path(mount_path):
+            raise ValueError(
+                f"The {role} mount frame '{mount_path}' has no rigid body at or above it, so the "
+                "fixed joint created by the assembler cannot bind to it. The assembly would appear "
+                "to succeed while the attachment robot loses every degree of freedom. Choose a "
+                "mount frame that is a robot link or a prim nested under one."
+            )
 
     def _set_joint_states_to_zero(self, prim_path: str) -> None:
         """Set all joint state values to zero for a prim and its children.
@@ -522,7 +621,21 @@ class RobotAssembler:
             attachment_mount_path: Path to mount frame on attachment robot
             variant_set: Name of variant set to create/modify
             variant_name: Name of variant to create
+
+        Raises:
+            RuntimeError: If an assembly is already active.
+            ValueError: If either mount frame is missing or has no rigid body at or above it,
+                or the attachment is articulated but the base has no articulation root.
         """
+        if self._status != AssemblyStatus.IDLE:
+            raise RuntimeError("An assembly is already active; finish or cancel it first")
+
+        # Validated up front, before the assembly sublayer is created and the attachment robot
+        # is moved, so an unusable mount frame leaves the stage untouched.
+        self._validate_base_articulation(base_prim_path, attachment_prim_path)
+        self._validate_mount_frame(base_mount_path, "base")
+        self._validate_mount_frame(attachment_mount_path, "attachment")
+
         self._stage = stage
         self._base_robot_prim = base_prim_path
         self._base_mount_frame_prim = base_mount_path
@@ -543,38 +656,67 @@ class RobotAssembler:
             self._assembly_identifier = f"{stage_path}/{self._local_assembly_identifier}"
             os.makedirs(os.path.dirname(self._assembly_identifier), exist_ok=True)
 
-            base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
-            variant_set = base_prim.GetVariantSet(self._variant_set)
-            if variant_set:
-                variant_set.SetVariantSelection("None")
-
         self._assembly_layer = start_assembly_session_sublayer(self._stage, sublayer_filename=self._assembly_identifier)
 
-        self._stage.SetEditTarget(self._assembly_layer)
-        self._status = AssemblyStatus.ASSEMBLING
+        try:
+            if self._direct_edit:
+                # Override `variant_set` on `base_prim_path` only in `session_layer`.
+                # Never persist the temporary selection in the root asset or assembly payload.
+                session_layer = stage.GetSessionLayer()
+                spec = session_layer.GetPrimAtPath(base_prim_path)
+                self._session_variant_selection = (spec.variantSelections.get(variant_set) if spec else None,)
+                with Usd.EditContext(stage, session_layer):
+                    stage.GetPrimAtPath(base_prim_path).GetVariantSet(variant_set).SetVariantSelection("None")
+            self._stage.SetEditTarget(self._assembly_layer)
+            self._status = AssemblyStatus.ASSEMBLING
 
-        attachment_prim = self._stage.GetPrimAtPath(self._attachment_robot_prim)
-        attachment_mount_frame_prim = self._stage.GetPrimAtPath(self._attachment_mount_frame_prim)
+            attachment_prim = self._stage.GetPrimAtPath(self._attachment_robot_prim)
+            attachment_mount_frame_prim = self._stage.GetPrimAtPath(self._attachment_mount_frame_prim)
 
-        base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
-        base_mount_frame_prim = self._stage.GetPrimAtPath(self._base_mount_frame_prim)
+            base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
+            base_mount_frame_prim = self._stage.GetPrimAtPath(self._base_mount_frame_prim)
 
-        mount_pose = omni.usd.get_world_transform_matrix(base_mount_frame_prim)
+            mount_pose = omni.usd.get_world_transform_matrix(base_mount_frame_prim)
 
-        attachment_pose = omni.usd.get_local_transform_matrix(attachment_mount_frame_prim)
+            attachment_pose = omni.usd.get_local_transform_matrix(attachment_mount_frame_prim)
 
-        base_mount_pose = attachment_pose.GetInverse() * mount_pose
+            base_mount_pose = attachment_pose.GetInverse() * mount_pose
 
-        attachment_parent_pose = omni.usd.get_world_transform_matrix(attachment_prim.GetParent())
+            attachment_parent_pose = omni.usd.get_world_transform_matrix(attachment_prim.GetParent())
 
-        attachment_pose_local = base_mount_pose * attachment_parent_pose.GetInverse()
+            attachment_pose_local = base_mount_pose * attachment_parent_pose.GetInverse()
 
-        omni.kit.commands.execute(
-            "TransformPrimCommand", path=attachment_prim.GetPath(), new_transform_matrix=attachment_pose_local
-        )
+            omni.kit.commands.execute(
+                "TransformPrimCommand", path=attachment_prim.GetPath(), new_transform_matrix=attachment_pose_local
+            )
+        except Exception:
+            self._restore_session_variant_selection()
+            stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=False)
+            self._assembly_layer = None
+            self._assembly_identifier = None
+            self._status = AssemblyStatus.IDLE
+            raise
+
+    def _restore_session_variant_selection(self) -> None:
+        """Restore the selection hidden temporarily by direct-edit assembly."""
+        if self._session_variant_selection is None:
+            return
+        (previous,) = self._session_variant_selection
+        with Usd.EditContext(self._stage, self._stage.GetSessionLayer()):
+            variant = self._stage.GetPrimAtPath(self._base_robot_prim).GetVariantSet(self._variant_set)
+            if previous is None:
+                variant.ClearVariantSelection()
+            elif previous == "":
+                variant.BlockVariantSelection()
+            else:
+                variant.SetVariantSelection(previous)
+        self._session_variant_selection = None
 
     def cancel_assembly(self) -> None:
         """Cancel the current assembly operation and reset state."""
+        if self._finish_task is not None and not self._finish_task.done():
+            raise RuntimeError("Cannot cancel while assembly is being saved")
+        self._restore_session_variant_selection()
         if self._assembly_identifier:
             stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=False)
         self._status = AssemblyStatus.IDLE
@@ -603,11 +745,50 @@ class RobotAssembler:
             mask_all_collisions=False,
         )
 
-    def finish_assemble(self) -> None:
-        """Finalize the assembly process by configuring variant sets and saving the assembly to a USD file."""
+    def finish_assemble(self) -> asyncio.Task[None]:
+        """Schedule finalization and return a task that reports durable-save failures.
+
+        Returns:
+            Task to await before reporting success or resetting the UI. Failed saves
+            retain the working session so callers can retry or cancel.
+        """
+        if self._finish_task is not None and not self._finish_task.done():
+            return self._finish_task
+        if self._status != AssemblyStatus.ASSEMBLING:
+            raise RuntimeError("No active assembly to finish")
+
+        async def finish() -> None:
+            root_layer = self._stage.GetRootLayer()
+            root_snapshot = root_layer.ExportToString()
+            working_snapshot = self._assembly_layer.ExportToString()
+            selection = self._session_variant_selection
+            try:
+                # Keep the snapshot, mutations, and rollback in one event-loop turn.
+                # Yielding here would let rollback discard unrelated stage edits.
+                self._finish_assemble()
+            except (Exception, asyncio.CancelledError):
+                # MovePrimSpecsToLayer may already have removed the original
+                # attachment. Restore it before offering retry/cancel.
+                root_layer.ImportFromString(root_snapshot)
+                self._assembly_layer.ImportFromString(working_snapshot)
+                self._stage.SetEditTarget(self._assembly_layer)
+                if self._direct_edit:
+                    self._session_variant_selection = selection
+                    with Usd.EditContext(self._stage, self._stage.GetSessionLayer()):
+                        self._stage.GetPrimAtPath(self._base_robot_prim).GetVariantSet(
+                            self._variant_set
+                        ).SetVariantSelection("None")
+                self._status = AssemblyStatus.ASSEMBLING
+                raise
+
+        self._finish_task = asyncio.ensure_future(finish())
+        return self._finish_task
+
+    def _finish_assemble(self) -> None:
+        """Commit the assembly before marking the operation idle."""
         if self._direct_edit:
 
-            async def stop_sublayer() -> None:
+            def stop_sublayer() -> None:
                 omni.kit.commands.execute(
                     "MovePrimSpecsToLayer",
                     src_layer_identifier=self._stage.GetRootLayer().identifier,
@@ -615,12 +796,9 @@ class RobotAssembler:
                     prim_spec_path=self._attachment_robot_prim,
                     dst_stronger_than_src=True,
                 )
-                await omni.kit.app.get_app().next_update_async()
-                stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=True)
-                await omni.kit.app.get_app().next_update_async()
-                assembly_stage = Usd.Stage.Open(self._assembly_identifier)
-                assembly_stage.SetDefaultPrim(assembly_stage.DefinePrim(self._base_robot_prim, "Xform"))
-                assembly_stage.Save()
+                self._assembly_layer.defaultPrim = Sdf.Path(self._base_robot_prim).name
+                save_assembly_session_sublayer(self._stage, self._assembly_identifier)
+                self._stage.SetEditTarget(self._stage.GetRootLayer())
 
                 base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
                 variant_set = base_prim.GetVariantSet(self._variant_set)
@@ -631,24 +809,31 @@ class RobotAssembler:
                 variant_set.AddVariant(self._variant_name)
                 variant_set.SetVariantSelection(self._variant_name)
 
-                with variant_set.GetVariantEditContext():
+                # The temporary session selection is stronger than the root
+                # selection. Author the requested variant explicitly.
+                variant_path = Sdf.Path(self._base_robot_prim).AppendVariantSelection(
+                    self._variant_set, self._variant_name
+                )
+                variant_target = Usd.EditTarget.ForLocalDirectVariant(self._stage.GetRootLayer(), variant_path)
+                with Usd.EditContext(self._stage, variant_target):
                     base_prim.GetPayloads().AddPayload(self._local_assembly_identifier)
                     links_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
                     links_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
                     joints_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
                     joints_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
+                self._restore_session_variant_selection()
+                stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=False)
 
-            asyncio.ensure_future(stop_sublayer())
+            stop_sublayer()
 
         else:
 
-            async def stop_sublayer() -> None:
+            def stop_sublayer() -> None:
                 base_prim = self._stage.GetPrimAtPath(self._base_robot_prim)
                 links_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_LINKS.name)
                 links_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
                 joints_rel = base_prim.GetRelationship(robot_schema.Relations.ROBOT_JOINTS.name)
                 joints_rel.AddTarget(self._stage.GetPrimAtPath(self._attachment_robot_prim).GetPath())
-                await omni.kit.app.get_app().next_update_async()
                 omni.kit.commands.execute(
                     "MovePrimSpecsToLayer",
                     src_layer_identifier=self._assembly_layer.identifier,
@@ -656,10 +841,9 @@ class RobotAssembler:
                     prim_spec_path=self._attachment_robot_prim,
                     dst_stronger_than_src=False,
                 )
-                await omni.kit.app.get_app().next_update_async()
                 stop_assembly_session_sublayer(self._stage, self._assembly_identifier, save=False)
 
-            asyncio.ensure_future(stop_sublayer())
+            stop_sublayer()
         self._status = AssemblyStatus.IDLE
 
     def _assemble_rigid_bodies(
@@ -689,6 +873,10 @@ class RobotAssembler:
         Returns:
             An object representing the assembled bodies. This object can detach the composed robots and edit
             the fixed joint transform.
+
+        Raises:
+            ValueError: If either mount frame is missing or has no rigid body at or above it,
+                or the attachment is articulated but the base has no articulation root.
         """
         # Make mount_frames if they are not specified
         if base_mount_frame == "":
@@ -704,6 +892,14 @@ class RobotAssembler:
             # SingleXFormPrim(attach_mount_path, translation=np.array([0, 0, 0]))
         else:
             attach_mount_path = attach_mount_frame
+
+        # Re-checked here because this is the function that authors the joint, and the mount paths
+        # above may have been generated rather than supplied. It must run before the attachment
+        # robot's Articulation Root API is removed: once that is gone, a joint that cannot bind
+        # leaves the attachment robot with no articulation at all and no DOFs.
+        base_articulation_root_path = self._validate_base_articulation(base_path, attach_path)
+        self._validate_mount_frame(base_mount_path, "base")
+        self._validate_mount_frame(attach_mount_path, "attachment")
 
         articulation_root = prim_utils.get_prim_at_path(self.get_articulation_root_api_path(attach_path))
         if self.is_root_joint(articulation_root):
@@ -736,8 +932,7 @@ class RobotAssembler:
 
         collision_mask = None
         if mask_all_collisions:
-            base_path_art_root = self.get_articulation_root_api_path(base_path)
-            collision_mask = self.mask_collisions(base_path_art_root, attach_path)
+            collision_mask = self.mask_collisions(base_articulation_root_path or base_path, attach_path)
 
         # Strange values can be written into the JointStateAPIs when nesting robots through the UI
         # in the assemble phase.  These values are supposed to be zero.

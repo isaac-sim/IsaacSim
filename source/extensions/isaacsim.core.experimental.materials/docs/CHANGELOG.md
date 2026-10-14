@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1] - 2026-09-23
+### Fixed
+- `VisualMaterial`: handle shaderless USD materials in discovery APIs without raising an exception.
+
+## [0.11.0] - 2026-09-16
+### Removed
+- `NonVisualMaterial`: no longer authors a `UsdPreviewSurface` when the material has no shader, since non-visual material IDs now resolve without a surface shader. Define a visual material (`PreviewSurface`, `OmniPBR`, or `OmniGlass`) before wrapping it if the prim must also render.
+
 ## [0.10.0] - 2026-08-11
 ### Added
 - Declare the `rtx.materialDb.nonVisualMaterialSemantics.prefix` setting, defaulting to `omni:simready:nonvisual`.

@@ -94,28 +94,41 @@ class PolicyExampleExtension(omni.ext.IExt):
     file_path: str = ""
 
     def on_startup(self, ext_id: str) -> None:
-        """Build the sample UI and register the example with the examples browser.
+        """Register the example without constructing its sample or accessing assets.
 
         Args:
             ext_id: The extension identifier.
         """
-        ui_handle = BaseSampleUITemplate(
-            ext_id=ext_id,
-            file_path=self.file_path,
-            title=self.title,
-            doc_link=self.doc_link,
-            overview=self.overview,
-            sample=self.sample_class(),
-        )
+        self._ext_id = ext_id
+        self._ui_handle = None
         get_browser_instance().register_example(
             name=self.example_name,
-            ui_hook=ui_handle.build_ui,
+            ui_hook=self._build_ui,
             category=self.category,
         )
 
+    def _build_ui(self) -> None:
+        """Construct the sample on first selection, then reuse it when rebuilding the UI."""
+        if self._ext_id is None:
+            return
+        if self._ui_handle is None:
+            self._ui_handle = BaseSampleUITemplate(
+                ext_id=self._ext_id,
+                file_path=self.file_path,
+                title=self.title,
+                doc_link=self.doc_link,
+                overview=self.overview,
+                sample=self.sample_class(),
+            )
+        self._ui_handle.build_ui()
+
     def on_shutdown(self) -> None:
         """Deregister the example from the examples browser."""
+        self._ext_id = None
         get_browser_instance().deregister_example(name=self.example_name, category=self.category)
+        if self._ui_handle is not None:
+            self._ui_handle.on_shutdown()
+            self._ui_handle = None
 
 
 # ---------------------------------------------------------------------------------------------

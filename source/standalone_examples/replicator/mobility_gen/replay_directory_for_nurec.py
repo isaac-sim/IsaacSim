@@ -60,6 +60,7 @@ app_utils.enable_extension("isaacsim.replicator.mobility_gen.examples")
 
 simulation_app.update()
 
+import isaacsim.replicator.mobility_gen.examples  # noqa: F401
 from isaacsim.replicator.experimental.mobility_gen import (
     MAX_RENDER_RETRIES,
     MobilityGenReader,
@@ -163,6 +164,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--write_interval",
+        type=int,
+        default=20,
+        help="The number of rendered frames per output write. For 200 Hz rendering, 20 writes at 10 Hz. "
+        "Use 1 to write every rendered frame.",
+    )
+
+    parser.add_argument(
         "--max_frames",
         type=int,
         default=None,
@@ -195,6 +204,8 @@ if __name__ == "__main__":
         parser.error("--render_interval must be >= 1")
     if cli_args.render_rt_subframes < 1:
         parser.error("--render_rt_subframes must be >= 1")
+    if cli_args.write_interval < 1:
+        parser.error("--write_interval must be >= 1")
     if cli_args.warmup_frames < 0:
         parser.error("--warmup_frames must be >= 0")
     if cli_args.max_frames is not None and cli_args.max_frames <= 0:
@@ -214,7 +225,7 @@ if __name__ == "__main__":
     for i, recording_path in enumerate(recording_paths, start=1):
         # Per-iteration copy of the CLI namespace: ensure_nurec_replay_flags
         # mutates this in place when a NuRec stage is detected. Without a fresh
-        # copy each iteration, a NuRec recording would silently disable non-RGB
+        # copy each iteration, a NuRec recording would silently disable restricted
         # modalities for every subsequent non-NuRec recording in the batch.
         args = argparse.Namespace(**vars(cli_args))
 
@@ -229,7 +240,7 @@ if __name__ == "__main__":
         # registers it). No-op on non-SPG scenes (the camera falls back to a plain RenderProduct).
         substitute_cameras_with_nurec(scenario)
 
-        # Set up the loaded stage for replay: NuRec render overrides + RGB-only replay flags
+        # Set up the loaded stage for replay: NuRec render overrides + modality restrictions
         # (no-op on non-NuRec stages).  Rendering a NuRec stage whose launch prerequisites are
         # unmet crashes Kit natively, so skip that recording and replay the rest of the batch.
         # Nothing has been created for this iteration yet, so there is nothing to tear down.
@@ -301,6 +312,7 @@ if __name__ == "__main__":
         carb.log_warn(f"\tSegmentation enabled: {args.segmentation_enabled}")
         carb.log_warn(f"\tRendering RT subframes: {args.render_rt_subframes}")
         carb.log_warn(f"\tRender interval: {args.render_interval}")
+        carb.log_warn(f"\tWrite interval: {args.write_interval}")
         carb.log_warn(f"\tWarmup frames: {args.warmup_frames}")
         carb.log_warn(f"\tMax frames: {args.max_frames}")
         carb.log_warn(f"\tSelf contained: {args.self_contained}")
@@ -311,7 +323,7 @@ if __name__ == "__main__":
         # and the frames are not written. The recorded state has no timestamp, so this
         # affects only render history, not the captured data.
         if args.warmup_frames > 0 and num_steps > 0:
-            warmup_state = reader.read_state_dict(index=0)
+            warmup_state = reader.read_state_dict_common(index=0)
             for _ in range(args.warmup_frames):
                 scenario.load_state_dict(warmup_state)
                 scenario.write_replay_data()
@@ -320,14 +332,18 @@ if __name__ == "__main__":
                 rep.orchestrator.step(rt_subframes=args.render_rt_subframes, delta_time=0.0, pause_timeline=False)
 
         t0 = time.perf_counter()
-        count = 0
+        rendered_count = 0
+        written_count = 0
         dropped_steps = []
         for step in range(0, num_steps, args.render_interval):
-            if args.max_frames is not None and count >= args.max_frames:
+            if args.max_frames is not None and rendered_count >= args.max_frames:
                 break
 
+            should_write = rendered_count % args.write_interval == 0
+            rendered_count += 1
+
             carb.log_warn(f"{step} / {num_steps}")
-            state_dict_original = reader.read_state_dict(index=step)
+            state_dict_original = reader.read_state_dict_common(index=step)
 
             # Render the step, retrying while any enabled modality comes back without a frame.
             # Every attempt re-asserts the recorded state first, so a frame recovered by a retry is
@@ -354,11 +370,18 @@ if __name__ == "__main__":
 
                 rep.orchestrator.step(rt_subframes=args.render_rt_subframes, delta_time=0.00, pause_timeline=False)
 
+                if not should_write:
+                    break
+
                 scenario.update_state()
 
                 missing_modalities = scenario.format_missing_modalities()
                 if not missing_modalities:
                     break
+
+            if not should_write:
+                discard_step_common(output_path, step)
+                continue
 
             if missing_modalities:
                 # Drop the whole step, common state included. Writing the recorded pose without the
@@ -373,30 +396,34 @@ if __name__ == "__main__":
             state_dict = scenario.state_dict_common()
 
             for k, v in state_dict_original.items():
-                # overwrite with original state, to ensure physics based values are correct
+                # Overwrite with original state to ensure physics-based values are correct.
                 if v is not None:
-                    state_dict[k] = v  # don't overwrite "None" values
+                    state_dict[k] = v
 
             state_rgb = scenario.state_dict_rgb()
             state_segmentation = scenario.state_dict_segmentation()
+            state_instance_id_segmentation = scenario.state_dict_instance_id_segmentation()
             state_depth = scenario.state_dict_depth()
             state_normals = scenario.state_dict_normals()
 
             writer.write_state_dict_common(state_dict, step)
             writer.write_state_dict_rgb(state_rgb, step)
             writer.write_state_dict_segmentation(state_segmentation, step)
+            writer.write_state_dict_instance_id_segmentation(state_instance_id_segmentation, step)
             writer.write_state_dict_depth(state_depth, step)
             writer.write_state_dict_normals(state_normals, step)
 
-            count += 1
+            written_count += 1
         t1 = time.perf_counter()
 
-        if count:
-            carb.log_warn(f"Process time per frame: {(t1 - t0) / count:.4f} s")
+        if rendered_count:
+            carb.log_warn(f"Process time per rendered frame: {(t1 - t0) / rendered_count:.4f} s")
+            carb.log_warn(f"Wrote {written_count} frame(s) from {rendered_count} rendered frame(s).")
 
         if dropped_steps:
             carb.log_error(
-                f"{name}: dropped {len(dropped_steps)} of {count + len(dropped_steps)} step(s) that produced no "
+                f"{name}: dropped {len(dropped_steps)} of {written_count + len(dropped_steps)} "
+                f"write-eligible step(s) that produced no "
                 f"rendered frame after {MAX_RENDER_RETRIES} retries: {format_dropped_steps(dropped_steps)}"
             )
             recordings_with_dropped_steps.append(name)
@@ -407,7 +434,7 @@ if __name__ == "__main__":
         omni.timeline.get_timeline_interface().stop()
         scenario.disable_rendering()
         writer.close()
-        mark_replay_complete(output_path, count)
+        mark_replay_complete(output_path, rendered_count, frames_written=written_count)
 
     if skipped_recordings:
         carb.log_error(f"Skipped {len(skipped_recordings)} recording(s): {', '.join(skipped_recordings)}")

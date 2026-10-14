@@ -320,20 +320,27 @@ def compute_feedforward(
         jtype = int(joint_type[joint])
         coord = int(joint_q_start[joint])
         dof = int(joint_qd_start[joint])
+        coord_count = int(joint_q_start[joint + 1]) - coord
         if jtype == int(JointType.REVOLUTE):
             j_p = np.zeros((steps, 3), dtype=np.float64)
             j_q = _quat_from_axis_angle(joint_axis[dof], q_full[:, coord])
         elif jtype == int(JointType.PRISMATIC):
             j_p = q_full[:, coord, None] * joint_axis[dof][None, :]
             j_q = identity_q
-        elif jtype == int(JointType.FIXED):
+        # A generic USD joint with every axis locked — the usual way a fixed base
+        # is authored — imports as a D6 joint carrying no coordinates, which is
+        # kinematically a FIXED joint.
+        elif jtype == int(JointType.FIXED) or (jtype == int(JointType.D6) and coord_count == 0):
             j_p = np.zeros((steps, 3), dtype=np.float64)
             j_q = identity_q
         elif jtype in (int(JointType.FREE), int(JointType.DISTANCE)):
             j_p = q_full[:, coord : coord + 3]
             j_q = q_full[:, coord + 3 : coord + 7]
         else:
-            raise ValueError(f"Gravity feedforward does not support joint type {jtype} (joint {joint}).")
+            raise ValueError(
+                f"Gravity feedforward does not support joint type {JointType(jtype).name} "
+                f"({jtype}, joint {joint}). Set simulation.newton.feedforward='none' for this articulation."
+            )
         c_p, c_q = _transform_mul(a_p, a_q, j_p, j_q)
         x_c = joint_x_c[joint]
         inv_q = _quat_conj(x_c[3:])[None, :]
@@ -391,7 +398,7 @@ def compute_feedforward(
             a_c = (
                 a_anchor + a_rel + 2.0 * np.cross(w_p, v_rel) + np.cross(al_c, r_c) + np.cross(w_c, np.cross(w_c, r_c))
             )
-        else:  # FIXED
+        else:  # FIXED, or a fully locked generic joint
             w_c, al_c = w_p, al_p
             a_c = a_anchor + np.cross(al_c, r_c) + np.cross(w_c, np.cross(w_c, r_c))
         omega[child], alpha[child], acom[child] = w_c, al_c, a_c

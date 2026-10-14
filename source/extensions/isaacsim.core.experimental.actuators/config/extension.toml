@@ -1,5 +1,5 @@
 [package]
-version = "0.1.6"
+version = "0.2.1"
 category = "Simulation"
 title = "Isaac Sim Core (Actuators)"
 description = "USD authoring and simulation integration for robot actuators."
@@ -33,6 +33,7 @@ exclude = ["Ogn*Database.py"]
 timeout = 900
 dependencies = [
     "isaacsim.storage.native",
+    "isaacsim.test.utils", # Used to suppress NumPy coverage errors
     "omni.graph.action",   # provides OnPlaybackTick, used in OGN node tests
 ]
 args = [

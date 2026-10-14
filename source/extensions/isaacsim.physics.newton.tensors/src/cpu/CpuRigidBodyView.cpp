@@ -36,7 +36,7 @@ CpuRigidBodyView::CpuRigidBodyView(py::object newtonStage, const std::vector<pxr
 
 bool CpuRigidBodyView::getTransforms(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, size_t(m_count) * 7u, "transform", __FUNCTION__))
         return false;
@@ -47,7 +47,7 @@ bool CpuRigidBodyView::getTransforms(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getVelocities(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, size_t(m_count) * 6u, "velocity", __FUNCTION__))
         return false;
@@ -58,7 +58,7 @@ bool CpuRigidBodyView::getVelocities(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getAccelerations(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid || !m_cachedBodyQdd)
+    if (!_checkBinding() || !m_cachedBodyQdd)
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, size_t(m_count) * 6u, "acceleration", __FUNCTION__))
         return false;
@@ -69,7 +69,7 @@ bool CpuRigidBodyView::getAccelerations(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getMasses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, m_count, "masses", __FUNCTION__))
         return false;
@@ -79,7 +79,7 @@ bool CpuRigidBodyView::getMasses(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getInvMasses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, m_count, "inv masses", __FUNCTION__))
         return false;
@@ -90,7 +90,7 @@ bool CpuRigidBodyView::getInvMasses(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getCOMs(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, size_t(m_count) * 7u, "com", __FUNCTION__))
         return false;
@@ -101,7 +101,7 @@ bool CpuRigidBodyView::getCOMs(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getInertias(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, size_t(m_count) * 9u, "inertia", __FUNCTION__))
         return false;
@@ -112,7 +112,7 @@ bool CpuRigidBodyView::getInertias(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::getInvInertias(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32Tensor(dstTensor, -1, size_t(m_count) * 9u, "inv inertia", __FUNCTION__))
         return false;
@@ -123,6 +123,8 @@ bool CpuRigidBodyView::getInvInertias(const TensorDesc* dstTensor) const
 
 bool CpuRigidBodyView::setTransforms(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32Tensor(srcTensor, -1, size_t(m_count) * 7u, "transform", __FUNCTION__) ||
         !validateOptionalIndexTensor(indexTensor, -1, __FUNCTION__))
         return false;
@@ -151,6 +153,8 @@ bool CpuRigidBodyView::setTransforms(const TensorDesc* srcTensor, const TensorDe
 
 bool CpuRigidBodyView::setVelocities(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32Tensor(srcTensor, -1, size_t(m_count) * 6u, "velocity", __FUNCTION__) ||
         !validateOptionalIndexTensor(indexTensor, -1, __FUNCTION__))
         return false;
@@ -169,6 +173,8 @@ bool CpuRigidBodyView::setVelocities(const TensorDesc* srcTensor, const TensorDe
 
 bool CpuRigidBodyView::setMasses(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32Tensor(srcTensor, -1, m_count, "mass", __FUNCTION__) ||
         !validateOptionalIndexTensor(indexTensor, -1, __FUNCTION__))
         return false;
@@ -185,6 +191,8 @@ bool CpuRigidBodyView::setMasses(const TensorDesc* srcTensor, const TensorDesc* 
 
 bool CpuRigidBodyView::setCOMs(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32Tensor(srcTensor, -1, size_t(m_count) * 7u, "com", __FUNCTION__) ||
         !validateOptionalIndexTensor(indexTensor, -1, __FUNCTION__))
         return false;
@@ -213,6 +221,8 @@ bool CpuRigidBodyView::setCOMs(const TensorDesc* srcTensor, const TensorDesc* in
 
 bool CpuRigidBodyView::setInertias(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32Tensor(srcTensor, -1, size_t(m_count) * 9u, "inertia", __FUNCTION__) ||
         !validateOptionalIndexTensor(indexTensor, -1, __FUNCTION__))
         return false;
@@ -239,6 +249,8 @@ bool CpuRigidBodyView::applyForcesAndTorquesAtPosition(const TensorDesc* srcForc
                                                        const TensorDesc* indexTensor,
                                                        bool isGlobal)
 {
+    if (!_checkBinding())
+        return false;
     const bool hasForce = srcForceTensor && srcForceTensor->data;
     const bool hasTorque = srcTorqueTensor && srcTorqueTensor->data;
     if (!hasForce && !hasTorque)

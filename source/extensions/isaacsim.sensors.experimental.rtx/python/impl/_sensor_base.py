@@ -151,8 +151,13 @@ class SensorAuthoring(XformPrim, ABC):
         _VALID_AUX_OUTPUT_LEVELS: tuple[str, ...] — valid ``aux_output_level`` values
         _create_prim(path, attributes) -> str — create a new prim and return its actual path
 
+    Subclasses may override:
+        _ALLOW_MULTIPLE_PRIMS: bool — whether the wrapper may create or wrap more than one prim
+        (e.g. :class:`RtxCamera`, which batches several cameras)
+
     Args:
-        path: USD path for the sensor prim to create or wrap.
+        path: USD path, list of paths, or regex for the sensor prim(s) to create or wrap.
+            Multiple prims are only accepted by subclasses that set ``_ALLOW_MULTIPLE_PRIMS``.
         aux_output_level: Auxiliary output level for the GenericModelOutput RenderVar.
         tick_rate: Sensor tick rate to apply to the prim, or None to preserve authored values.
         schemas: API schemas to apply to the prim.
@@ -167,10 +172,12 @@ class SensorAuthoring(XformPrim, ABC):
     _PRIM_TYPE: str
     _SCHEMA: str
     _VALID_AUX_OUTPUT_LEVELS: tuple[str, ...] = ("NONE",)
+    # batched authoring classes (e.g. `RtxCamera`) opt out of the single-prim restriction
+    _ALLOW_MULTIPLE_PRIMS: bool = False
 
     def __init__(
         self,
-        path: str,
+        path: str | list[str],
         *,
         aux_output_level: str = "NONE",
         tick_rate: float | None = None,
@@ -192,12 +199,14 @@ class SensorAuthoring(XformPrim, ABC):
         self._aux_output_level = aux_output_level
         self._asset_root_path: str | None = None
         existent_paths, nonexistent_paths = XformPrim.resolve_paths(path)
-        if len(existent_paths) > 1 or len(nonexistent_paths) > 1:
+        resolved_count = len(existent_paths) + len(nonexistent_paths)
+        if resolved_count > 1 and not self._ALLOW_MULTIPLE_PRIMS:
             raise ValueError(
                 f"Only one {self._PRIM_TYPE} prim is supported, "
-                f"but the provided argument refers to {len(existent_paths) + len(nonexistent_paths)} prims: "
+                f"but the provided argument refers to {resolved_count} prims: "
                 f"{existent_paths + nonexistent_paths}",
             )
+        authored_tick_rates: dict[str, Any] = {}
         # wrap existing prims
         if existent_paths:
             paths = existent_paths
@@ -206,6 +215,11 @@ class SensorAuthoring(XformPrim, ABC):
                 type_name = prim.GetPrimTypeInfo().GetTypeName()
                 if type_name != self._PRIM_TYPE:
                     raise ValueError(f"Prim at {path} is not an '{self._PRIM_TYPE}' prim but a '{type_name}' prim")
+            for path in existent_paths:
+                prim = prim_utils.get_prim_at_path(path)
+                attribute = prim.GetAttribute("omni:sensor:tickRate")
+                if attribute.IsValid() and attribute.HasAuthoredValue():
+                    authored_tick_rates[path] = attribute.Get()
                 # The sensor is inoperable without its schema, so apply it rather than reject the prim.
                 if self._SCHEMA not in prim.GetAppliedSchemas():
                     prim.ApplyAPI(self._SCHEMA)
@@ -243,8 +257,22 @@ class SensorAuthoring(XformPrim, ABC):
         if tick_rate is not None:
             for p in paths:
                 prim = prim_utils.get_prim_at_path(p)
-                if prim.HasAttribute("omni:sensor:tickRate"):
-                    prim.GetAttribute("omni:sensor:tickRate").Set(tick_rate)
+                if not prim.HasAttribute("omni:sensor:tickRate"):
+                    continue
+                attribute = prim.GetAttribute("omni:sensor:tickRate")
+                # An authored value is a deliberate opinion (from a sensor asset or an earlier wrapper),
+                # unlike the `OmniSensorAPI` schema default. Capture it before applying `attributes`,
+                # which may contain its own `omni:sensor:tickRate` override.
+                authored = authored_tick_rates.get(p)
+                if authored is not None and float(authored) != float(tick_rate):
+                    carb.log_warn(
+                        f"{type(self).__name__} at '{p}': overwriting the authored "
+                        f"'omni:sensor:tickRate' ({authored} Hz) with {tick_rate} Hz. The tick rate is stored "
+                        "on the shared prim, so other sensors may observe the new value. Active render products "
+                        "may retain a previously latched rate until they are recreated. Pass 'tick_rate=None' "
+                        "to preserve the authored value."
+                    )
+                attribute.Set(tick_rate)
         # set aux_output_level as channels attribute on the sensor prim so the
         # Replicator pipeline propagates it to the GenericModelOutput RenderVar
         for p in paths:
@@ -477,6 +505,7 @@ class SensorAuthoring(XformPrim, ABC):
             The render product prim path the graph was authored onto.
 
         Raises:
+            ValueError: If this wrapper holds more than one sensor prim.
             ValueError: If node names are not unique; if a node name collides with an AOV
                 name used in ``connections``; if the prim at an explicit ``render_product``
                 path exists but is not a ``RenderProduct``; or if a connection endpoint names
@@ -503,6 +532,11 @@ class SensorAuthoring(XformPrim, ABC):
             ...     ],
             ... )
         """
+        if len(self.paths) > 1:
+            raise ValueError(
+                f"author_spg supports a single sensor prim, but {type(self).__name__} wraps "
+                f"{len(self.paths)} prims: {self.paths}"
+            )
         nodes = [nodes] if isinstance(nodes, SPGNode) else list(nodes)
         names = [node.name for node in nodes]
         if len(names) != len(set(names)):
@@ -607,14 +641,23 @@ class SensorRuntime(ABC):
             self._validate_annotator_init_params(annotators, annotator_init_params)
         if writers is not None:
             self._validate_writers(writers)
+        # Resolve the prim count before constructing the authoring object. Authoring classes that
+        # accept multiple prims (e.g. `RtxCamera`) create prims and apply schemas on construction,
+        # so a single-prim runtime must reject the argument before the stage is modified.
+        if not self._ALLOW_MULTIPLE_AUTHORING_OBJECTS:
+            if isinstance(path, self._AUTHORING_CLASS):
+                resolved_paths = list(path.paths)
+            else:
+                existent_paths, nonexistent_paths = XformPrim.resolve_paths(path)
+                resolved_paths = existent_paths + nonexistent_paths
+            if len(resolved_paths) > 1:
+                raise ValueError(
+                    f"Only one {self._AUTHORING_CLASS.__name__} prim is supported, "
+                    f"but the provided argument refers to {len(resolved_paths)} prims: {resolved_paths}",
+                )
         # get or create authoring object
-        authoring_obj = path if isinstance(path, self._AUTHORING_CLASS) else self._AUTHORING_CLASS(path)
+        authoring_obj = self._get_or_create_authoring_object(path)
         setattr(self, self._AUTHORING_ATTR, authoring_obj)
-        if not self._ALLOW_MULTIPLE_AUTHORING_OBJECTS and len(authoring_obj) > 1:
-            raise ValueError(
-                f"Only one {self._AUTHORING_CLASS.__name__} prim is supported, "
-                f"but the provided argument refers to {len(authoring_obj)} prims: {authoring_obj.paths}",
-            )
         # initialize instance from arguments
         self._initialize_sensor(annotators or [], render_vars=render_vars, annotator_init_params=annotator_init_params)
         self._subscribe_to_render_events()
@@ -636,7 +679,7 @@ class SensorRuntime(ABC):
 
         Returns:
             The sensor's authoring object (e.g. :class:`Lidar`, :class:`Radar`, :class:`Acoustic`,
-            :class:`RtxCamera`, or the batched ``Camera`` wrapper used by :class:`TiledCameraSensor`).
+            or :class:`RtxCamera`).
         """
         return getattr(self, self._AUTHORING_ATTR)
 
@@ -912,6 +955,17 @@ class SensorRuntime(ABC):
         self._annotators = {}
         self._hydra_texture = None
         self._data_ready = False
+
+    def _get_or_create_authoring_object(self, path: str | list[str] | XformPrim) -> XformPrim:
+        """Get the supplied authoring object or construct one from paths.
+
+        Args:
+            path: Sensor authoring object, or path input accepted by the authoring class.
+
+        Returns:
+            Sensor authoring object.
+        """
+        return path if isinstance(path, self._AUTHORING_CLASS) else self._AUTHORING_CLASS(path)
 
     def _find_asset_render_product(self) -> Usd.Prim | None:
         """Find a pre-authored render product in the loaded USD asset for this sensor.

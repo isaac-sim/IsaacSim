@@ -16,14 +16,13 @@
 """Optional Kit runtime services used by the headless SysID backend.
 
 This is the only portable-backend module that imports Kit application services.
-All imports are deferred so importing :mod:`isaacsim.robot_setup.sysid` remains
-safe in an ordinary Python process.
+All imports are deferred so importing :mod:`isaacsim.robot_setup.sysid` does
+not bootstrap Kit.
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -32,58 +31,6 @@ from .errors import SysIdRuntimeUnavailableError
 YieldHook = Callable[[], Awaitable[None]]
 
 _yield_hook: YieldHook | None = None
-
-
-class CarbLogHandler(logging.Handler):
-    """Forward standard backend log records to the Kit console."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Forward one Python log record to the matching Carb log level.
-
-        Args:
-            record: Python log record to forward.
-        """
-        try:
-            import carb
-
-            message = self.format(record)
-            if record.levelno >= logging.ERROR:
-                carb.log_error(message)
-            elif record.levelno >= logging.WARNING:
-                carb.log_warn(message)
-            else:
-                carb.log_info(message)
-        except Exception:
-            self.handleError(record)
-
-
-def install_carb_logging() -> CarbLogHandler | None:
-    """Install one package-scoped Carb logging handler when Kit is available.
-
-    Returns:
-        Installed handler, an existing package handler, or ``None`` outside Kit.
-    """
-    if not kit_runtime_available():
-        return None
-    logger = logging.getLogger("isaacsim.robot_setup.sysid")
-    for handler in logger.handlers:
-        if isinstance(handler, CarbLogHandler):
-            return handler
-    handler = CarbLogHandler()
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-    return handler
-
-
-def remove_carb_logging(handler: CarbLogHandler | None) -> None:
-    """Remove a handler installed by :func:`install_carb_logging`.
-
-    Args:
-        handler: Package handler to detach, or ``None``.
-    """
-    if handler is not None:
-        logging.getLogger("isaacsim.robot_setup.sysid").removeHandler(handler)
 
 
 def set_yield_hook(hook: YieldHook | None) -> None:
@@ -141,6 +88,74 @@ def require_kit_runtime(feature: str) -> None:
             f"{feature} requires a bootstrapped Isaac Sim/Kit runtime. "
             "Start SimulationApp or enable isaacsim.robot_setup.sysid in a Kit application."
         )
+
+
+def ensure_required_runtime_extensions(simulation: Any) -> list[str]:
+    """Enable optional Kit extensions required by a simulation selection.
+
+    The SysID backend keeps Isaac-hosted Newton optional so its portable and
+    standalone-Newton paths do not acquire a Kit physics dependency. When a
+    caller explicitly selects Isaac Sim's Newton backend, however, the runtime
+    extension must be registered before preflight can validate or switch to it.
+
+    Args:
+        simulation: Simulation run-spec section to resolve.
+
+    Returns:
+        Extension identifiers enabled by this call. Already-enabled extensions
+        are not included.
+
+    Raises:
+        RuntimeError: If a required optional extension cannot be enabled.
+        SysIdRuntimeUnavailableError: If no Kit application is running.
+    """
+    from .actuator_compatibility import (
+        PHYSICS_BACKEND_NEWTON,
+        resolve_simulation_compatibility,
+    )
+
+    compatibility = resolve_simulation_compatibility(simulation)
+    engine = str(getattr(simulation, "engine", "") or "").strip().lower()
+    required = []
+    if engine == "isaac_sim" and compatibility.physics_backend == PHYSICS_BACKEND_NEWTON:
+        required.extend(("isaacsim.physics.newton", "isaacsim.physics.newton.tensors"))
+
+    if not required:
+        return []
+
+    require_kit_runtime("Optional simulation extension activation")
+    import omni.kit.app
+
+    manager = omni.kit.app.get_app().get_extension_manager()
+    enabled: list[str] = []
+    for extension_id in required:
+        if manager.is_extension_enabled(extension_id):
+            continue
+        result = manager.set_extension_enabled_immediate(extension_id, True)
+        if result is False or not manager.is_extension_enabled(extension_id):
+            raise RuntimeError(
+                f"Required extension '{extension_id}' could not be enabled for the selected simulation backend."
+            )
+        enabled.append(extension_id)
+    return enabled
+
+
+async def ensure_required_runtime_extensions_async(simulation: Any) -> list[str]:
+    """Enable optional simulation extensions and wait for their registration.
+
+    Args:
+        simulation: Simulation run-spec section to resolve.
+
+    Returns:
+        Extension identifiers enabled by this call.
+    """
+    enabled = ensure_required_runtime_extensions(simulation)
+    if not enabled:
+        return []
+    import omni.kit.app
+
+    await omni.kit.app.get_app().next_update_async()
+    return enabled
 
 
 def get_current_stage() -> Any | None:

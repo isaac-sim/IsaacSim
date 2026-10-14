@@ -239,6 +239,28 @@ public:
                                 uint32_t timeout = g_kUcxInfiniteTimeout);
 
     /**
+     * @brief Post a tagged receive and return its request handle without waiting.
+     * @details
+     * The caller polls ucxx::Request::isCompleted() instead of blocking. `buffer` must stay
+     * allocated and unreused until the request completes or is cancelled, and the request must
+     * be released before the listener is destroyed.
+     *
+     * @param[in] buffer Memory address where received data will be stored
+     * @param[in] length Size of the receive buffer in bytes
+     * @param[in] tag UCX tag for message identification
+     * @param[in] mask Tag mask for selective message matching
+     * @param[out] errorMessage String for storing error messages
+     * @param[out] outRequest Reference to receive the request handle
+     * @return UcxReceiveResult indicating the outcome (eSuccess if posted, error otherwise)
+     */
+    UcxReceiveResult tagReceiveWithRequest(void* buffer,
+                                           size_t length,
+                                           uint64_t tag,
+                                           uint64_t mask,
+                                           std::string& errorMessage,
+                                           std::shared_ptr<ucxx::Request>& outRequest);
+
+    /**
      * @brief Receive multiple buffers using tagged communication with optional timeout.
      * @details
      * Receives multiple buffers using UCX tagged multi-receive and waits for completion.

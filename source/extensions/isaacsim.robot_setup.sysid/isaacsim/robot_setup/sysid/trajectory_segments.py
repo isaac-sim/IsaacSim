@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
@@ -39,6 +39,17 @@ DEFAULT_EXCITATION_TAGS = (
     "contact",
     "custom",
 )
+
+VALIDATION_RMSE_FIELDS = (
+    "position_rmse",
+    "velocity_rmse",
+    "torque_rmse",
+    "end_effector_pose_rmse",
+    "contact_force_rmse",
+)
+
+DEFAULT_VALIDATION_RELATIVE_CHANGE_THRESHOLD = 0.01
+DEFAULT_VALIDATION_ABSOLUTE_CHANGE_THRESHOLD = 1.0e-12
 
 
 class TrajectorySegmentError(ValueError):
@@ -146,6 +157,241 @@ class ChunkValidationMetric:
         return asdict(self)
 
 
+def build_validation_comparison(
+    untuned_metrics: Iterable[ChunkValidationMetric],
+    tuned_metrics: Iterable[ChunkValidationMetric],
+    *,
+    zero_epsilon: float = 1.0e-12,
+    relative_change_threshold: float = DEFAULT_VALIDATION_RELATIVE_CHANGE_THRESHOLD,
+    absolute_change_threshold: float = DEFAULT_VALIDATION_ABSOLUTE_CHANGE_THRESHOLD,
+    source: str = "",
+    holdout: bool | None = None,
+) -> dict[str, Any]:
+    """Pair untuned and tuned holdout RMSE without hiding missing data.
+
+    Both passes must describe the same chunks in the same order. Overall RMSE
+    is pooled with sample-count weighting (square, weight, mean, square root),
+    rather than taking an unweighted mean of per-chunk RMSE values.
+
+    Args:
+        untuned_metrics: Metrics evaluated at authored launch parameters.
+        tuned_metrics: Metrics evaluated at the accepted optimized parameters.
+        zero_epsilon: Baselines at or below this value have no percentage delta.
+        relative_change_threshold: Relative RMSE change required to classify improvement or regression.
+        absolute_change_threshold: Absolute RMSE change required to classify improvement or regression.
+        source: Validation data source identifier.
+        holdout: Whether the comparison uses independent held-out data.
+
+    Returns:
+        JSON-ready per-chunk and overall comparison payload.
+    """
+    thresholds = (zero_epsilon, relative_change_threshold, absolute_change_threshold)
+    if not all(math.isfinite(float(value)) and float(value) >= 0.0 for value in thresholds):
+        raise ValueError("Validation comparison thresholds must be finite and non-negative.")
+
+    metadata = {
+        "source": str(source),
+        "holdout": holdout,
+        "relative_change_threshold": float(relative_change_threshold),
+        "absolute_change_threshold": float(absolute_change_threshold),
+    }
+    untuned = list(untuned_metrics or [])
+    tuned = list(tuned_metrics or [])
+    if not untuned or not tuned:
+        return {
+            "available": False,
+            "reason": "both untuned and tuned validation metrics are required",
+            "chunk_count": 0,
+            "chunks": [],
+            "overall": {},
+            **metadata,
+        }
+    if len(untuned) != len(tuned):
+        return {
+            "available": False,
+            "reason": "untuned and tuned validation chunk counts differ",
+            "chunk_count": 0,
+            "chunks": [],
+            "overall": {},
+            **metadata,
+        }
+
+    pairs: list[tuple[ChunkValidationMetric, ChunkValidationMetric]] = []
+    chunk_rows: list[dict[str, Any]] = []
+    for index, (before, after) in enumerate(zip(untuned, tuned)):
+        before_key = _validation_metric_key(before)
+        after_key = _validation_metric_key(after)
+        if before_key != after_key:
+            return {
+                "available": False,
+                "reason": f"validation chunk {index + 1} identity differs between passes",
+                "chunk_count": 0,
+                "chunks": [],
+                "overall": {},
+                **metadata,
+            }
+        pairs.append((before, after))
+        channels = {
+            field_name: _rmse_delta(
+                getattr(before, field_name, None),
+                getattr(after, field_name, None),
+                zero_epsilon=zero_epsilon,
+                relative_change_threshold=relative_change_threshold,
+                absolute_change_threshold=absolute_change_threshold,
+            )
+            for field_name in VALIDATION_RMSE_FIELDS
+        }
+        chunk_rows.append(
+            {
+                "name": before.name,
+                "role": before.role,
+                "excitation": before.excitation,
+                "start": float(before.start),
+                "end": float(before.end),
+                "sample_count": int(before.sample_count),
+                "channels": channels,
+            }
+        )
+
+    overall: dict[str, Any] = {}
+    for field_name in VALIDATION_RMSE_FIELDS:
+        before_value, after_value, unpaired = _pooled_rmse_pair(pairs, field_name)
+        channel = _rmse_delta(
+            before_value,
+            after_value,
+            zero_epsilon=zero_epsilon,
+            relative_change_threshold=relative_change_threshold,
+            absolute_change_threshold=absolute_change_threshold,
+        )
+        if unpaired:
+            # A chunk that diverges only after tuning drops out of the tuned pool
+            # while remaining in the untuned pool. Pooling each pass over its own
+            # finite chunks would then compare two different chunk sets and report
+            # a confident improvement for a solve that actually blew up.
+            channel["absolute_delta"] = None
+            channel["percent_improvement"] = None
+            channel["status"] = "unavailable"
+            channel["reason"] = (
+                "channel has a non-finite RMSE in exactly one validation pass for chunk(s): " + ", ".join(unpaired)
+            )
+        channel["unpaired_chunks"] = unpaired
+        overall[field_name] = channel
+    return {
+        "available": True,
+        "reason": "",
+        "chunk_count": len(chunk_rows),
+        "chunks": chunk_rows,
+        "overall": overall,
+        **metadata,
+    }
+
+
+def _validation_metric_key(metric: ChunkValidationMetric) -> tuple[Any, ...]:
+    return (
+        str(metric.name),
+        str(metric.role),
+        str(metric.excitation),
+        float(metric.start),
+        float(metric.end),
+        int(metric.sample_count),
+    )
+
+
+def _finite_rmse(value: Any) -> float | None:
+    """Return a channel RMSE as a finite float, or None when it is absent or non-finite."""
+    if value is None:
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def _pooled_rmse_pair(
+    pairs: Sequence[tuple[ChunkValidationMetric, ChunkValidationMetric]],
+    field_name: str,
+) -> tuple[float | None, float | None, list[str]]:
+    """Pool one channel across both validation passes over a common chunk set.
+
+    Only chunks where both passes report a finite RMSE contribute, so the two
+    pooled values always describe the same data.
+
+    Args:
+        pairs: Identity-matched untuned and tuned metrics, in chunk order.
+        field_name: RMSE channel to pool.
+
+    Returns:
+        Pooled untuned RMSE, pooled tuned RMSE, and the names of chunks whose
+        channel was finite in exactly one pass.
+    """
+    untuned_square_sum = 0.0
+    tuned_square_sum = 0.0
+    sample_count = 0
+    unpaired: list[str] = []
+    for before, after in pairs:
+        before_value = _finite_rmse(getattr(before, field_name, None))
+        after_value = _finite_rmse(getattr(after, field_name, None))
+        if before_value is None or after_value is None:
+            # Absent in both passes is a channel this backend never produced;
+            # absent in one is a divergence the pooled verdict must not hide.
+            if before_value is not None or after_value is not None:
+                unpaired.append(str(before.name))
+            continue
+        count = max(0, int(before.sample_count))
+        if count < 1:
+            continue
+        untuned_square_sum += count * before_value * before_value
+        tuned_square_sum += count * after_value * after_value
+        sample_count += count
+    if sample_count < 1:
+        return None, None, unpaired
+    return (
+        math.sqrt(untuned_square_sum / sample_count),
+        math.sqrt(tuned_square_sum / sample_count),
+        unpaired,
+    )
+
+
+def _rmse_delta(
+    untuned: Any,
+    tuned: Any,
+    *,
+    zero_epsilon: float,
+    relative_change_threshold: float,
+    absolute_change_threshold: float,
+) -> dict[str, Any]:
+    if untuned is None or tuned is None:
+        return {
+            "untuned": None,
+            "tuned": None,
+            "absolute_delta": None,
+            "percent_improvement": None,
+            "status": "unavailable",
+            "reason": "channel is unavailable in one or both validation passes",
+        }
+    before = float(untuned)
+    after = float(tuned)
+    if not math.isfinite(before) or not math.isfinite(after):
+        return {
+            "untuned": before if math.isfinite(before) else None,
+            "tuned": after if math.isfinite(after) else None,
+            "absolute_delta": None,
+            "percent_improvement": None,
+            "status": "unavailable",
+            "reason": "channel contains a non-finite RMSE",
+        }
+    delta = after - before
+    percent = None if abs(before) <= zero_epsilon else 100.0 * (before - after) / before
+    tolerance = max(zero_epsilon, absolute_change_threshold, abs(before) * relative_change_threshold)
+    status = "unchanged" if abs(delta) <= tolerance else ("improved" if delta < 0.0 else "regressed")
+    return {
+        "untuned": before,
+        "tuned": after,
+        "absolute_delta": delta,
+        "percent_improvement": percent,
+        "status": status,
+        "reason": "untuned RMSE is zero; percentage is undefined" if percent is None else "",
+    }
+
+
 def make_default_train_chunk(
     trajectory: TrajectoryDataset,
     *,
@@ -209,10 +455,13 @@ def build_auto_chunks(
     min_chunk_seconds = max(float(min_chunk_seconds), 0.0)
 
     if metadata_chunks:
+        # Both metadata branches return start-sorted specs so the caller sees one
+        # chunk ordering regardless of whether a validation phase was pre-tagged.
         specs = sorted(metadata_chunks, key=lambda spec: float(spec.start))
         if any(spec.role == TELEMETRY_CHUNK_ROLE_VALIDATION for spec in specs):
-            return list(metadata_chunks)
-        total = sum(max(float(spec.end) - float(spec.start), 0.0) for spec in specs)
+            return specs
+        durations = [max(float(spec.end) - float(spec.start), 0.0) for spec in specs]
+        total = sum(durations)
         target_validation = (1.0 - train_fraction) * total
         validation_duration = 0.0
         result = list(specs)
@@ -220,9 +469,16 @@ def build_auto_chunks(
         for idx in range(len(result) - 1, 0, -1):
             if validation_duration >= target_validation:
                 break
-            spec = result[idx]
-            result[idx] = replace(spec, role=TELEMETRY_CHUNK_ROLE_VALIDATION)
-            validation_duration += max(float(spec.end) - float(spec.start), 0.0)
+            # Keeping the train side above the floor matters more than hitting
+            # the target share exactly, so stop before crossing it.
+            if total - validation_duration - durations[idx] < min_chunk_seconds:
+                break
+            result[idx] = replace(result[idx], role=TELEMETRY_CHUNK_ROLE_VALIDATION)
+            validation_duration += durations[idx]
+        if validation_duration < min_chunk_seconds:
+            # A holdout shorter than the floor is not a usable validation split;
+            # the telemetry quality report warns about the missing holdout.
+            return specs
         return result
 
     times = np.asarray(trajectory.times, dtype=np.float64).reshape(-1)

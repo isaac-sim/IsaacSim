@@ -20,7 +20,7 @@ registration operations for both runtime simulations and tensor entity or
 simulation-view factories.
 """
 
-from isaacsim.physics.registration.bindings._bindings import *  # noqa: F401,F403
+from isaacsim.physics.registration.bindings._bindings import *
 
 __all__ = [
     # Runtime register API + shared vocabulary
@@ -63,8 +63,6 @@ __all__ = [
     "k_invalid_simulation_id",
     "k_invalid_subscription_id",
     # Tensor register API + vocabulary
-    "DType",
-    "DeviceKind",
     "ImplKind",
     "ObjectType",
     "JointType",
@@ -72,7 +70,10 @@ __all__ = [
     "DofMotion",
     "DofDriveType",
     "TensorSpec",
+    "ArrayTensorSpec",
     "TensorDesc",
+    "DType",
+    "DeviceKind",
     "TensorRegistry",
     "get_registry",
     "register_entity",

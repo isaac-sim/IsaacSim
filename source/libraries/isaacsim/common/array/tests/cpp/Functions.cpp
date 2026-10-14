@@ -479,6 +479,80 @@ TEST_SUITE("Functions")
         }
     }
 
+    TEST_CASE("sqrt()")
+    {
+        auto device = GENERATE(Device::Cpu(), Device::Cuda());
+        SKIP_IF_CUDA_UNAVAILABLE(device);
+
+        SUBCASE("Floating-point operands keep their dtype")
+        {
+            Array a(std::vector<float>{ 4.f, 9.f, 0.f }, Dtype::Float32(), device);
+            Array result = sqrt(a);
+            CHECK_EQ(result.dtype(), Dtype::Float32());
+            CHECK_EQ(result.device(), device);
+            CHECK_EQ(result.get<std::vector<float>>(), std::vector<float>{ 2.f, 3.f, 0.f });
+        }
+
+        SUBCASE("Integer and boolean operands are computed in floating point")
+        {
+            Array a(std::vector<int32_t>{ 4, 16 }, Dtype::Int32(), device);
+            Array result = sqrt(a);
+            CHECK_EQ(result.dtype(), Dtype::Float64());
+            CHECK_EQ(result.get<std::vector<double>>(), std::vector<double>{ 2.0, 4.0 });
+
+            Array flags(std::vector<bool>{ true, false }, Dtype::Bool(), device);
+            CHECK_EQ(sqrt(flags).dtype(), Dtype::Float64());
+            CHECK_EQ(sqrt(flags).get<std::vector<double>>(), std::vector<double>{ 1.0, 0.0 });
+        }
+
+        SUBCASE("A negative operand yields NaN rather than throwing")
+        {
+            Array a(std::vector<double>{ -1.0 }, Dtype::Float64(), device);
+            CHECK(std::isnan(sqrt(a).toDevice(Device::Cpu()).item<double>()));
+        }
+
+        SUBCASE("The operand is left unchanged")
+        {
+            Array a(std::vector<double>{ 4.0, 9.0 }, Dtype::Float64(), device);
+            sqrt(a);
+            CHECK_EQ(a.get<std::vector<double>>(), std::vector<double>{ 4.0, 9.0 });
+        }
+    }
+
+    TEST_CASE("power()")
+    {
+        auto device = GENERATE(Device::Cpu(), Device::Cuda());
+        SKIP_IF_CUDA_UNAVAILABLE(device);
+
+        SUBCASE("Element-wise exponentiation")
+        {
+            Array a(std::vector<double>{ 2.0, 3.0, 4.0 }, Dtype::Float64(), device);
+            Array b(std::vector<double>{ 3.0, 2.0, 0.5 }, Dtype::Float64(), device);
+            CHECK_EQ(power(a, b).get<std::vector<double>>(), std::vector<double>{ 8.0, 9.0, 2.0 });
+        }
+
+        SUBCASE("Integer operands are computed in floating point")
+        {
+            Array a(std::vector<int32_t>{ 2, 3 }, Dtype::Int32(), device);
+            Array result = power(a, 2);
+            CHECK_EQ(result.dtype(), Dtype::Float64());
+            CHECK_EQ(result.get<std::vector<double>>(), std::vector<double>{ 4.0, 9.0 });
+        }
+
+        SUBCASE("A scalar operand broadcasts on either side")
+        {
+            Array a(std::vector<double>{ 2.0, 3.0 }, Dtype::Float64(), device);
+            CHECK_EQ(power(a, 2.0).get<std::vector<double>>(), std::vector<double>{ 4.0, 9.0 });
+            CHECK_EQ(power(2.0, a).get<std::vector<double>>(), std::vector<double>{ 4.0, 8.0 });
+        }
+
+        SUBCASE("A negative exponent is a reciprocal rather than an error")
+        {
+            Array a(std::vector<double>{ 2.0, 4.0 }, Dtype::Float64(), device);
+            CHECK_EQ(power(a, -1.0).get<std::vector<double>>(), std::vector<double>{ 0.5, 0.25 });
+        }
+    }
+
     TEST_CASE("absolute()")
     {
         auto device = GENERATE(Device::Cpu(), Device::Cuda());
@@ -1007,7 +1081,7 @@ TEST_SUITE("Functions")
             CHECK_EQ(a.shape(), Shape({ 0, 4 }));
             CHECK_EQ(a.size(), 0);
             CHECK_EQ(a.nbytes(), 0);
-            // cudaMalloc(0) would return null; empty() allocates a byte so data() stays valid.
+            // cuMemAlloc() rejects a zero size; empty() allocates a byte so data() stays valid.
             CHECK_NE(a.data(), nullptr);
         }
 
@@ -1142,7 +1216,7 @@ TEST_SUITE("Functions")
         }
     }
 
-    TEST_CASE("transpose()")
+    TEST_CASE("transposeView()")
     {
         auto device = GENERATE(Device::Cpu(), Device::Cuda());
         SKIP_IF_CUDA_UNAVAILABLE(device);
@@ -1150,8 +1224,11 @@ TEST_SUITE("Functions")
         SUBCASE("2-D reverses the axes")
         {
             Array a(std::vector<std::vector<float>>{ { 1.f, 2.f, 3.f }, { 4.f, 5.f, 6.f } }, Dtype::Float32(), device);
-            Array result = transpose(a);
+            Array result = transposeView(a);
             CHECK_EQ(result.shape(), Shape({ 3, 2 }));
+            CHECK_EQ(result.strides(), std::vector<int64_t>{ 1, 3 });
+            CHECK_EQ(result.buffer().get(), a.buffer().get());
+            CHECK_FALSE(result.isContiguous());
             CHECK_EQ(result.get<std::vector<std::vector<float>>>(),
                      std::vector<std::vector<float>>{ { 1.f, 4.f }, { 2.f, 5.f }, { 3.f, 6.f } });
         }
@@ -1167,7 +1244,7 @@ TEST_SUITE("Functions")
             Array a = Array(values, Dtype::Float32(), device).reshape(Shape({ 2, 3, 4 }));
 
             // (2, 3, 4) -> (4, 2, 3): destination[i][j][k] == source[j][k][i].
-            Array result = transpose(a, std::vector<int64_t>{ 2, 0, 1 });
+            Array result = transposeView(a, std::vector<int64_t>{ 2, 0, 1 });
             CHECK_EQ(result.shape(), Shape({ 4, 2, 3 }));
 
             std::vector<float> expected(24);
@@ -1193,8 +1270,8 @@ TEST_SUITE("Functions")
             }
             Array a = Array(values, Dtype::Float32(), device).reshape(Shape({ 2, 3, 4 }));
 
-            Array implicitAxes = transpose(a);
-            Array explicitAxes = transpose(a, std::vector<int64_t>{ 2, 1, 0 });
+            Array implicitAxes = transposeView(a);
+            Array explicitAxes = transposeView(a, std::vector<int64_t>{ 2, 1, 0 });
             CHECK_EQ(implicitAxes.shape(), Shape({ 4, 3, 2 }));
             CHECK_EQ(implicitAxes.shape(), explicitAxes.shape());
             CHECK_EQ(implicitAxes.flatten().get<std::vector<float>>(), explicitAxes.flatten().get<std::vector<float>>());
@@ -1217,7 +1294,7 @@ TEST_SUITE("Functions")
         SUBCASE("Negative axes count from the last dimension")
         {
             Array a(std::vector<std::vector<int32_t>>{ { 1, 2, 3 }, { 4, 5, 6 } }, Dtype::Int32(), device);
-            CHECK_EQ(transpose(a, std::vector<int64_t>{ -1, -2 }).get<std::vector<std::vector<int32_t>>>(),
+            CHECK_EQ(transposeView(a, std::vector<int64_t>{ -1, -2 }).get<std::vector<std::vector<int32_t>>>(),
                      std::vector<std::vector<int32_t>>{ { 1, 4 }, { 2, 5 }, { 3, 6 } });
         }
 
@@ -1225,19 +1302,19 @@ TEST_SUITE("Functions")
         {
             Array a =
                 Array(std::vector<float>{ 1.f, 2.f, 3.f, 4.f, 5.f, 6.f }, Dtype::Float32(), device).reshape(Shape({ 2, 3 }));
-            CHECK_EQ(transpose(transpose(a)).flatten().get<std::vector<float>>(),
+            CHECK_EQ(transposeView(transposeView(a)).flatten().get<std::vector<float>>(),
                      std::vector<float>{ 1.f, 2.f, 3.f, 4.f, 5.f, 6.f });
         }
 
         SUBCASE("0-D and 1-D operands are unchanged")
         {
             Array scalar(42.f, Dtype::Float32(), device);
-            Array transposedScalar = transpose(scalar);
+            Array transposedScalar = transposeView(scalar);
             CHECK_EQ(transposedScalar.ndim(), 0);
             CHECK_EQ(transposedScalar.item<float>(), 42.f);
 
             Array vector(std::vector<float>{ 1.f, 2.f, 3.f }, Dtype::Float32(), device);
-            Array transposedVector = transpose(vector);
+            Array transposedVector = transposeView(vector);
             CHECK_EQ(transposedVector.shape(), Shape(3));
             CHECK_EQ(transposedVector.get<std::vector<float>>(), std::vector<float>{ 1.f, 2.f, 3.f });
         }
@@ -1245,18 +1322,18 @@ TEST_SUITE("Functions")
         SUBCASE("dtype and device are preserved")
         {
             Array a(std::vector<std::vector<int64_t>>{ { 1, 2 }, { 3, 4 } }, Dtype::Int64(), device);
-            Array result = transpose(a);
+            Array result = transposeView(a);
             CHECK_EQ(result.dtype(), Dtype::Int64());
             CHECK_EQ(result.device(), device);
         }
 
-        SUBCASE("The result is an independent copy and the operand is unchanged")
+        SUBCASE("The result is a mutable view of the operand")
         {
             Array a(std::vector<std::vector<float>>{ { 1.f, 2.f }, { 3.f, 4.f } }, Dtype::Float32(), device);
-            Array result = transpose(a);
+            Array result = transposeView(a);
             result.set(0.f);
             CHECK_EQ(a.get<std::vector<std::vector<float>>>(),
-                     std::vector<std::vector<float>>{ { 1.f, 2.f }, { 3.f, 4.f } });
+                     std::vector<std::vector<float>>{ { 0.f, 0.f }, { 0.f, 0.f } });
         }
 
         SUBCASE("Gathers from a sliced operand, honoring its buffer offset")
@@ -1265,14 +1342,28 @@ TEST_SUITE("Functions")
                           .reshape(Shape({ 2, 2, 2 }));
             // The second (2, 2) slice: {{5, 6}, {7, 8}}.
             Array slice = a.at(1);
-            CHECK_EQ(transpose(slice).get<std::vector<std::vector<float>>>(),
+            CHECK_EQ(transposeView(slice).get<std::vector<std::vector<float>>>(),
                      std::vector<std::vector<float>>{ { 5.f, 7.f }, { 6.f, 8.f } });
+        }
+
+        SUBCASE("Strided views feed arithmetic, reductions, and gathers")
+        {
+            Array a(std::vector<std::vector<int32_t>>{ { 1, 2, 3 }, { 4, 5, 6 } }, Dtype::Int32(), device);
+            Array view = transposeView(a);
+
+            CHECK_EQ(add(view, int32_t{ 10 }).get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 11, 14 }, { 12, 15 }, { 13, 16 } });
+            CHECK_EQ(negative(view).get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { -1, -4 }, { -2, -5 }, { -3, -6 } });
+            CHECK_EQ(sum(view).item<int64_t>(), 21);
+            CHECK_EQ(take(view, { 1 }, 0).get<std::vector<std::vector<int32_t>>>(),
+                     std::vector<std::vector<int32_t>>{ { 2, 5 } });
         }
 
         SUBCASE("An axis of size zero is preserved")
         {
             Array a = Array(std::vector<float>{}, Dtype::Float32(), device).reshape(Shape({ 0, 3 }));
-            Array result = transpose(a);
+            Array result = transposeView(a);
             CHECK_EQ(result.shape(), Shape({ 3, 0 }));
             CHECK_EQ(result.size(), 0);
         }
@@ -1280,12 +1371,12 @@ TEST_SUITE("Functions")
         SUBCASE("Invalid permutations throw")
         {
             Array a(std::vector<std::vector<float>>{ { 1.f, 2.f }, { 3.f, 4.f } }, Dtype::Float32(), device);
-            CHECK_THROWS_AS(transpose(a, std::vector<int64_t>{ 0 }), std::invalid_argument);
-            CHECK_THROWS_AS(transpose(a, std::vector<int64_t>{ 0, 1, 2 }), std::invalid_argument);
-            CHECK_THROWS_AS(transpose(a, std::vector<int64_t>{ 0, 2 }), std::invalid_argument);
-            CHECK_THROWS_AS(transpose(a, std::vector<int64_t>{ 0, -3 }), std::invalid_argument);
-            CHECK_THROWS_AS(transpose(a, std::vector<int64_t>{ 1, 1 }), std::invalid_argument);
-            CHECK_THROWS_AS(transpose(a, std::vector<int64_t>{ -1, 1 }), std::invalid_argument);
+            CHECK_THROWS_AS(transposeView(a, std::vector<int64_t>{ 0 }), std::invalid_argument);
+            CHECK_THROWS_AS(transposeView(a, std::vector<int64_t>{ 0, 1, 2 }), std::invalid_argument);
+            CHECK_THROWS_AS(transposeView(a, std::vector<int64_t>{ 0, 2 }), std::invalid_argument);
+            CHECK_THROWS_AS(transposeView(a, std::vector<int64_t>{ 0, -3 }), std::invalid_argument);
+            CHECK_THROWS_AS(transposeView(a, std::vector<int64_t>{ 1, 1 }), std::invalid_argument);
+            CHECK_THROWS_AS(transposeView(a, std::vector<int64_t>{ -1, 1 }), std::invalid_argument);
         }
 
         SUBCASE("Element counts spanning several CUDA blocks")
@@ -1299,7 +1390,7 @@ TEST_SUITE("Functions")
             }
             Array a = Array(values, Dtype::Int32(), device)
                           .reshape(Shape({ static_cast<int64_t>(rows), static_cast<int64_t>(columns) }));
-            Array result = transpose(a);
+            Array result = transposeView(a);
             CHECK_EQ(result.shape(), Shape({ static_cast<int64_t>(columns), static_cast<int64_t>(rows) }));
 
             std::vector<int32_t> expected(rows * columns);

@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.7.25] - 2026-10-02
+### Added
+- Regression coverage for replacing packages containing stale Physics payloads and interface variants, including the default-profile UR10e reproduction from NVBug 6380931.
+
+## [1.7.24] - 2026-10-01
+### Fixed
+- Keep shared Newton joint properties in `physics.usda` when MuJoCo schemas inherit `NewtonJointAPI`.
+
+## [1.7.23] - 2026-09-30
+### Added
+- `MaterialsRoutingRule`: add `mdl_folder` for bundling local MDL modules and sibling imports, including bundled copies of built-in modules.
+
+### Changed
+- `MaterialsRoutingRule`: default to lowercase `textures`, preserving existing directory casing and explicit folder settings.
+
+### Fixed
+- `JointStateAPIRule`: author joint-state schemas in standalone USD without requiring registered PhysX schemas.
+- `GeometriesRoutingRule`: resolve inherited and collection physics bindings before instancing, preserving binding strength without promoting all-purpose visual bindings.
+- `FlattenRule`: retarget `assetInfo:identifier` to the package-local interface layer, preventing source-path leaks.
+
+## [1.7.22] - 2026-09-29
+### Fixed
+- Avoid creating an empty Physics `none.usda` payload when converting a packaged asset again.
+
+## [1.7.21] - 2026-09-29
+### Fixed
+- Keep Newton mimic targets and coefficients available in both packaged physics variants.
+- Report newly converted MuJoCo actuators whose source drives provide no gain parameters.
+
+## [1.7.20] - 2026-09-28
+### Fixed
+- Preserve routed physics edits when applying robot schemas and generating the interface layer.
+
+## [1.7.19] - 2026-09-23
+### Fixed
+- `RemoveSchemaRule` no longer drops untargeted API schemas when removing a schema.
+- `RemoveSchemaRule` now removes a schema the same layer prepends.
+
 ## [1.7.18] - 2026-09-03
 ### Changed
 - Replace machine-local paths in bundled USD test fixture metadata with portable paths.

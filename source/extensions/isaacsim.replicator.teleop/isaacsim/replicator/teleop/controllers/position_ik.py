@@ -28,10 +28,20 @@ three-method interface::
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+import carb
 import numpy as np
 from isaacsim.core.experimental.prims import Articulation, RigidPrim
 
-from ._utils import ema_blend, quat_conjugate_wxyz, quat_mul_wxyz, xyzw_to_wxyz
+from ._utils import (
+    FloatingBaseArticulationError,
+    ema_blend,
+    quat_conjugate_wxyz,
+    quat_mul_wxyz,
+    slice_ee_jacobian,
+    xyzw_to_wxyz,
+)
 
 # ---------------------------------------------------------------------------
 # Differential IK math
@@ -52,7 +62,7 @@ def _differential_ik(
     """Compute delta-DOF positions via differential IK.
 
     Args:
-        jacobian_ee: End-effector Jacobian (N, 6, num_arm_dofs).
+        jacobian_ee: End-effector Jacobian (N, 6, arm_dofs).
         current_pos: Current EE position (N, 3).
         current_orient: Current EE orientation wxyz (N, 4).
         goal_pos: Goal EE position (N, 3).
@@ -71,7 +81,10 @@ def _differential_ik(
 
     if method == "singular-value-decomposition":
         U, S, Vh = np.linalg.svd(jacobian_ee)
-        inv_s = np.where(min_singular_value < S, 1.0 / S, np.zeros_like(S))
+        # Filtered singular values are dropped rather than inverted. A degenerate
+        # configuration puts exact zeros in `S`, and inverting the whole array
+        # before selecting would divide by them.
+        inv_s = np.divide(1.0, S, out=np.zeros_like(S), where=np.greater(S, min_singular_value))
         inv_s_diag = np.zeros((*inv_s.shape, inv_s.shape[-1]), dtype=inv_s.dtype)
         np.einsum("...ii->...i", inv_s_diag)[...] = inv_s
         K = inv_s.shape[-1]
@@ -122,11 +135,16 @@ class PositionBasedIKController:
       ``error_scale_distance``, the step is scaled down proportionally so
       the arm slows to a stop at its reachable limit.
 
+    The articulation must have a fixed base: the Jacobian is indexed for the
+    fixed-base layout ``(num_links - 1, 6, num_dofs)``.
+
     Args:
         robot: Value for robot.
         ee_link: Value for ee link.
         ee_link_index: Value for ee link index.
-        num_arm_dofs: Value for num arm dofs.
+        num_arm_dofs: Number of controlled joints. Without explicit indices, controls the first N DOFs.
+        arm_dof_indices: Optional articulation DOF indices of the controlled arm joints,
+            in ascending order.
         method: Value for method.
         scale: Value for scale.
         damping: Value for damping.
@@ -134,6 +152,9 @@ class PositionBasedIKController:
         max_joint_step_rad: Value for max joint step rad.
         min_manipulability: Value for min manipulability.
         error_scale_distance: Value for error scale distance.
+
+    Raises:
+        ValueError: If ``arm_dof_indices`` is empty.
     """
 
     def __init__(
@@ -149,11 +170,20 @@ class PositionBasedIKController:
         max_joint_step_rad: float = 0.0,
         min_manipulability: float = 0.001,
         error_scale_distance: float = 0.5,
+        *,
+        arm_dof_indices: Sequence[int] | None = None,
     ) -> None:
+        if arm_dof_indices is None:
+            arm_dof_indices = range(num_arm_dofs)
+        if len(arm_dof_indices) != num_arm_dofs:
+            raise ValueError("num_arm_dofs must match the number of arm_dof_indices")
+        if len(arm_dof_indices) == 0:
+            raise ValueError("arm_dof_indices must name at least one articulation DOF")
         self._robot = robot
         self._ee_link = ee_link
         self._ee_link_index = ee_link_index
-        self._num_arm_dofs = num_arm_dofs
+        self._arm_dof_indices = np.asarray(arm_dof_indices, dtype=np.int64)
+        self._num_arm_dofs = len(self._arm_dof_indices)
         self._method = method
         self._scale = scale
         self._damping = damping
@@ -167,6 +197,7 @@ class PositionBasedIKController:
         self._filtered_position: np.ndarray | None = None
         self._filtered_orientation: np.ndarray | None = None
         self._reachable: bool = True
+        self._floating_base_reported: bool = False
 
     @property
     def reachable(self) -> bool:
@@ -285,7 +316,10 @@ class PositionBasedIKController:
             current_dofs = self._robot.get_dof_positions().numpy()
             ee_pos_np, ee_orient_np = (arr.numpy() for arr in self._ee_link.get_world_poses())
             jacobians = self._robot.get_jacobian_matrices().numpy()
-            jacobian_ee = jacobians[:, self._ee_link_index - 1, :, : self._num_arm_dofs]
+            jacobian_ee = slice_ee_jacobian(jacobians, self._robot.num_dofs, self._ee_link_index, self._arm_dof_indices)
+        except FloatingBaseArticulationError as exc:
+            self._report_floating_base(exc)
+            return None
         except (AssertionError, RuntimeError):
             return None
 
@@ -321,7 +355,7 @@ class PositionBasedIKController:
 
         if self._max_joint_step_rad > 0.0:
             delta = np.clip(delta, -self._max_joint_step_rad, self._max_joint_step_rad)
-        new_positions = current_dofs[:, : self._num_arm_dofs] + delta
+        new_positions = current_dofs[:, self._arm_dof_indices] + delta
 
         return new_positions.squeeze(0)
 
@@ -332,3 +366,15 @@ class PositionBasedIKController:
         self._filtered_position = None
         self._filtered_orientation = None
         self._reachable = True
+
+    def _report_floating_base(self, error: FloatingBaseArticulationError) -> None:
+        """Report a refused floating-base articulation once per solver.
+
+        Args:
+            error: The refusal raised while slicing the Jacobian.
+        """
+        self._reachable = False
+        if self._floating_base_reported:
+            return
+        self._floating_base_reported = True
+        carb.log_warn(f"[Teleop][IK] {error}")

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.7] - 2026-09-16
+### Removed
+- Remove unused aioboto3 dependency.
+
+## [1.5.6] - 2026-09-03
+### Changed
+- Update boto3 to 1.41.5
+- Update botocore to 1.41.5
+- Update s3transfer to 0.15.0
+
 ## [1.5.5] - 2026-08-26
 ### Security
 - Update cryptography to 50.0.1.

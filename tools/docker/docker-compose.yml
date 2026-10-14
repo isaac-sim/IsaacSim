@@ -43,10 +43,12 @@ services:
       timeout: 10s
       start_period: 180s
       retries: 3
-      test: ["CMD-SHELL", "logdir=/isaac-sim/.nvidia-omniverse/logs/Kit; [ -d \"$$logdir\" ] && latest=$$(ls -t \"$$logdir\"/*/*/kit_*.log 2>/dev/null | head -1) && [ -n \"$$latest\" ] && grep -q AppReady \"$$latest\" && exit 0; exit 1"]
+      # Match completed viewport startup, not an AppReady delay notice.
+      test: ["CMD-SHELL", "logdir=/isaac-sim/.nvidia-omniverse/logs/Kit; [ -d \"$$logdir\" ] && latest=$$(ls -t \"$$logdir\"/*/*/kit_*.log 2>/dev/null | head -1) && [ -n \"$$latest\" ] && grep -Eq \" App is loaded[.]$\" \"$$latest\" && exit 0; exit 1"]
     environment:
       - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICE:-all}
       - ACCEPT_EULA=Y
+      - ISAACSIM_PHYSICS_ENGINE=${ISAACSIM_PHYSICS_ENGINE:-physx}
       - ISAACSIM_HOST=${ISAACSIM_HOST:-127.0.0.1}
       - ISAACSIM_SIGNAL_PORT=${ISAACSIM_SIGNAL_PORT:-49100}
       - ISAACSIM_STREAM_PORT=${ISAACSIM_STREAM_PORT:-47998}

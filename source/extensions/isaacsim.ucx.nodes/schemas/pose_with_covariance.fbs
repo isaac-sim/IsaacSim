@@ -10,7 +10,7 @@ table PoseWithCovariance {
   pose: Pose (id: 0);
 
   // The covariance matrix of the pose.
-  covariance: Tensor (id: 1);
+  covariance: holoscan.schema.Tensor (id: 1);
 }
 
 root_type PoseWithCovariance;

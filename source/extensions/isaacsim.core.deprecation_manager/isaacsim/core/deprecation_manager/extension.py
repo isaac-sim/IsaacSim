@@ -111,6 +111,7 @@ class Extension(omni.ext.IExt):
         """
         usd_reference_paths = set()
         deprecation_changes = []
+        unmigrated_nodes = []
         for prim in omni.usd.get_context().get_stage().Traverse():
             # OmniGraph node
             if prim.HasAttribute("node:type"):
@@ -119,10 +120,14 @@ class Extension(omni.ext.IExt):
                 # iterate through entries
                 for entry in self._omnigraph_entries:
                     if entry["deprecated"] in value:
-                        # rename OmniGraph type
-                        new_value = value.replace(entry["deprecated"], entry["new"])
-                        attr.Set(new_value)
-                        deprecation_changes.append((entry["deprecated"], entry["new"], value, new_value))
+                        if entry["new"]:
+                            # rename OmniGraph type
+                            new_value = value.replace(entry["deprecated"], entry["new"])
+                            attr.Set(new_value)
+                            deprecation_changes.append((entry["deprecated"], entry["new"], value, new_value))
+                        else:
+                            # no automatic migration available for this node type
+                            unmigrated_nodes.append((prim.GetPath().pathString, value))
                         # find USD references
                         while prim.IsValid() and (prim := prim.GetParent()).IsValid():
                             references = omni.usd.get_composed_references_from_prim(prim, False)
@@ -145,50 +150,64 @@ class Extension(omni.ext.IExt):
                                         )
                                     )
                                 break
-        if not deprecation_changes:
+                        break
+        if not deprecation_changes and not unmigrated_nodes:
             return
         usd_reference_paths = sorted(usd_reference_paths, key=lambda item: (item[0], item[1]), reverse=True)
         usd_reference_paths = list(dict.fromkeys([item[2] for item in usd_reference_paths]))
         deprecation_changes = sorted(set(deprecation_changes), key=lambda item: item[2])
         # show deprecation message
         save_message = "" if usd_reference_paths else "Save it to preserve the changes."
-        carb.log_warn(f"The stage contains the following deprecated nodes that have been updated. {save_message}")
+        if deprecation_changes:
+            carb.log_warn(f"The stage contains the following deprecated nodes that have been updated. {save_message}")
         if usd_reference_paths:
             carb.log_warn(
                 f"  |-- Referenced assets (open listed assets in order before the current one to preserve changes on each reference):"
             )
             for item in usd_reference_paths:
                 carb.log_warn(f"  |     |-- {item}")
-        carb.log_warn(f"  |-- Deprecated nodes:")
-        for item in deprecation_changes:
-            carb.log_warn(f"  |     |-- {item[2]} -> {item[3]}")
+        if deprecation_changes:
+            carb.log_warn(f"  |-- Deprecated nodes:")
+            for item in deprecation_changes:
+                carb.log_warn(f"  |     |-- {item[2]} -> {item[3]}")
+        if unmigrated_nodes:
+            carb.log_error("The stage contains deprecated nodes with no automatic migration. Update them manually:")
+            for path, node_type in unmigrated_nodes:
+                carb.log_error(f"  |     |-- {path} ({node_type})")
         # show notification in Kit window
         try:
             import omni.kit.notification_manager as notification_manager
         except ImportError:
             pass
         else:
-            text = f"The stage contains the following deprecated nodes that have been updated. {save_message}\n"
+            text = ""
+            if deprecation_changes:
+                text += f"The stage contains the following deprecated nodes that have been updated. {save_message}\n"
             if usd_reference_paths:
                 text += "\nReferenced assets (open listed assets in order before the current one to preserve changes on each reference):\n"
                 text += "\n".join([f" - {item}" for item in usd_reference_paths]) + "\n"
-            text += "\nDeprecated nodes:\n"
-            text += "\n".join([f" - {item[2]}" for item in deprecation_changes])
+            if deprecation_changes:
+                text += "\nDeprecated nodes:\n"
+                text += "\n".join([f" - {item[2]}" for item in deprecation_changes])
+            if unmigrated_nodes:
+                text += "\n\nDeprecated nodes with no automatic migration (update manually):\n"
+                text += "\n".join([f" - {path}" for path, _ in unmigrated_nodes])
             notification_manager.post_notification(
-                text,
+                text.strip(),
                 duration=0,
                 hide_after_timeout=False,
                 status=notification_manager.NotificationStatus.WARNING,
                 button_infos=[notification_manager.NotificationButtonInfo("OK", on_complete=None)],
             )
 
-        try:
-            # reload all graphs if we made any changes
-            # in some cases the omni.graph.core extension may not be enabled so this is optional
-            import omni.graph.core as og
+        if deprecation_changes:
+            try:
+                # reload all graphs if we made any changes
+                # in some cases the omni.graph.core extension may not be enabled so this is optional
+                import omni.graph.core as og
 
-            all_graphs = og.get_all_graphs()
-            for graph in all_graphs:
-                graph.reload_from_stage()
-        except Exception as e:
-            carb.log_warn(f"Could not reload graphs after renaming nodes: {e}")
+                all_graphs = og.get_all_graphs()
+                for graph in all_graphs:
+                    graph.reload_from_stage()
+            except Exception as e:
+                carb.log_warn(f"Could not reload graphs after renaming nodes: {e}")

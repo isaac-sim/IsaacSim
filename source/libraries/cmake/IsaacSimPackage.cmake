@@ -137,6 +137,78 @@ function(isaacsim_add_group_dependency)
     )
 endfunction()
 
+# Define the private libraries a distribution bundles but does not expose as part of its linked
+# interface. The exported module targets already name them in IMPORTED_LINK_DEPENDENT_LIBRARIES,
+# but nothing defined them, so the names dangled in a consumer's project; defining them lets a
+# consumer resolve their locations, through $<TARGET_RUNTIME_DLLS> or $<TARGET_FILE_DIR>, without
+# naming them itself. Only the location is exported, as these libraries are loaded, never linked,
+# and so ship without an import library.
+function(_isaacsim_install_runtime_exports group_name package_build_dir cmake_dir component)
+    get_property(registered_modules GLOBAL PROPERTY "ISAACSIM_GROUP_${group_name}_MODULES")
+    list(REMOVE_DUPLICATES registered_modules)
+
+    set(runtime_targets "")
+    set(runtime_destinations "")
+    foreach(module_name IN LISTS registered_modules)
+        _isaacsim_get_module_names("${module_name}" module_target module_alias module_path module_output_dir)
+        if(NOT TARGET "${module_target}")
+            continue()
+        endif()
+        get_target_property(module_targets ${module_target} ISAACSIM_EXTERNAL_RUNTIME_TARGETS)
+        get_target_property(module_destinations ${module_target} ISAACSIM_EXTERNAL_RUNTIME_DESTINATIONS)
+        if(module_targets AND NOT module_targets MATCHES "-NOTFOUND$")
+            list(APPEND runtime_targets ${module_targets})
+            list(APPEND runtime_destinations ${module_destinations})
+        endif()
+    endforeach()
+    if(NOT runtime_targets)
+        return()
+    endif()
+
+    # isaacsim_install_runtime_dependencies stages these libraries beside the module binaries,
+    # which Windows keeps in the binary directory and other platforms in the library directory,
+    # below the per-dependency destination it recorded.
+    if(WIN32)
+        set(runtime_root "${CMAKE_INSTALL_BINDIR}")
+    else()
+        set(runtime_root "${CMAKE_INSTALL_LIBDIR}")
+    endif()
+
+    set(runtime_content "")
+    set(emitted_targets "")
+    list(LENGTH runtime_targets runtime_target_count)
+    math(EXPR last_runtime_index "${runtime_target_count} - 1")
+    foreach(runtime_index RANGE ${last_runtime_index})
+        list(GET runtime_targets ${runtime_index} runtime_target)
+        list(GET runtime_destinations ${runtime_index} runtime_destination)
+        if(runtime_target IN_LIST emitted_targets)
+            continue()
+        endif()
+        list(APPEND emitted_targets "${runtime_target}")
+        set(runtime_directory "${runtime_root}")
+        if(NOT runtime_destination STREQUAL ".")
+            string(APPEND runtime_directory "/${runtime_destination}")
+        endif()
+        string(APPEND runtime_content
+            "if(NOT TARGET ${runtime_target})\n"
+            "    add_library(${runtime_target} SHARED IMPORTED)\n"
+            "    set_target_properties(${runtime_target} PROPERTIES\n"
+            "        IMPORTED_LOCATION"
+            " \"\${PACKAGE_PREFIX_DIR}/${runtime_directory}/$<TARGET_FILE_NAME:${runtime_target}>\"\n"
+            "    )\n"
+            "endif()\n"
+        )
+    endforeach()
+
+    # PACKAGE_PREFIX_DIR is provided by the generated config file that includes this one. One
+    # output serves every configuration: these are prebuilt dependency libraries carrying a single
+    # IMPORTED_LOCATION, so the evaluated name does not vary by configuration, which is what
+    # file(GENERATE) requires of a path that does not name one.
+    set(runtime_file "${package_build_dir}/${group_name}Runtime.cmake")
+    file(GENERATE OUTPUT "${runtime_file}" CONTENT "${runtime_content}")
+    install(FILES "${runtime_file}" DESTINATION "${cmake_dir}" COMPONENT "${component}")
+endfunction()
+
 function(_isaacsim_make_json_array output)
     set(result "")
     set(separator "")
@@ -282,6 +354,9 @@ function(isaacsim_finalize_modules)
                 DESTINATION "${package_cmake_dir}"
                 COMPONENT "${development_component}"
             )
+            _isaacsim_install_runtime_exports(
+                "${group_name}" "${package_build_dir}" "${package_cmake_dir}" "${development_component}"
+            )
         endif()
 
         get_property(python_imports GLOBAL PROPERTY "ISAACSIM_GROUP_${group_name}_PYTHON_IMPORTS")
@@ -386,6 +461,7 @@ function(isaacsim_finalize_modules)
                         LIBRARY
                             DESTINATION "${ISAACSIM_PYTHON_INSTALL_DIR}/isaacsim/lib"
                             COMPONENT "${python_component}"
+                            NAMELINK_SKIP
                     )
                 endforeach()
             endif()

@@ -41,6 +41,7 @@ from isaacsim.core.experimental.objects import Cube
 from isaacsim.core.experimental.prims import XformPrim
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.core.experimental.utils import transform as transform_utils
+from isaacsim.core.simulation_manager import SimulationManager
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
 from isaacsim.sensors.experimental.rtx import RtxCamera
 from isaacsim.test.utils import save_depth_image
@@ -278,11 +279,13 @@ class TestRos2CameraInfo(ROS2TestCase):
         for num in range(3):
             print(f"Play #{num+1}")
             self._timeline.play()
+            await self.wait_for_publishers_on_topic(node, "/camera_info", timeout_sec=10.0, per_frame_callback=spin)
 
             await self.simulate_until_condition(
                 lambda: self._camera_info is not None and self._camera_info.header.stamp.sec >= 1.0,
                 max_frames=120,
                 per_frame_callback=spin,
+                failure_message="Monocular CameraInfo with a timestamp of at least 1 second was not received",
             )
 
             self._timeline.stop()
@@ -739,8 +742,13 @@ class TestRos2CameraInfo(ROS2TestCase):
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
+        # Advance beyond the two-second receive window after restart so an
+        # unreset timestamp cannot appear valid because of delayed delivery.
         await self.simulate_until_condition(
-            lambda: self._camera_info_sim_time is not None, max_frames=120, per_frame_callback=spin_sim_time
+            lambda: self._camera_info_sim_time is not None and self._camera_info_sim_time.header.stamp.sec >= 3,
+            max_frames=240,
+            per_frame_callback=spin_sim_time,
+            failure_message="No CameraInfo timestamp reached 3s before stopping",
         )
 
         self.assertIsNotNone(self._camera_info_sim_time)
@@ -753,13 +761,20 @@ class TestRos2CameraInfo(ROS2TestCase):
         self._timeline.stop()
         await omni.kit.app.get_app().next_update_async()
 
-        # Check if sim time reset to Zero
+        # Discard messages queued during the previous playback.
+        self.destroy_subscription(node_sim, camera_info_sub_sim)
+        camera_info_sub_sim = self.create_subscription(
+            node_sim, CameraInfo, "camera_info_left", camera_info_sim_time_callback, get_qos_profile()
+        )
         self._camera_info_sim_time = None
         self._timeline.play()
         await omni.kit.app.get_app().next_update_async()
 
         await self.simulate_until_condition(
-            lambda: self._camera_info_sim_time is not None, max_frames=120, per_frame_callback=spin_sim_time
+            lambda: self._camera_info_sim_time is not None,
+            max_frames=120,
+            per_frame_callback=spin_sim_time,
+            failure_message="No CameraInfo message received after restarting playback",
         )
 
         self.assertIsNotNone(self._camera_info_sim_time)
@@ -767,12 +782,13 @@ class TestRos2CameraInfo(ROS2TestCase):
             self._camera_info_sim_time.header.stamp.sec + self._camera_info_sim_time.header.stamp.nanosec * 1e-9
         )
         self.assertGreaterEqual(sim_timestamp, 0.0, "Simulation time should be >= 0")
-        # After ``timeline.stop()`` sim time must reset; the next message
-        # arriving after ``play()`` should therefore carry a small (near-zero)
-        # stamp.  Use an absolute bound rather than a ratio of the previous
-        # value since both timestamps are discrete frame counts (a single
-        # scheduler-induced one-frame difference can exceed any tight ratio).
-        self.assertLessEqual(sim_timestamp, 1.0, "Simulation time should reset close to zero after stop")
+        # Discovery and delivery can take more than one simulation second.
+        # A reset timestamp must belong to the current simulation clock.
+        self.assertLessEqual(
+            sim_timestamp,
+            SimulationManager.get_simulation_time() + 1e-6,
+            "CameraInfo timestamp should follow the restarted simulation clock",
+        )
 
     async def test_camera_info_sim_time_monotonic(self) -> None:
         """Test camera info sim time monotonic."""
@@ -1540,6 +1556,8 @@ class TestRos2CameraInfo(ROS2TestCase):
         self.create_subscription(node, CameraInfo, "camera_info_right_nd", on_right, get_qos_profile(depth=10))
 
         self._timeline.play()
+        for topic in ("/camera_info_left_nd", "/camera_info_right_nd"):
+            await self.wait_for_publishers_on_topic(node, topic, timeout_sec=10.0)
         condition_met = await self.simulate_until_condition(
             lambda: left_info is not None and right_info is not None, max_frames=120
         )

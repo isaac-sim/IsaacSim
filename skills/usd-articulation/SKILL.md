@@ -14,9 +14,10 @@ Assemble and validate multi-link robot articulations with ArticulationRootAPI, f
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- For standalone schema authoring: matching OpenUSD and
+  `isaacsim-robot-schema` library artifacts.
+- For live articulation interaction, extension commands, or rendering: built
+  Isaac Sim and the environment from `isaac-sim-orchestrator`.
 
 ## Limitations
 
@@ -27,9 +28,18 @@ Assemble and validate multi-link robot articulations with ArticulationRootAPI, f
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
+
+## Schema authoring versus runtime interaction
+
+The robot schema is generated and packaged from
+`source/libraries/isaacsim_usd_schemas/robot/`; use that distribution for
+standalone schema application and validation with OpenUSD. For robot-motion
+schema metadata, use the separate `isaacsim.robot_motion.schema` module. These
+schema packages do not require a Kit extension registry merely to import.
+
+Kit commands, live timeline interaction, UI, and rendering stay on the Kit route.
 
 Two layers stack on a robot USD:
 

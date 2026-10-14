@@ -2027,12 +2027,50 @@ def SaveRobotSchemaToRobotLayer(
     return robot_layer
 
 
+def _migrate_joint_name_override(prim: pxr.Usd.Prim) -> None:
+    """Migrate a joint-only legacy name opinion owned by the current edit target.
+
+    Args:
+        prim: Prim whose local legacy joint name is migrated.
+    """
+    if not prim.HasAPI(Classes.JOINT_API.value) or prim.HasAPI(Classes.LINK_API.value):
+        return
+    legacy = prim.GetAttribute(Attributes.NAME_OVERRIDE.name)
+    if not legacy:
+        return
+    edit_target = prim.GetStage().GetEditTarget()
+    spec = edit_target.GetPropertySpecForScenePath(legacy.GetPath())
+    if not spec:
+        # A referenced or weaker layer owns this property; do not alter that layer.
+        return
+    canonical = prim.GetAttribute(Attributes.JOINT_NAME_OVERRIDE.name)
+    if not canonical or not canonical.HasAuthoredValueOpinion():
+        # A declaration is not a value opinion. Do not promote composed values
+        # from references or stronger layers into the edit target. Time-sampled
+        # names are left untouched rather than discarding their samples.
+        if spec.layer.ListTimeSamplesForPath(spec.path):
+            return
+        if not spec.HasDefaultValue():
+            prim.RemoveProperty(Attributes.NAME_OVERRIDE.name)
+            return
+        value = spec.default
+        if value is not None:
+            prim.CreateAttribute(Attributes.JOINT_NAME_OVERRIDE.name, pxr.Sdf.ValueTypeNames.String, custom=False).Set(
+                value
+            )
+    prim.RemoveProperty(Attributes.NAME_OVERRIDE.name)
+
+
 def UpdateDeprecatedSchemas(robot_prim: pxr.Usd.Prim) -> None:
     """Update deprecated schemas under a robot prim to their replacements.
 
     Traverses all prims under ``robot_prim``, replaces ``IsaacReferencePointAPI``
     with ``IsaacSiteAPI`` in the apiSchemas metadata, and migrates deprecated
     per-axis DoFOffset attributes on joints that have ``IsaacJointAPI``.
+    Joint-only ``isaac:nameOverride`` opinions in the current edit target are
+    migrated to ``isaac:NameOverride`` and removed. An authored canonical value
+    takes precedence, including an empty value. Prims also carrying ``IsaacLinkAPI``
+    retain their link names. Referenced and other non-edit-target layers are not modified.
 
     Args:
         robot_prim: The robot prim whose subtree to scan and update.
@@ -2048,6 +2086,7 @@ def UpdateDeprecatedSchemas(robot_prim: pxr.Usd.Prim) -> None:
     joint_schema = Classes.JOINT_API.value
 
     for prim in pxr.Usd.PrimRange(robot_prim):
+        _migrate_joint_name_override(prim)
         prim_spec = edit_layer.GetPrimAtPath(prim.GetPath())
         if not prim_spec:
             continue

@@ -36,11 +36,22 @@ UsdNoticeListener::UsdNoticeListener()
 
 void UsdNoticeListener::handle(const pxr::UsdNotice::ObjectsChanged& objectsChanged)
 {
+    if (!m_enableFlag)
+    {
+        return;
+    }
+
+    auto usdContext = omni::usd::UsdContext::getContext();
+    if (!usdContext)
+    {
+        return;
+    }
+
     // TODO: only listen to the stage of interest here once Isaac can work with multiple stages
-    pxr::UsdStagePtr attachedStage = omni::usd::UsdContext::getContext()->getStage();
+    pxr::UsdStagePtr attachedStage = usdContext->getStage();
     pxr::UsdStageWeakPtr stage = objectsChanged.GetStage();
 
-    if (!this->m_enableFlag || stage != attachedStage)
+    if (!attachedStage || stage != attachedStage)
     {
         return;
     }

@@ -95,6 +95,10 @@
   - dof_names: list[str]
   - num_dofs: int
   - arm_dofs: int | None
+  - articulation_root_paths: list[str]
+  - is_fixed_base: bool | None
+  - arm_dof_names: list[str]
+  - arm_dof_indices: list[int]
 
 - class JointMapping
   - name: str
@@ -165,6 +169,8 @@
   - def set_ee_link_name(self, side: Literal[left, right], name: str)
   - def set_ee_rotation_offsets(self, side: Literal[left, right], x_deg: float = DEFAULT_ROTATION_OFFSET_DEG, y_deg: float = DEFAULT_ROTATION_OFFSET_DEG, z_deg: float = DEFAULT_ROTATION_OFFSET_DEG)
   - def compute_arm_dofs(self, side: Literal[left, right]) -> int | None
+  - def compute_arm_dof_names(self, side: Literal[left, right]) -> list[str] | None
+  - def get_arm_dof_indices(self, side: Literal[left, right]) -> list[int]
   - def set_num_arm_dofs(self, side: Literal[left, right], n: int)
   - def set_ik_method(self, side: Literal[left, right], method: IKMethod)
   - def get_ik_method(self, side: Literal[left, right]) -> IKMethod
@@ -578,6 +584,7 @@
 - def get_supported_floating_grippers() -> tuple[str, Ellipsis]
 - async def load_floating_grippers_async(assignments: Mapping[str, str], spawn_poses: PoseMap) -> dict[str, dict[str, str]]
 - async def move_floating_grippers_to_targets_async(context: dict[str, Any], targets: PoseMap) -> MotionResult
+- async def resolve_floating_gripper_asset_path_async(asset_path: str) -> str
 - async def set_floating_gripper_grasp_async(context: Mapping[str, Any], close: bool)
 - async def setup_floating_gripper_controllers_async(assignments: Mapping[str, str], paths: Mapping[str, Mapping[str, str]], initial_poses: PoseMap) -> dict[str, Any]
 - def stop_floating_gripper_controllers(context: Mapping[str, Any])

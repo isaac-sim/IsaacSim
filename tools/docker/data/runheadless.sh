@@ -14,6 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Select the streaming experience while preserving PhysX as the default.
+case "${ISAACSIM_PHYSICS_ENGINE:-physx}" in
+    physx) ISAACSIM_LAUNCHER="/isaac-sim/isaac-sim.streaming.sh" ;;
+    newton) ISAACSIM_LAUNCHER="/isaac-sim/isaac-sim.newton.streaming.sh" ;;
+    *)
+        printf '%s\n' "Unsupported ISAACSIM_PHYSICS_ENGINE: ${ISAACSIM_PHYSICS_ENGINE}. Expected physx or newton." >&2
+        exit 2
+        ;;
+esac
+
+if [ ! -x "$ISAACSIM_LAUNCHER" ]; then
+    printf '%s\n' "Streaming launcher is missing or not executable: ${ISAACSIM_LAUNCHER}" >&2
+    exit 1
+fi
+
 # Optional flags from env (only add each if set); pass before "$@" so docker run args can override
 EXTRA_FLAGS=""
 [ -n "${OMNI_SERVER}" ] && EXTRA_FLAGS="${EXTRA_FLAGS} --/persistent/isaac/asset_root/default=${OMNI_SERVER}"
@@ -21,7 +36,7 @@ EXTRA_FLAGS=""
 [ -n "${ISAACSIM_SIGNAL_PORT}" ] && EXTRA_FLAGS="${EXTRA_FLAGS} --/exts/omni.kit.livestream.app/primaryStream/signalPort=${ISAACSIM_SIGNAL_PORT}"
 [ -n "${ISAACSIM_STREAM_PORT}" ] && EXTRA_FLAGS="${EXTRA_FLAGS} --/exts/omni.kit.livestream.app/primaryStream/streamPort=${ISAACSIM_STREAM_PORT}"
 
-/isaac-sim/license.sh && /isaac-sim/privacy.sh && /isaac-sim/isaac-sim.streaming.sh \
+/isaac-sim/license.sh && /isaac-sim/privacy.sh && "$ISAACSIM_LAUNCHER" \
     --merge-config="/isaac-sim/config/open_endpoint.toml" \
     $EXTRA_FLAGS \
     "$@"

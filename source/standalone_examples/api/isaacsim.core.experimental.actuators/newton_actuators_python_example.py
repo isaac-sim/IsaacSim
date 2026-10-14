@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 
 _parser = argparse.ArgumentParser(description="Newton actuators Python tutorial example.")
+_parser.add_argument("--test", action="store_true", help="Run headless for native Python testing.")
 _parser.add_argument(
     "--non-ideal",
     action="store_true",
@@ -50,7 +51,7 @@ args, _ = _parser.parse_known_args()
 
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": args.test, "disable_viewport_updates": args.test})
 
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.app
@@ -82,7 +83,7 @@ async def setup_stage_with_franka() -> None:
 # 2. Building a stock PD actuator config
 # ============================================================================
 def build_pd_actuator_config(n_robots: int, kp: float, kd: float) -> ActuatorConfig:
-    """Build an ActuatorConfig with a Newton ``ControllerPD``.
+    """Build an ActuatorConfig with a Newton ``DrivePD``.
 
     Args:
         n_robots: Number of robot instances controlled by the actuator.
@@ -95,12 +96,12 @@ def build_pd_actuator_config(n_robots: int, kp: float, kd: float) -> ActuatorCon
     # <start-build-pd-config-snippet>
     import warp as wp
     from isaacsim.core.experimental.actuators import ActuatorConfig
-    from newton.actuators import ControllerPD
+    from newton.actuators import DrivePD
 
     # Per-robot Warp arrays.  Even a single-robot scene must size them with
     # n_robots = len(Articulation(paths)).
     pd_config = ActuatorConfig(
-        controller=ControllerPD(
+        controller=DrivePD(
             kp=wp.array([kp] * n_robots, dtype=wp.float32),
             kd=wp.array([kd] * n_robots, dtype=wp.float32),
         )
@@ -130,10 +131,10 @@ def build_pd_with_clamping_and_delay(n_robots: int, kp: float, kd: float, max_ef
     # <start-build-pd-with-clamping-snippet>
     import warp as wp
     from isaacsim.core.experimental.actuators import ActuatorConfig
-    from newton.actuators import ClampingMaxEffort, ControllerPD, Delay
+    from newton.actuators import ClampingMaxEffort, Delay, DrivePD
 
     config = ActuatorConfig(
-        controller=ControllerPD(
+        controller=DrivePD(
             kp=wp.array([kp] * n_robots, dtype=wp.float32),
             kd=wp.array([kd] * n_robots, dtype=wp.float32),
         ),
@@ -281,7 +282,7 @@ def main() -> None:
         # ``SimulationManager`` lifecycle callback owned by the instance and is
         # guaranteed to run even if the body raises.
         with construct() as actuated:
-            drive_to_target(actuated)
+            drive_to_target(actuated, num_steps=10 if args.test else 240)
         # <end-context-manager-snippet>
     finally:
         omni.timeline.get_timeline_interface().stop()

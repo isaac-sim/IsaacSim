@@ -34,7 +34,34 @@ if(NOT TEST_CASE STREQUAL missing_stage)
     add_custom_target(stage-isaacsim-dependency-module-python)
 endif()
 
-if(TEST_CASE STREQUAL valid OR TEST_CASE STREQUAL missing_stage)
+add_custom_target(isaacsim-owned-runtime)
+set_property(TARGET isaacsim-owned-runtime PROPERTY ISAACSIM_GROUP_NAME consumer)
+add_custom_target(isaacsim-dependency-runtime)
+set_property(TARGET isaacsim-dependency-runtime PROPERTY ISAACSIM_GROUP_NAME dependency)
+add_custom_target(external-python-runtime)
+set_property(TARGET external-python-runtime PROPERTY ISAACSIM_PYTHON_RUNTIME_EXCLUDED TRUE)
+if(TEST_CASE STREQUAL windows_runtime_ownership)
+    set(WIN32 TRUE)
+endif()
+_isaacsim_should_copy_runtime_target(
+    isaacsim-owned-runtime consumer owned_runtime_matches)
+_isaacsim_should_copy_runtime_target(
+    isaacsim-dependency-runtime consumer dependency_runtime_matches)
+_isaacsim_should_copy_runtime_target(
+    external-python-runtime consumer external_runtime_matches)
+if(NOT owned_runtime_matches
+   OR (WIN32 AND NOT dependency_runtime_matches)
+   OR (NOT WIN32 AND dependency_runtime_matches)
+   OR external_runtime_matches)
+    message(FATAL_ERROR
+        "Runtime ownership filter returned "
+        "${owned_runtime_matches}/${dependency_runtime_matches}/${external_runtime_matches}"
+    )
+endif()
+
+if(TEST_CASE STREQUAL valid
+   OR TEST_CASE STREQUAL missing_stage
+   OR TEST_CASE STREQUAL windows_runtime_ownership)
     _isaacsim_resolve_nanobind_stub_preloads(
         "isaacsim.consumer.module"
         preload_modules
@@ -84,6 +111,7 @@ function(configure_case test_case should_succeed expected_message)
 endfunction()
 
 configure_case(valid TRUE "")
+configure_case(windows_runtime_ownership TRUE "")
 configure_case(unknown FALSE "has no registered nanobind")
 configure_case(missing_stage FALSE "has no staged nanobind")
 configure_case(invalid FALSE "Invalid lowercase dotted module name")

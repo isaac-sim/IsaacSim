@@ -18,6 +18,8 @@
 import os
 import tempfile
 
+import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.ui as ui
 from isaacsim.replicator.teleop import (
     AnchorRotationMode,
@@ -36,6 +38,108 @@ MENU_PATH = f"{TeleopUIExtension.MENU_GROUP}/{TeleopUIExtension.WINDOW_NAME}"
 
 class TestTeleopUIProfile(MenuUITestCase):
     """Round-trip a unified teleop profile through the live Profiles panel."""
+
+    async def test_new_stage_resets_debug_mode_and_validation_status(self) -> None:
+        """A stage replacement clears debug runtime input without discarding the selected profile."""
+        app_utils.stop()
+        await stage_utils.create_new_stage_async()
+        window = None
+
+        with tempfile.TemporaryDirectory(prefix="teleop_ui_stage_reset_") as tmp_dir:
+            try:
+                await self.menu_click_with_retry(MENU_PATH, window_name=WINDOW_TITLE)
+                window = ui.Workspace.get_window(WINDOW_TITLE)
+                self.assertIsNotNone(window)
+                window._last_profile_path = os.path.join(tmp_dir, "last_profile.yaml")
+                window.visible = True
+                await self.wait_n_frames(3)
+
+                session = window._session_panel
+                profiles = window._teleop_profile_panel
+                debug_checkbox = session._debug_tracking_cb
+                grasp_slider = next(
+                    widget for widget in session._debug_input_widgets if isinstance(widget, ui.FloatSlider)
+                )
+                profiles._status_label.text = "Ready"
+                debug_checkbox.model.set_value(True)
+                grasp_slider.model.set_value(0.75)
+                await self.wait_n_frames(2)
+                self.assertTrue(window._teleop_manager.debug_tracking_enabled)
+                self.assertAlmostEqual(window._teleop_manager._debug_left_snapshot.inputs.trigger_value, 0.75)
+
+                await stage_utils.create_new_stage_async()
+                await self.wait_n_frames(2)
+                self.assertFalse(window._teleop_manager.debug_tracking_enabled)
+                self.assertFalse(debug_checkbox.model.get_value_as_bool())
+                self.assertAlmostEqual(grasp_slider.model.get_value_as_float(), 0.0)
+                self.assertAlmostEqual(window._teleop_manager._debug_left_snapshot.inputs.trigger_value, 0.0)
+                self.assertEqual(profiles._status_label.text, "Stage changed - revalidate profile")
+
+                debug_checkbox.model.set_value(True)
+                await self.wait_n_frames(2)
+                self.assertTrue(window._teleop_manager.debug_tracking_enabled)
+            finally:
+                app_utils.stop()
+                if window is not None:
+                    window.destroy()
+                stage_utils.close_stage()
+
+    async def test_load_requires_stopped_timeline(self) -> None:
+        """Disable profile loading during Play and Pause without changing live panel state."""
+        window = None
+        app_utils.stop()
+
+        with tempfile.TemporaryDirectory(prefix="teleop_ui_profile_") as tmp_dir:
+            try:
+                await self.menu_click_with_retry(MENU_PATH, window_name=WINDOW_TITLE)
+                window = ui.Workspace.get_window(WINDOW_TITLE)
+                self.assertIsNotNone(window)
+                window._last_profile_path = os.path.join(tmp_dir, "last_profile.yaml")
+                window.visible = True
+                await self.wait_n_frames(5)
+
+                profile = TeleopProfile(session=TeleopSettingsProfile(marker_scale=0.137))
+                ok, message = save_teleop_profile(os.path.join(tmp_dir, "while_playing.yaml"), profile)
+                self.assertTrue(ok, message)
+                panel = window._teleop_profile_panel
+                debug_checkbox = window._session_panel._debug_tracking_cb
+                marker_scale_field = window._session_panel._marker_scale_field
+                marker_scale_field.model.set_value(0.211)
+                panel._dir_field.model.set_value(tmp_dir)
+                panel._on_directory_changed()
+                await self.wait_n_frames(2)
+                names = [name for name, _ in panel._profiles]
+                panel._profile_combo.model.get_item_value_model().set_value(names.index("while_playing"))
+                self.assertTrue(panel._load_button.enabled)
+                self.assertTrue(debug_checkbox.enabled)
+
+                app_utils.play()
+                await self.wait_n_frames(3)
+                self.assertFalse(panel._load_button.enabled)
+                self.assertFalse(debug_checkbox.enabled)
+                panel._on_load_clicked()
+                self.assertAlmostEqual(marker_scale_field.model.get_value_as_float(), 0.211, places=4)
+                applied, reason = window.apply_teleop_profile(profile)
+                self.assertFalse(applied, reason)
+
+                app_utils.pause()
+                await self.wait_n_frames(3)
+                self.assertFalse(panel._load_button.enabled)
+                self.assertFalse(debug_checkbox.enabled)
+                panel._on_load_clicked()
+                self.assertAlmostEqual(marker_scale_field.model.get_value_as_float(), 0.211, places=4)
+
+                app_utils.stop()
+                await self.wait_n_frames(3)
+                self.assertTrue(panel._load_button.enabled)
+                self.assertTrue(debug_checkbox.enabled)
+                panel._on_load_clicked()
+                self.assertAlmostEqual(marker_scale_field.model.get_value_as_float(), 0.137, places=4)
+            finally:
+                app_utils.stop()
+                if window is not None:
+                    window._last_profile_path = os.path.join(tmp_dir, "last_profile.yaml")
+                    window.destroy()
 
     async def test_load_profile_applies_to_session_panel(self) -> None:
         """A YAML profile loaded through the Profiles panel must update session state."""

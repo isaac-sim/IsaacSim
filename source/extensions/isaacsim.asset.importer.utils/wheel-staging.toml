@@ -1,0 +1,3 @@
+[wheel]
+distribution = "isaacsim_asset"
+python-modules = ["isaacsim.asset.importer.utils"]

@@ -54,13 +54,75 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
 
         params = rule.get_configuration_parameters()
 
-        self.assertEqual(len(params), 5)
+        self.assertEqual(len(params), 6)
         param_names = [p.name for p in params]
         self.assertIn("scope", param_names)
         self.assertIn("materials_layer", param_names)
         self.assertIn("textures_folder", param_names)
+        self.assertIn("mdl_folder", param_names)
         self.assertIn("deduplicate", param_names)
         self.assertIn("download_textures", param_names)
+        self._success = True
+
+    async def test_process_rule_bundles_local_mdl_import_closure(self) -> None:
+        """Verify a bundled MDL and its sibling import closure are transferred together.
+
+        A material whose ``info:mdl:sourceAsset`` resolves to a real ``.mdl`` file
+        that ``import``s a sibling module must have both modules copied into the
+        MDL folder (not the textures folder) so the relocated package still
+        compiles.
+        """
+        source_dir = os.path.join(self._tmpdir, "source")
+        os.makedirs(source_dir, exist_ok=True)
+
+        # Primary MDL imports a sibling module by relative name.
+        primary_mdl = os.path.join(source_dir, "MyMaterial.mdl")
+        with open(primary_mdl, "w", encoding="utf-8") as f:
+            f.write(
+                "mdl 1.6;\nimport MyMaterialBase::*;\n// import ::df::*;\nexport material MyMaterial() = material();\n"
+            )
+        sibling_mdl = os.path.join(source_dir, "MyMaterialBase.mdl")
+        with open(sibling_mdl, "w", encoding="utf-8") as f:
+            f.write("mdl 1.6;\nexport material MyMaterialBase() = material();\n")
+
+        stage_path = os.path.join(source_dir, "scene.usda")
+        stage = Usd.Stage.CreateNew(stage_path)
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+        mesh = UsdGeom.Mesh.Define(stage, "/root/Mesh")
+        mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+        mesh.GetFaceVertexCountsAttr().Set([3])
+        mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+
+        mat = UsdShade.Material.Define(stage, "/root/Materials/MyMaterial")
+        shader = UsdShade.Shader.Define(stage, "/root/Materials/MyMaterial/Shader")
+        shader.SetSourceAsset(Sdf.AssetPath(primary_mdl), "mdl")
+        shader.SetSourceAssetSubIdentifier("MyMaterial", "mdl")
+        mat.CreateSurfaceOutput("mdl").ConnectToSource(shader.ConnectableAPI(), "out")
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(mat)
+        stage.Save()
+
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        rule = MaterialsRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "materials_layer": "materials.usda",
+                    "mdl_folder": "materials",
+                }
+            },
+        )
+
+        rule.process_rule()
+
+        mdl_dir = os.path.join(self._tmpdir, "payloads", "materials")
+        self.assertTrue(os.path.exists(os.path.join(mdl_dir, "MyMaterial.mdl")))
+        self.assertTrue(
+            os.path.exists(os.path.join(mdl_dir, "MyMaterialBase.mdl")),
+            "Imported sibling MDL module must be bundled alongside the primary MDL",
+        )
         self._success = True
 
     async def test_process_rule_creates_materials_layer(self) -> None:
@@ -300,19 +362,27 @@ class TestMaterialsRoutingRule(omni.kit.test.AsyncTestCase):
             if isinstance(value, Sdf.AssetPath) and value.path:
                 self.assertFalse(os.path.isabs(value.path))
 
-        textures_dir = os.path.join(self._tmpdir, "Textures")
-        expected_files = [
+        # MDL modules are bundled under the materials-layer folder; textures stay
+        # in the textures folder.
+        mdl_dir = os.path.join(self._tmpdir, "payloads", "materials")
+        expected_mdl_files = [
             "Plastic_ABS.mdl",
             "Rubber_Smooth.mdl",
+        ]
+        for filename in expected_mdl_files:
+            self.assertTrue(os.path.exists(os.path.join(mdl_dir, filename)))
+
+        textures_dir = os.path.join(self._tmpdir, "Textures")
+        expected_texture_files = [
             "Rubber_Smooth_BaseColor.png",
             "Rubber_Smooth_ORM.png",
             "Rubber_Smooth_Normal.png",
         ]
-        for filename in expected_files:
+        for filename in expected_texture_files:
             self.assertTrue(os.path.exists(os.path.join(textures_dir, filename)))
 
         # Verify MDL texture references are relative
-        mdl_output_path = os.path.join(textures_dir, "Rubber_Smooth.mdl")
+        mdl_output_path = os.path.join(mdl_dir, "Rubber_Smooth.mdl")
         with open(mdl_output_path, encoding="utf-8", errors="ignore") as f:
             mdl_output_text = f.read()
         self.assertNotIn(self._tmpdir, mdl_output_text)

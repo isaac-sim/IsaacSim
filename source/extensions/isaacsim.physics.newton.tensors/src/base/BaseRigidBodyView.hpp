@@ -293,6 +293,12 @@ public:
     void release() override;
 
 protected:
+    /// Returns preallocated device storage for mask-to-index conversion, or null for CPU views.
+    virtual int* _getDeviceIndexScratch() const
+    {
+        return nullptr;
+    }
+
     /**
      * @brief Evaluates the forward kinematics.
      */
@@ -345,8 +351,18 @@ protected:
                                std::vector<int>& srcOffsets,
                                std::vector<int>& dstIndices) const;
 
+    /**
+     * @brief Checks that the cached Warp pointers still address the Newton stage's current model and state.
+     * @details The Newton stage rebuilds ``model``, ``control`` and ``state_0`` whenever it re-initializes (for example
+     *          after a USD change). The view is bound to the objects it was created against; once the stage holds
+     *          different ones the view is invalidated for good and has to be recreated.
+     * @return True while the view is bound to the stage's current model and state.
+     */
+    bool _checkBinding() const;
+
     py::object m_newtonStage; ///< Newton stage object backing the view.
-    py::object m_model; ///< Newton model object backing the view.
+    mutable py::object m_model; ///< Newton model object the view is bound to; released once invalidated.
+    mutable py::object m_boundState; ///< Newton ``state_0`` object the view is bound to; released once invalidated.
 
     uint32_t m_count; ///< Number of elements in the view.
     uint32_t m_maxShapes; ///< Maximum shape count across all elements in the view.
@@ -357,8 +373,9 @@ protected:
 
     mutable std::vector<uint32_t> m_scratchViewIndices; ///< Scratch buffer reused to resolve view indices without
                                                         ///< per-call allocation.
+    std::vector<uint32_t> m_scratchMaskIndices; ///< Scratch buffer reused to resolve masks to view indices.
 
-    bool m_cacheValid = false; ///< Cache valid.
+    mutable bool m_cacheValid = false; ///< False until the pointers are cached and once the view is invalidated.
     int m_modelDeviceOrdinal = -1; ///< Model device ordinal.
     size_t m_totalBodyCount = 0; ///< Total body count.
 

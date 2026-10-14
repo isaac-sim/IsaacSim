@@ -33,15 +33,15 @@ UcxRequestWaitResult waitForRequestWithTimeout(std::shared_ptr<ucxx::Request> re
     }
 
     const auto startTime = std::chrono::steady_clock::now();
-    // Both 0 and g_kUcxInfiniteTimeout (UINT32_MAX) mean "wait indefinitely". 0 is the
-    // user-facing sentinel exposed via OGN node defaults ("If 0, waits indefinitely");
-    // g_kUcxInfiniteTimeout is the internal sentinel used by direct C++ callers.
-    const bool hasTimeout = (timeoutMs != 0 && timeoutMs != g_kUcxInfiniteTimeout);
+    // g_kUcxInfiniteTimeout (UINT32_MAX) is the only value that waits indefinitely, and it
+    // must be requested explicitly: this loop cannot be interrupted from another thread, so
+    // an unbounded wait on an application update thread freezes the whole application. A
+    // timeout of 0 therefore means "do not wait" - poll once and give up.
+    const bool hasTimeout = (timeoutMs != g_kUcxInfiniteTimeout);
 
-    // Loop until timeout (if specified) or indefinitely if timeout is 0 / g_kUcxInfiniteTimeout
-    while (!hasTimeout ||
-           std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count() <
-               timeoutMs)
+    // The status is always checked at least once, so a timeout of 0 still reports a request
+    // that has already completed rather than cancelling it.
+    while (true)
     {
         if (request->isCompleted())
         {
@@ -56,6 +56,16 @@ UcxRequestWaitResult waitForRequestWithTimeout(std::shared_ptr<ucxx::Request> re
             {
                 errorMessage = e.what();
                 return UcxRequestWaitResult::eFailed;
+            }
+        }
+
+        if (hasTimeout)
+        {
+            const auto elapsedMs =
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count();
+            if (static_cast<uint64_t>(elapsedMs) >= timeoutMs)
+            {
+                break;
             }
         }
 

@@ -211,17 +211,25 @@ class ParameterSpace:
                 return idx
         raise KeyError(f"Parameter entry not registered: {entry!r}")
 
-    def read_usd_baselines(self, stage: Usd.Stage, link_paths: list[str], dof_paths: list[str]) -> None:
+    def read_usd_baselines(
+        self,
+        stage: Usd.Stage,
+        link_paths: list[str],
+        dof_paths: list[str],
+        *,
+        physics_backend: str = "",
+    ) -> None:
         """Capture USD link/joint snapshots and derive Log-Cholesky inertia baselines.
 
         Args:
             stage: USD stage containing the articulation.
             link_paths: Rigid-link prim paths in articulation order.
             dof_paths: Joint prim paths in degree-of-freedom order.
+            physics_backend: Backend whose solver-specific joint properties are read.
         """
         from .usd_parameter_io import read_articulation_usd_snapshots
 
-        links, joints = read_articulation_usd_snapshots(stage, link_paths, dof_paths)
+        links, joints = read_articulation_usd_snapshots(stage, link_paths, dof_paths, physics_backend=physics_backend)
         self._baseline.usd_link_snapshots = links
         self._baseline.usd_joint_snapshots = list(joints)
 

@@ -207,10 +207,8 @@ class Module:
     def state_dict_common(self, prefix: str = "") -> dict[str, object]:
         """Get the state dictionary, including only common types (no images).
 
-        This method gets the state dictionary, but excludes any state values
-        that are tagged with "segmentation" or "rgb" or "depth.  This state is intended to be small
-        (in number of bytes), so it can be efficiently saved with a single call
-        to np.save(...).
+        This method excludes image buffers so the returned state remains small
+        enough to save efficiently with a single ``np.savez(...)`` call.
 
         The buffer list is cached after the first call because the module tree
         and tag assignments are fixed at build time.  Subsequent calls only
@@ -226,7 +224,12 @@ class Module:
         cache_attr = f"_state_dict_common_cache_{prefix}"
         cached = self.__dict__.get(cache_attr)
         if cached is None:
-            cached = list(self.named_buffers(prefix, exclude_tags=["rgb", "segmentation", "depth", "normals"]).items())
+            cached = list(
+                self.named_buffers(
+                    prefix,
+                    exclude_tags=["rgb", "segmentation", "instance_id_segmentation", "depth", "normals"],
+                ).items()
+            )
             self.__dict__[cache_attr] = cached
         return {name: buf.value for name, buf in cached}
 
@@ -251,6 +254,24 @@ class Module:
             The module's state dictionary, including only values tagged "segmentation".
         """
         return self.state_dict(prefix, include_tags=["segmentation"])
+
+    def state_dict_instance_id_segmentation(self, prefix: str = "") -> dict[str, object]:
+        """Get the state dictionary, including only values tagged "instance_id_segmentation".
+
+        Args:
+            prefix: A prefix for state value names. Defaults to "".
+
+        Returns:
+            The module's state dictionary, including only values tagged "instance_id_segmentation".
+
+        Example:
+
+        .. code-block:: python
+
+            >>> sorted(scenario.state_dict_instance_id_segmentation())  # doctest: +NO_CHECK
+            ['robot.front_camera.instance_id_segmentation_image']
+        """
+        return self.state_dict(prefix, include_tags=["instance_id_segmentation"])
 
     def state_dict_depth(self, prefix: str = "") -> dict[str, object]:
         """Get the state dictionary, including only values tagged "depth".

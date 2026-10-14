@@ -42,6 +42,7 @@ import os
 import time
 import warnings
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 from functools import lru_cache
 from typing import Any
 
@@ -263,7 +264,9 @@ class PinkIKController:
         robot: Value for robot.
         ee_link: Value for ee link.
         ee_link_index: Value for ee link index.
-        num_arm_dofs: Value for num arm dofs.
+        num_arm_dofs: Number of controlled joints. Without explicit indices, controls the first N DOFs.
+        arm_dof_indices: Optional articulation DOF indices of the controlled arm joints,
+            in ascending order.
         ee_link_name: Value for ee link name.
         articulation_path: Value for articulation path.
         export_root_path: Value for export root path.
@@ -275,6 +278,10 @@ class PinkIKController:
         max_joint_step_rad: Value for max joint step rad.
         vr_target_filter: Value for vr target filter.
         solver: Value for solver.
+
+    Raises:
+        ValueError: If ``arm_dof_indices`` is empty.
+        ImportError: If the PINK backend or the requested QP solver is unavailable.
     """
 
     @classmethod
@@ -354,7 +361,16 @@ class PinkIKController:
         max_joint_step_rad: float = 0.0,
         vr_target_filter: float = 0.0,
         solver: str = "daqp",
+        *,
+        arm_dof_indices: Sequence[int] | None = None,
     ) -> None:
+        if arm_dof_indices is None:
+            arm_dof_indices = range(num_arm_dofs)
+        if len(arm_dof_indices) != num_arm_dofs:
+            raise ValueError("num_arm_dofs must match the number of arm_dof_indices")
+        if len(arm_dof_indices) == 0:
+            raise ValueError("arm_dof_indices must name at least one articulation DOF")
+
         available, reason = self.get_backend_status()
         if not available:
             raise ImportError(reason)
@@ -368,7 +384,8 @@ class PinkIKController:
         self._robot = robot
         self._ee_link = ee_link
         self._ee_link_index = ee_link_index
-        self._num_arm_dofs = num_arm_dofs
+        self._arm_dof_indices = np.asarray(arm_dof_indices, dtype=np.int64)
+        self._num_arm_dofs = len(self._arm_dof_indices)
         self._max_joint_step_rad = max(0.0, max_joint_step_rad)
         self._vr_target_filter = np.clip(vr_target_filter, 0.0, 0.99)
         self._solver_name = self.normalize_qp_solver_name(solver)
@@ -392,7 +409,7 @@ class PinkIKController:
         self._root_link_world_pose_cache = WorldPosePrimCache()
 
         sim_dof_names = list(robot.dof_names)
-        sim_arm_names = sim_dof_names[:num_arm_dofs]
+        sim_arm_names = [sim_dof_names[index] for index in self._arm_dof_indices]
 
         # ---- 1. Export USD to temp URDF ----
         urdf_path, mesh_dir, root_link_path = _export_urdf(
@@ -425,10 +442,10 @@ class PinkIKController:
         pin_all_names = self._configuration.all_joint_names_pinocchio_order
         pin_ctrl_names = self._configuration.controlled_joint_names_pinocchio_order
 
-        if len(pin_ctrl_names) != num_arm_dofs:
+        if len(pin_ctrl_names) != self._num_arm_dofs:
             missing_in_pin = [name for name in resolved_arm_names if name not in pin_all_names]
             raise RuntimeError(
-                f"Joint name mismatch: matched {len(pin_ctrl_names)}/{num_arm_dofs} "
+                f"Joint name mismatch: matched {len(pin_ctrl_names)}/{self._num_arm_dofs} "
                 f"arm DOFs.  Pinocchio all: {pin_all_names}, "
                 f"Isaac Sim arm: {sim_arm_names}, "
                 f"Resolved URDF arm: {resolved_arm_names}, "
@@ -651,7 +668,7 @@ class PinkIKController:
             return None
 
         all_q = current_dofs[0].astype(np.float64)
-        arm_q = all_q[: self._num_arm_dofs]
+        arm_q = all_q[self._arm_dof_indices]
 
         # Reorder ALL joints Isaac Sim -> Pinocchio and update FK + config
         pin_all_q = all_q[self._all_sim_to_pin]

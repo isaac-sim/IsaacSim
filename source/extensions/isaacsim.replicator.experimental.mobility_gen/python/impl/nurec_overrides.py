@@ -16,12 +16,12 @@
 """Replay setup for NuRec stages.
 
 NuRec (Neural Reconstruction) scenes embed reconstructed geometry as Gaussian-splat
-particle fields or NuRec volumes. Only RGB is a meaningful modality on them; semantic /
-depth / instance / normals annotators have no source data to read.
+particle fields or NuRec volumes. Replay preserves the requested RGB and depth flags;
+semantic segmentation, instance ID segmentation, and normals remain disabled.
 
 ``setup_for_replay`` is the replay entry point: it runs the ``nurec_utils`` render setup
 (detection + case-aware carb overrides + launch-prereq gating) and, when the stage is
-NuRec, restricts the replay modalities to RGB via ``ensure_nurec_replay_flags``.
+NuRec, applies the modality restrictions via ``ensure_nurec_replay_flags``.
 """
 
 from __future__ import annotations
@@ -33,11 +33,9 @@ from isaacsim.replicator.nurec_utils.rendering_setup import setup_for_rendering
 from pxr import Usd
 
 # argparse Namespace attributes forced to a fixed value for NuRec replay.
-# Only RGB is supported on splats.
+# RGB and depth remain caller-controlled.
 _NUREC_REPLAY_FLAG_STATE: dict[str, bool] = {
-    "rgb_enabled": True,
     "segmentation_enabled": False,
-    "depth_enabled": False,
     "instance_id_segmentation_enabled": False,
     "normals_enabled": False,
 }
@@ -49,16 +47,16 @@ _NUREC_RECOMMENDED_RT_SUBFRAMES = 36
 
 
 def ensure_nurec_replay_flags(args: argparse.Namespace) -> None:
-    """Restrict the replay-flag namespace to the NuRec-supported subset (RGB only).
+    """Disable restricted NuRec modalities while preserving RGB and depth flags.
 
-    Mutates ``args`` in place so only ``rgb_enabled`` is True, and warns when
-    ``render_rt_subframes`` is below the recommended value for splats.
+    Disables segmentation and normals in ``args`` without changing RGB or depth.
+    Warns when RGB is enabled and ``render_rt_subframes`` is below the recommended value for splats.
 
     Args:
         args: ``argparse.Namespace`` carrying the replay rendering flag attributes.
             Attributes that are not present are skipped silently.
     """
-    carb.log_warn("[nurec-overrides] NuRec stage; forcing RGB-only replay flags.")
+    carb.log_warn("[nurec-overrides] NuRec stage; preserving RGB/depth flags and disabling segmentation/normals.")
     for name, target in _NUREC_REPLAY_FLAG_STATE.items():
         if not hasattr(args, name):
             carb.log_info(f"[nurec-overrides]    {name}: <not in args namespace, skipped>")
@@ -71,7 +69,11 @@ def ensure_nurec_replay_flags(args: argparse.Namespace) -> None:
         carb.log_warn(f"[nurec-overrides]  * {name}: {current} -> {target}  (FLIPPED)")
 
     rt_subframes = getattr(args, "render_rt_subframes", None)
-    if rt_subframes is not None and rt_subframes < _NUREC_RECOMMENDED_RT_SUBFRAMES:
+    if (
+        getattr(args, "rgb_enabled", False)
+        and rt_subframes is not None
+        and rt_subframes < _NUREC_RECOMMENDED_RT_SUBFRAMES
+    ):
         carb.log_warn(
             f"[nurec-overrides] render_rt_subframes={rt_subframes} is low for NuRec splats; "
             f"recommend >= {_NUREC_RECOMMENDED_RT_SUBFRAMES} for usable RGB."
@@ -83,7 +85,7 @@ def setup_for_replay(args: argparse.Namespace, stage: Usd.Stage | None) -> tuple
 
     Runs the ``nurec_utils`` render setup (NuRec detection + case-aware carb overrides for
     particle / volume, ISP / no-ISP + launch-prereq gating); when the stage is NuRec,
-    restricts the replay modalities to RGB. On a non-NuRec stage (or ``None``) it is a
+    disables segmentation and normals while preserving RGB and depth flags. On a non-NuRec stage (or ``None``) it is a
     no-op: no carb overrides are applied and the replay flags are left untouched.
 
     Args:

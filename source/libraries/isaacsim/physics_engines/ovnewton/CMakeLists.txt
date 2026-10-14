@@ -25,3 +25,8 @@ isaacsim_add_python_tests(
     RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../physics/manager/resources/tests"
     TIMEOUT 900
 )
+
+set(_ovnewton_python_test tests-python-isaacsim-physics_engines-ovnewton)
+if(TEST ${_ovnewton_python_test})
+    set_property(TEST ${_ovnewton_python_test} PROPERTY RESOURCE_LOCK physics_backend)
+endif()

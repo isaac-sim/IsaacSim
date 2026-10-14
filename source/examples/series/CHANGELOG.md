@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Update the Falling Cube C++/Python rendering example for the array-based tensor API.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

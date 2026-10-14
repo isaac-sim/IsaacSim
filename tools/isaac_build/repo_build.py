@@ -69,7 +69,7 @@ class _BuildPreparation:
         self._prepared = False
 
     def run(self) -> None:
-        """Build carriers and assemble notices after Repo Build links its toolchain."""
+        """Stage extension wheels and assemble notices after Repo Build links its toolchain."""
         if self._prepared:
             return
 

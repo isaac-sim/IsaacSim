@@ -35,6 +35,7 @@ from .menu_utils import find_enabled_widget_with_retry as _find_enabled_widget_w
 from .menu_utils import find_widget_with_retry as _find_widget_with_retry
 from .menu_utils import menu_click_with_retry as _menu_click_with_retry
 from .menu_utils import scroll_to_widget as _scroll_to_widget
+from .menu_utils import trigger_menu_item as _trigger_menu_item
 from .menu_utils import wait_for_widget_enabled as _wait_for_widget_enabled
 
 
@@ -160,6 +161,35 @@ class MenuUITestCase(OmniUiTest):
         return await _menu_click_with_retry(
             menu_path, delays=delays, window_name=window_name, wait_n_frames=wait_n_frames
         )
+
+    async def trigger_menu_item(self, menu_path: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES) -> Any:
+        """Trigger an enabled leaf menu item's registered action.
+
+        Use this non-visual helper to test menu registration and action wiring.
+        Use :meth:`menu_click_with_retry` when the popup interaction itself is
+        under test.
+
+        Args:
+            menu_path: Full menu path separated by ``/``.
+            max_frames: Maximum number of app-update frames to wait for the
+                full path to become available.
+
+        Returns:
+            The resolved leaf ``MenuRef`` whose action was triggered.
+
+        Raises:
+            ValueError: If *menu_path* is invalid or resolves to a submenu.
+            TimeoutError: If the full path does not become available within
+                *max_frames*.
+            RuntimeError: If the leaf is disabled or has no registered action.
+
+        Example:
+
+        .. code-block:: python
+
+            >>> menu_item = await self.trigger_menu_item("Tools/Robotics/Robot Poser")
+        """
+        return await _trigger_menu_item(menu_path, max_frames=max_frames)
 
     async def find_widget_with_retry(
         self, query: str, max_frames: int = _DEFAULT_MAX_WAIT_FRAMES, parent: Any = None

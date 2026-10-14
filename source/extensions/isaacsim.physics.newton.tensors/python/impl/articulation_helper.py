@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Helper function for articulation tensor computation that wrangles the warp data
+"""Compute articulation tensors and gather Newton model data into tensor-view order."""
 
 import types
+from typing import Any
 
+import newton
 import warp as wp
 
 
@@ -28,8 +30,17 @@ def wrangle_matrix_kernel(
     n_rows: int,
     n_cols: int,
     m_tensor: wp.array3d[float],
-):
-    """Kernel for compacting newton's matrix into what tensor API wants."""
+) -> None:
+    """Gather articulation matrices into tensor-view order.
+
+    Args:
+        m_warp: Matrices in model articulation order.
+        arti_indices: Selected model articulation indices.
+        n_arti: Number of selected articulations.
+        n_rows: Rows per matrix.
+        n_cols: Columns per matrix.
+        m_tensor: Destination matrices.
+    """
     art_idx = wp.tid()
     if art_idx >= n_arti:
         return
@@ -42,7 +53,7 @@ def wrangle_matrix_kernel(
 def wrangle_matrix(
     m_warp: wp.array, m_tensor: wp.array | None, arti_indices: wp.array, n_rows: int, n_cols: int, device: str
 ) -> wp.array:
-    """compact newton's matrix into what tensor API wants. Newton's matrix dimension is containing all articulations in the scene.
+    """Compact newton's matrix into what tensor API wants. Newton's matrix dimension is containing all articulations in the scene.
 
     Args:
         m_warp: matrix from newton
@@ -75,11 +86,12 @@ def wrangle_matrix(
 
 
 def allocate_buffer(m_buffer: wp.array | None, buffer_size: tuple | int, dtype: type, device: str) -> wp.array:
-    """Allocate buffer for newton's calculation
+    """Allocate a buffer for Newton calculations.
 
     Args:
         m_buffer: buffer used for calculation.
         buffer_size: size for the buffer
+        dtype: Warp element type.
         device: device to allocate the buffer
     Returns:
         The buffer.
@@ -90,3 +102,76 @@ def allocate_buffer(m_buffer: wp.array | None, buffer_size: tuple | int, dtype: 
     if not m_buffer or m_buffer.shape != buffer_size:
         m_buffer = wp.array(shape=buffer_size, dtype=dtype, device=device)
     return m_buffer
+
+
+@wp.kernel
+def gather_compensation_forces(
+    forces: wp.array[float],
+    articulation_start: wp.array[int],
+    joint_qd_start: wp.array[int],
+    articulation_indices: wp.array[int],
+    output: wp.array2d[float],
+) -> None:
+    """Gather selected articulations' generalized forces, including their floating-root DOFs.
+
+    Args:
+        forces: Generalized forces in model DOF order.
+        articulation_start: First joint index for each articulation.
+        joint_qd_start: First velocity DOF index for each joint.
+        articulation_indices: Articulations in view order.
+        output: Destination force tensor.
+    """
+    row, column = wp.tid()
+    joint = articulation_start[articulation_indices[row]]
+    output[row, column] = forces[joint_qd_start[joint] + column]
+
+
+def compute_compensation_forces(
+    model: Any,
+    state: Any,
+    articulation_indices: wp.array,
+    mask: wp.array,
+    num_dofs: int,
+    gravity: bool,
+    cache: types.SimpleNamespace | None,
+) -> types.SimpleNamespace:
+    """Compute gravity or Coriolis compensation without modifying the live simulation state.
+
+    Args:
+        model: Newton model defining topology and inertial properties.
+        state: Current Newton state supplying joint positions and velocities.
+        articulation_indices: Model articulation indices in tensor-view order.
+        mask: Mask selecting the view's articulations for inverse dynamics.
+        num_dofs: Generalized DOFs per articulation, including six floating-root DOFs when present.
+        gravity: Compute gravity compensation when true, otherwise Coriolis and centrifugal compensation.
+        cache: View-owned scratch state and output arrays, or None on the first call.
+
+    Returns:
+        Scratch cache with the computed tensor in its ``tensor`` field.
+    """
+    if cache is None:
+        cache = types.SimpleNamespace(
+            state=model.state(),
+            forces=wp.zeros(model.joint_dof_count, dtype=wp.float32, device=model.device),
+            tensor=wp.empty((articulation_indices.shape[0], num_dofs), dtype=wp.float32, device=model.device),
+        )
+    # Joint setters can leave body transforms stale until the next simulation step. Evaluate FK into a
+    # private state, preserving the live body's transforms, velocities, forces, and integration state.
+    wp.copy(cache.state.joint_q, state.joint_q)
+    wp.copy(cache.state.joint_qd, state.joint_qd)
+    newton.eval_fk(model, cache.state.joint_q, cache.state.joint_qd, cache.state, mask=mask)
+    newton.eval_inverse_dynamics_passive(
+        model,
+        cache.state,
+        gravity_force=cache.forces if gravity else None,
+        coriolis_force=None if gravity else cache.forces,
+        mask=mask,
+    )
+    wp.launch(
+        gather_compensation_forces,
+        dim=cache.tensor.shape,
+        inputs=[cache.forces, model.articulation_start, model.joint_qd_start, articulation_indices],
+        outputs=[cache.tensor],
+        device=model.device,
+    )
+    return cache

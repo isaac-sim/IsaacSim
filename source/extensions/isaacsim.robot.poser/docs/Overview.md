@@ -82,3 +82,16 @@ The extension provides configurable inverse kinematics solving with solution see
 ## Integration
 
 The extension uses **omni.kit.menu.utils** to integrate pose management capabilities into the Kit interface. It consumes robot structure, named-pose definitions, and relationships from isaacsim.robot.schema.
+
+## Supported pose transforms and JSON imports
+
+Pose application preserves positive uniform scale on links with translate,
+orient, and scale operations. Matrix, Euler, inverse, reset-stack, negative,
+and nonuniform scale transforms are rejected before changing joint states or
+body transforms. Convert these stacks explicitly before using Robot Poser.
+
+Pose JSON imports validate every entry before writing any named poses. Joint
+values must be finite numbers in an object keyed by existing joint prim paths;
+start and end links must identify existing absolute prim paths. Empty joint
+objects are valid no-op poses and count as successful imports. Malformed files
+raise `ValueError` without importing earlier entries from the same file.

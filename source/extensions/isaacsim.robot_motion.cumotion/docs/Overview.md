@@ -20,7 +20,19 @@ The {class}`CumotionRobot <isaacsim.robot_motion.cumotion.CumotionRobot>` datacl
 
 ### {class}`CumotionWorldInterface <isaacsim.robot_motion.cumotion.CumotionWorldInterface>`
 
-{class}`CumotionWorldInterface <isaacsim.robot_motion.cumotion.CumotionWorldInterface>` manages collision geometry and obstacle tracking between Isaac Sim's USD scene and cuMotion's collision world. It handles coordinate frame transformations and provides methods to add various collision primitives (spheres, cubes, meshes, planes, capsules) and update their poses dynamically.
+{class}`CumotionWorldInterface <isaacsim.robot_motion.cumotion.CumotionWorldInterface>` manages collision geometry and obstacle tracking between Isaac Sim's USD scene and cuMotion's collision world. It handles coordinate frame transformations and provides methods to add various collision primitives (spheres, cubes, oriented bounding boxes, planes, capsules, triangulated meshes) and update their poses dynamically.
+
+`CumotionWorldInterface` does not implement the generic `mesh` representation, `ObstacleStrategy`'s default for `Mesh` shapes, so adding a `Mesh` obstacle without remapping it raises `NotImplementedError: add_meshes not implemented`. It does support meshes natively through the `triangulated_mesh` representation instead. `Cone` and `Cylinder` obstacles have no native representation at all and must be remapped to an oriented bounding box. Use {class}`ObstacleStrategy <isaacsim.robot_motion.experimental.motion_generation.ObstacleStrategy>` to configure these before adding obstacles to the world:
+
+```python
+from isaacsim.core.experimental.objects import Cone, Cylinder, Mesh
+from isaacsim.robot_motion.experimental.motion_generation import ObstacleConfiguration, ObstacleStrategy
+
+obstacle_strategy = ObstacleStrategy()
+obstacle_strategy.set_default_configuration(Mesh, ObstacleConfiguration("triangulated_mesh", 0.01))
+obstacle_strategy.set_default_configuration(Cone, ObstacleConfiguration("obb", 0.01))
+obstacle_strategy.set_default_configuration(Cylinder, ObstacleConfiguration("obb", 0.01))
+```
 
 ### Motion Planners
 

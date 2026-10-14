@@ -21,24 +21,31 @@ isaacsim_add_module(
         isaacsim::common-exceptions
     PUBLIC_CPP_HEADERS
         isaacsim/common/array/nanobind/ArrayCaster.hpp
+        isaacsim/common/array/nanobind/DeviceCaster.hpp
+        isaacsim/common/array/nanobind/DtypeCaster.hpp
         isaacsim/common/array/Array.hpp
         isaacsim/common/array/Array.tpp
         isaacsim/common/array/Device.hpp
         isaacsim/common/array/DLPack.hpp
         isaacsim/common/array/Dtype.hpp
         isaacsim/common/array/Functions.hpp
+        isaacsim/common/array/ManagedAccess.hpp
         isaacsim/common/array/Shape.hpp
     SOURCES
+        src/details/ArrayUtils.hpp
         src/details/CudaKernel.hpp
         src/details/CudaKernel.cpp
         src/details/CudaRuntime.hpp
         src/details/CudaRuntime.cpp
         src/details/KernelExport.hpp
+        src/details/Storage.hpp
+        src/details/Storage.cpp
         src/Array.cpp
         src/Device.cpp
         src/DLPack.cpp
         src/Dtype.cpp
         src/Functions.cpp
+        src/ManagedAccess.cpp
         src/Shape.cpp
 )
 
@@ -65,7 +72,7 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../../licenses/dlpack-LICENSE.txt"
 )
 
 set(isaacsim_array_cuda_root "${ISAACSIM_TARGET_DEPS_DIR}/cuda")
-if(NOT EXISTS "${isaacsim_array_cuda_root}/include/cuda_runtime_api.h")
+if(NOT EXISTS "${isaacsim_array_cuda_root}/include/cuda.h")
     message(FATAL_ERROR
         "isaacsim.common.array requires CUDA headers at ${isaacsim_array_cuda_root}. "
         "Fetch deps/isaacsim-libraries.packman.xml before configuring."
@@ -83,9 +90,9 @@ endif()
 # Requires a vendored `nvcc` (deps/isaacsim-libraries.packman.xml); configuration fails below if it
 # is missing. Compiled into a separate shared library, statically linked against the CUDA
 # runtime (no libcudart.so dependency), and never linked into isaacsim-common-array itself.
-# CudaKernel dlopen's it lazily on first use, mirroring the pattern already used for
-# libcudart.so in CudaRuntime.cpp, so isaacsim-common-array keeps loading and running correctly
-# at runtime on machines with no CUDA driver installed, even though building it requires nvcc.
+# CudaKernel dlopen's it lazily on first use, mirroring how CudaRuntime.cpp binds the CUDA driver,
+# so isaacsim-common-array keeps loading and running correctly at runtime on machines with no CUDA
+# driver installed, even though building it requires nvcc.
 if(WIN32)
     set(isaacsim_array_nvcc "${isaacsim_array_cuda_root}/bin/nvcc.exe")
 else()
@@ -117,6 +124,10 @@ if(EXISTS "${isaacsim_array_nvcc}")
         POSITION_INDEPENDENT_CODE ON
         LIBRARY_OUTPUT_DIRECTORY "${isaacsim_array_module_output_dir}"
         RUNTIME_OUTPUT_DIRECTORY "${isaacsim_array_module_output_dir}"
+        # nvcc's host compiler can append its runtime prefix to the linked ELF.
+        BUILD_RPATH "${ISAACSIM_LOADER_ORIGIN};${CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES};${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES}"
+        INSTALL_RPATH "${ISAACSIM_LOADER_ORIGIN}"
+        INSTALL_REMOVE_ENVIRONMENT_RPATH YES
     )
     target_include_directories(isaacsim-common-array-cuda-kernels PRIVATE
         "${isaacsim_array_cuda_root}/include"
@@ -163,10 +174,13 @@ isaacsim_add_cpp_tests(
     MODULE isaacsim.common.array
     SOURCES
         tests/cpp/Array.cpp
+        tests/cpp/Compatibility.cpp
+        tests/cpp/CudaRuntime.cpp
         tests/cpp/Device.cpp
         tests/cpp/DLPack.cpp
         tests/cpp/Dtype.cpp
         tests/cpp/Functions.cpp
+        tests/cpp/ManagedAccess.cpp
         tests/cpp/Shape.cpp
     LABELS
         unit
@@ -193,12 +207,8 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE_DIR:tests-isaacsim-common-array>"
             VERBATIM
         )
-        set_property(TEST tests-isaacsim-common-array APPEND PROPERTY
-            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${isaacsim_array_cuda_root}/bin"
-        )
-    else()
-        set_property(TEST tests-isaacsim-common-array APPEND PROPERTY
-            ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${isaacsim_array_cuda_root}/lib64"
-        )
     endif()
+    # Nothing adds the vendored CUDA directory to the loader path: the host library binds the CUDA
+    # driver, which the display driver installs where the loader already looks, and the kernel
+    # library carries a statically linked runtime. Neither needs a redistributable to be findable.
 endif()

@@ -44,7 +44,7 @@ public:
     {
         auto& state =
             OgnUCXSubscribeJointCommandDatabase::sPerInstanceState<OgnUCXSubscribeJointCommand>(nodeObj, instanceId);
-        state.m_receiveBuffer.reserve(65536); // Reserve 64KB for receive buffer
+        state.m_receive.reserveBuffer(OgnUCXSubscribeJointCommand::s_kReceiveBufferSize);
     }
 
     /**
@@ -92,40 +92,52 @@ protected:
      */
     JointCommandData parseMessage(const std::vector<uint8_t>& buffer) override
     {
-        auto* message = isaac::GetJointCommand(buffer.data());
-
-        JointCommandData data;
-        data.valid = false;
-        if (!message || !message->header() || !message->header()->stamp() || !message->position() ||
-            !message->position()->shape() || !message->velocity() || !message->effort())
-        {
+        JointCommandData data{};
+        flatbuffers::Verifier verifier(buffer.data(), buffer.size());
+        if (!isaac::VerifyJointCommandBuffer(verifier))
             return data;
-        }
-        data.timestamp = static_cast<double>(message->header()->stamp()->time_ns()) / 1e9;
-        data.numJoints = message->position()->shape()->Get(0);
+        const auto* message = isaac::GetJointCommand(buffer.data());
+        if (!message->header())
+            return data;
+        data.timestamp = static_cast<double>(message->header()->capture_timestamp_ns()) / 1e9;
 
-        data.positionCommand.resize(data.numJoints);
-        data.velocityCommand.resize(data.numJoints);
-        data.effortCommand.resize(data.numJoints);
-
-        auto copyTensor = [&](std::vector<double>& dst, const isaac::Tensor* tensor) -> bool
+        auto copyTensor = [&](std::vector<double>& destination, const holoscan::schema::Tensor* tensor,
+                              bool optional = false) -> bool
         {
-            if (!tensor->data() || tensor->data()->size() < static_cast<size_t>(data.numJoints) * sizeof(float))
-            {
+            if (!tensor || !tensor->data() || !tensor->shape() || tensor->ndim() != 1 || tensor->shape()->size() != 1 ||
+                (tensor->shape()->Get(0) < 0 || (!optional && tensor->shape()->Get(0) == 0)) || !tensor->dtype() ||
+                tensor->dtype()->code() != holoscan::schema::DLDataTypeCode_kDLFloat || tensor->dtype()->bits() != 32 ||
+                tensor->dtype()->lanes() != 1 || !tensor->device() ||
+                tensor->device()->device_type() != holoscan::schema::DLDeviceType_kDLCPU ||
+                (tensor->strides() && (tensor->strides()->size() != 1 || tensor->strides()->Get(0) != 1)))
                 return false;
-            }
-            const float* src = reinterpret_cast<const float*>(tensor->data()->data());
-            for (int64_t i = 0; i < data.numJoints; ++i)
+            const auto count = static_cast<uint64_t>(tensor->shape()->Get(0));
+            if (count > 4096 || tensor->data()->size() != count * sizeof(float))
+                return false;
+            destination.resize(count);
+            for (size_t i = 0; i < count; ++i)
             {
-                dst[i] = static_cast<double>(src[i]);
+                float value;
+                std::memcpy(&value, tensor->data()->data() + i * sizeof(float), sizeof(value));
+                destination[i] = value;
             }
             return true;
         };
-
         if (!copyTensor(data.positionCommand, message->position()) ||
-            !copyTensor(data.velocityCommand, message->velocity()) || !copyTensor(data.effortCommand, message->effort()))
+            !copyTensor(data.velocityCommand, message->velocity()) || !copyTensor(data.effortCommand, message->effort()) ||
+            (message->kp() && !copyTensor(data.stiffness, message->kp(), true)) ||
+            (message->kd() && !copyTensor(data.damping, message->kd(), true)))
+            return data;
+        data.numJoints = data.positionCommand.size();
+        if (data.velocityCommand.size() != data.positionCommand.size() ||
+            data.effortCommand.size() != data.positionCommand.size() ||
+            (!data.stiffness.empty() && data.stiffness.size() != data.positionCommand.size()) ||
+            (!data.damping.empty() && data.damping.size() != data.positionCommand.size()))
+            return data;
+        if (message->name())
         {
-            return data; // data.valid remains false
+            if (message->name()->size() && message->name()->size() != data.positionCommand.size())
+                return data;
         }
 
         data.valid = true;

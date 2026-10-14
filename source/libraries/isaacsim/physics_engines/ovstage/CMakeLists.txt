@@ -16,3 +16,7 @@
 isaacsim_add_python_module(
     NAME isaacsim.physics_engines.ovstage
 )
+
+isaacsim_add_python_tests(
+    MODULE isaacsim.physics_engines.ovstage
+)

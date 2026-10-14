@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Any
 
 import carb.eventdispatcher
-import carb.settings
 import omni.ext
 import omni.kit.app
 import omni.ui as ui
@@ -92,10 +91,7 @@ class SchemaUIExtension(omni.ext.IExt, MenuHelperExtension):
             SchemaUIExtension.WINDOW_NAME,
             SchemaUIExtension.MENU_GROUP,
         )
-        original_joints_visual = carb.settings.get_settings().get("/persistent/physics/visualizationDisplayJoints")
-        carb.settings.get_settings().set("/persistent/physics/visualizationDisplayJoints", True)
         self._viewport_scene = RegisterScene(ConnectionScene, extension_id)
-        carb.settings.get_settings().set("/persistent/physics/visualizationDisplayJoints", original_joints_visual)
 
     def _create_stage_event_subs(self) -> list[Any]:
         """Subscribe to stage open and close events to clear the masking layer.

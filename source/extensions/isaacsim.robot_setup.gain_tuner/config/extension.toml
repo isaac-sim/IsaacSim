@@ -1,5 +1,5 @@
 [package]
-version = "3.10.0"
+version = "3.11.0"
 category = "Simulation"
 title = "Gain Tuner"
 description = "Core library for tuning articulation PD gains and running validation tests"
@@ -19,6 +19,9 @@ writeTarget.kit = true
 # Registers the codeless NewtonJointAPI the advanced joint params are read from
 # and authored on; without it only the PhysX half of a write can land.
 "omni.usd.schema.newton" = {}
+# Provides pxr.PhysxSchema, used to apply PhysxArticulationAPI when disabling
+# self-collisions for a test on a robot that carries only UsdPhysics.
+"omni.usd.schema.physx" = {}
 
 [[python.module]]
 name = "isaacsim.robot_setup.gain_tuner"

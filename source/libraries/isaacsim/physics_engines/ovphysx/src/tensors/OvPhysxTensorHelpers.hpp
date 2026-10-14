@@ -20,15 +20,13 @@
 // can compile them directly without linking the backend .so.
 
 #include <dlpack/dlpack.h>
-#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
+#include <isaacsim/common/array/Array.hpp>
 
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list>
-#include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace isaacsim
 {
@@ -37,242 +35,99 @@ namespace physics_engines
 namespace ovphysx
 {
 
-inline size_t checkedSizeProduct(size_t left, size_t right, const char* label)
+// Delegates to array::toDLPack for everything but the boolean dtype: ovphysx reads a boolean tensor as
+// uint8, whereas DLPack's own spelling for it is kDLBool. The DLTensor borrows the array's data and shape
+// metadata, so the array must outlive it.
+inline DLTensor convertToDLTensor(const isaacsim::common::array::Array& source)
 {
-    if (right != 0 && left > std::numeric_limits<size_t>::max() / right)
+    namespace array = isaacsim::common::array;
+    DLTensor tensor = array::toDLPackBorrowed(source);
+    if (source.dtype() == array::Dtype::Bool())
     {
-        throw std::overflow_error(std::string(label) + ": element count overflow");
+        tensor.dtype = { static_cast<uint8_t>(kDLUInt), 8, 1 };
     }
-    return left * right;
+    return tensor;
 }
 
-template <typename DimensionRange>
-inline size_t checkedElementCountFromRange(const DimensionRange& dimensions, const char* label)
+inline DLTensor convertToDLTensor(const isaacsim::common::array::Array& source,
+                                  const isaacsim::common::array::ArrayReadAccess& access)
 {
-    size_t elementCount = 1;
-    for (const int64_t dimension : dimensions)
-    {
-        if (dimension < 0)
-        {
-            throw std::runtime_error(std::string(label) + ": negative tensor dimension");
-        }
-
-        const uint64_t unsignedDimension = static_cast<uint64_t>(dimension);
-        if (unsignedDimension > std::numeric_limits<size_t>::max())
-        {
-            throw std::overflow_error(std::string(label) + ": tensor dimension exceeds size_t");
-        }
-        elementCount = checkedSizeProduct(elementCount, static_cast<size_t>(unsignedDimension), label);
-    }
-    return elementCount;
-}
-
-inline size_t checkedElementCount(const std::vector<int64_t>& dimensions, const char* label)
-{
-    return checkedElementCountFromRange(dimensions, label);
-}
-
-inline size_t checkedElementCount(std::initializer_list<int64_t> dimensions, const char* label)
-{
-    return checkedElementCountFromRange(dimensions, label);
-}
-
-inline DLDataType convertToDLDataType(isaacsim::physics::tensors::DType dtype)
-{
-    using isaacsim::physics::tensors::DType;
-    switch (dtype)
-    {
-    case DType::eFloat32:
-        return { static_cast<uint8_t>(kDLFloat), 32, 1 };
-    case DType::eFloat64:
-        return { static_cast<uint8_t>(kDLFloat), 64, 1 };
-    case DType::eInt8:
-        return { static_cast<uint8_t>(kDLInt), 8, 1 };
-    case DType::eInt16:
-        return { static_cast<uint8_t>(kDLInt), 16, 1 };
-    case DType::eInt32:
-        return { static_cast<uint8_t>(kDLInt), 32, 1 };
-    case DType::eInt64:
-        return { static_cast<uint8_t>(kDLInt), 64, 1 };
-    case DType::eUInt8:
-        return { static_cast<uint8_t>(kDLUInt), 8, 1 };
-    case DType::eUInt16:
-        return { static_cast<uint8_t>(kDLUInt), 16, 1 };
-    case DType::eUInt32:
-        return { static_cast<uint8_t>(kDLUInt), 32, 1 };
-    case DType::eUInt64:
-        return { static_cast<uint8_t>(kDLUInt), 64, 1 };
-    case DType::eBool:
-        return { static_cast<uint8_t>(kDLUInt), 8, 1 }; // bool as uint8
-    default:
-        return { static_cast<uint8_t>(kDLFloat), 32, 1 };
-    }
-}
-
-// Convert a manager TensorDescription to a stack-allocated DLTensor. The DLTensor borrows
-// descriptor.data and descriptor.shape -- the caller must keep `descriptor` alive for the engine call. A GPU
-// tensor must name its device; C-contiguous strides normalize to nullptr (the DLPack
-// convention), while genuine strides pass through so ovphysx rejects them loudly.
-inline DLTensor convertToDLTensor(const isaacsim::physics::tensors::TensorDescription& descriptor)
-{
-    using isaacsim::physics::tensors::DeviceKind;
-    DLTensor tensor{};
-    tensor.data = descriptor.data;
-    tensor.device.device_type = (descriptor.device == DeviceKind::eGpu) ? kDLCUDA : kDLCPU;
-    // A GPU tensor must name its device; a negative ordinal would fall through to
-    // device 0 and silently read/write the wrong GPU. CPU ignores device_id.
-    if (descriptor.device == DeviceKind::eGpu && descriptor.deviceOrdinal < 0)
-    {
-        throw std::runtime_error("GPU tensor has no device ordinal");
-    }
-    tensor.device.device_id = (descriptor.deviceOrdinal >= 0) ? descriptor.deviceOrdinal : 0;
-    tensor.dtype = convertToDLDataType(descriptor.dtype);
-    if (descriptor.shape.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max()))
-    {
-        throw std::overflow_error("tensor rank exceeds the DLPack int32 range");
-    }
-    checkedElementCount(descriptor.shape, "DLTensor");
-    tensor.ndim = static_cast<int32_t>(descriptor.shape.size());
-    tensor.shape = const_cast<int64_t*>(descriptor.shape.data());
-    // Normalize C-contiguous strides to nullptr (the DLPack convention for
-    // C-order tensors). For non-contiguous tensors, pass the actual strides
-    // so ovphysx rejects them loudly rather than misreading strided data
-    // as if it were contiguous.
-    {
-        bool isCContiguous = true;
-        if (!descriptor.strides.empty())
-        {
-            if (descriptor.strides.size() != descriptor.shape.size())
-            {
-                throw std::runtime_error("DLTensor strides must match the tensor rank");
-            }
-            int64_t expected = 1;
-            for (int32_t i = static_cast<int32_t>(descriptor.shape.size()) - 1; isCContiguous && i >= 0; --i)
-            {
-                const int64_t dimension = descriptor.shape[static_cast<size_t>(i)];
-                if (dimension < 0 || (dimension != 0 && expected > std::numeric_limits<int64_t>::max() / dimension))
-                {
-                    isCContiguous = false;
-                    break;
-                }
-                if (descriptor.strides[static_cast<size_t>(i)] != expected)
-                {
-                    isCContiguous = false;
-                    break;
-                }
-                expected *= dimension;
-            }
-        }
-        tensor.strides =
-            (descriptor.strides.empty() || isCContiguous) ? nullptr : const_cast<int64_t*>(descriptor.strides.data());
-    }
+    DLTensor tensor = convertToDLTensor(source);
+    tensor.data = source.size() ? const_cast<void*>(access.data()) : nullptr;
     tensor.byte_offset = 0;
     return tensor;
 }
 
-// True if `descriptor` is C-contiguous (row-major): no explicit strides, or strides equal to the
-// row-major strides for its shape. The ndarray-to-descriptor conversion always records element-strides, so an empty
-// strides vector also counts as contiguous. A unit dim's stride is irrelevant to contiguity.
-inline bool isContiguousRowMajor(const isaacsim::physics::tensors::TensorDescription& descriptor)
+inline DLTensor convertToDLTensor(const isaacsim::common::array::Array& source,
+                                  const isaacsim::common::array::ArrayWriteAccess& access)
 {
-    if (descriptor.strides.empty())
-    {
-        return true;
-    }
-    if (descriptor.strides.size() != descriptor.shape.size())
-    {
-        return false;
-    }
-    int64_t expected = 1;
-    for (size_t i = descriptor.shape.size(); i-- > 0;)
-    {
-        const int64_t dimension = descriptor.shape[i];
-        if (dimension < 0)
-        {
-            return false;
-        }
-        if (dimension != 1 && descriptor.strides[i] != expected)
-        {
-            return false;
-        }
-        if (dimension != 0 && expected > std::numeric_limits<int64_t>::max() / dimension)
-        {
-            return false;
-        }
-        expected *= dimension;
-    }
-    return true;
+    DLTensor tensor = convertToDLTensor(source);
+    tensor.data = source.size() ? access.data() : nullptr;
+    tensor.byte_offset = 0;
+    return tensor;
 }
 
-// Indexed get/set requires a 1-D, C-contiguous int32 index buffer: the loops that
-// dereference `indices.data` treat it as a flat int32[K]. Reject other dtypes, a multi-dim
-// shape, or a strided view loudly rather than misread the buffer -- an int64 [0,1] read as
-// int32 misreads as [0,0], a 2-D input is only partially consumed, and a strided view is
-// read as adjacent values. Skip only an omitted index (empty shape); a supplied zero-size
-// tensor -- (0,), (0,1), (1,0), which Warp gives a null pointer -- is still validated, so its
-// dtype/rank cannot slip past isEmpty() (which is also true for null data).
-inline void requireInt32Indices(const isaacsim::physics::tensors::TensorDescription& indices, const char* label)
+// Wraps storage the impl owns as a byte buffer that shares its lifetime while pointing somewhere inside it,
+// so a result handed to a caller cannot outlive the allocation behind it. This does not make the result a
+// private copy: a view-lifetime buffer is still reused by the next read, so the values are valid only until
+// then and callers that need to retain them must copy.
+template <typename OwnerType>
+inline std::shared_ptr<std::byte[]> shareBytes(const std::shared_ptr<OwnerType>& owner, void* data)
 {
-    using isaacsim::physics::tensors::DType;
-    if (indices.shape.empty())
-    {
-        return;
-    }
-    if (indices.dtype != DType::eInt32)
+    return std::shared_ptr<std::byte[]>(owner, static_cast<std::byte*>(data));
+}
+
+// The index values are read as a dense int32[K] block, both by ovphysx and by the host-side gather, so a
+// strided or broadcast selection has to be rejected rather than walked as if it were packed.
+inline void requireInt32Indices(const isaacsim::common::array::Array& indices, const char* label)
+{
+    namespace array = isaacsim::common::array;
+    if (indices.dtype() != array::Dtype::Int32())
     {
         throw std::runtime_error(std::string(label) + ": indices must use the manager's int32 convention");
     }
-    if (indices.shape.size() != 1)
+    if (indices.ndim() != 1)
     {
         throw std::runtime_error(std::string(label) + ": indices must be 1-D");
     }
-    const size_t indexCount = checkedElementCount(indices.shape, label);
-    if (indexCount > 0 && indices.data == nullptr)
-    {
-        throw std::runtime_error(std::string(label) + ": non-empty indices have no data");
-    }
-    if (!isContiguousRowMajor(indices))
+    if (!indices.isContiguous())
     {
         throw std::runtime_error(std::string(label) + ": indices must be C-contiguous");
     }
+    if (indices.size() > 0 && indices.data() == nullptr)
+    {
+        throw std::runtime_error(std::string(label) + ": non-empty indices have no data");
+    }
 }
 
-// A caller-supplied GET `out` is read into in place by the engine, so it must be able to
-// hold the binding's full read (`shape`/`dtype`, the engine writes exactly that many
-// contiguous elements) before the read. A wrong dtype, a buffer that can't hold the read, a
-// non-contiguous buffer, or a GPU buffer with no ordinal would otherwise overrun, mis-type,
-// or scatter the full [N, ...] read -- host heap corruption or a CUDA illegal access. The
-// capacity check is on element count, not the shape vector: the binding reports some data 1-D
-// (e.g. masses [N]) while callers legitimately allocate the matching 2-D buffer ([N, 1]) --
-// same capacity, different layout.
-inline void requireMatchingOutput(const isaacsim::physics::tensors::TensorDescription& output,
-                                  const std::vector<int64_t>& shape,
-                                  isaacsim::physics::tensors::DType dtype,
+// An Array's Device always names a valid ordinal, so the dtype, the capacity and the layout still need
+// checking. The capacity check is on element count rather than the shape itself because the binding
+// reports some data 1-D (e.g. masses [N]) while callers legitimately allocate the matching 2-D buffer
+// ([N, 1]). Shape::size() rejects a negative dimension and an element count that overflows size_t, so a
+// malformed shape fails here rather than sizing an undersized allocation.
+inline void requireMatchingOutput(const isaacsim::common::array::Array& output,
+                                  const isaacsim::common::array::Shape& shape,
+                                  isaacsim::common::array::Dtype dtype,
                                   const char* label)
 {
-    using isaacsim::physics::tensors::DeviceKind;
-    if (output.dtype != dtype)
+    if (output.dtype() != dtype)
     {
         throw std::runtime_error(std::string(label) + ": out buffer dtype mismatch");
     }
-
-    const size_t outputElementCount = checkedElementCount(output.shape, label);
-    const size_t bindingElementCount = checkedElementCount(shape, label);
-    if (outputElementCount != bindingElementCount)
+    if (output.size() != shape.size())
     {
         throw std::runtime_error(std::string(label) + ": out buffer element count mismatch");
     }
-
-    // The read passes strides=nullptr (C-contiguous); a strided out would be filled as if
-    // contiguous, so require row-major layout.
-    if (!isContiguousRowMajor(output))
+    // Callers view the buffer under `shape` with reshape(), which silently detaches a non-contiguous
+    // array into a copy the caller never sees written.
+    if (!output.isContiguous())
     {
         throw std::runtime_error(std::string(label) + ": out buffer must be C-contiguous");
     }
-    // A GPU out must name a device; -1 would build DLDevice{ kDLCUDA, -1 }.
-    if (output.device == DeviceKind::eGpu && output.deviceOrdinal < 0)
+    // A broadcast buffer would otherwise fault on the mutable data() deep inside the write.
+    if (!output.isWriteable())
     {
-        throw std::runtime_error(std::string(label) + ": GPU out buffer has no device ordinal");
+        throw std::runtime_error(std::string(label) + ": out buffer must be writeable");
     }
 }
 

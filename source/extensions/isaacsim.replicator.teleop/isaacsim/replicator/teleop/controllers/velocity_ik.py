@@ -32,11 +32,13 @@ three-method interface::
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 
+import carb
 import numpy as np
 from isaacsim.core.experimental.prims import Articulation, RigidPrim
 
-from ._utils import quat_error_wxyz, xyzw_to_wxyz
+from ._utils import FloatingBaseArticulationError, quat_error_wxyz, slice_ee_jacobian, xyzw_to_wxyz
 
 
 class VelocityBasedIKController:
@@ -60,16 +62,24 @@ class VelocityBasedIKController:
         compute() -> np.ndarray | None
         reset()
 
+    The articulation must have a fixed base: the Jacobian is indexed for the
+    fixed-base layout ``(num_links - 1, 6, num_dofs)``.
+
     Args:
         robot: Value for robot.
         ee_link: Value for ee link.
         ee_link_index: Value for ee link index.
-        num_arm_dofs: Value for num arm dofs.
+        num_arm_dofs: Number of controlled joints. Without explicit indices, controls the first N DOFs.
+        arm_dof_indices: Optional articulation DOF indices of the controlled arm joints,
+            in ascending order.
         method: Value for method.
         damping: Value for damping.
         min_singular_value: Value for min singular value.
         gain: Value for gain.
         max_joint_step_rad: Value for max joint step rad.
+
+    Raises:
+        ValueError: If ``arm_dof_indices`` is empty.
     """
 
     def __init__(
@@ -83,11 +93,20 @@ class VelocityBasedIKController:
         min_singular_value: float = 1e-5,
         gain: float = 5.0,
         max_joint_step_rad: float = 0.0,
+        *,
+        arm_dof_indices: Sequence[int] | None = None,
     ) -> None:
+        if arm_dof_indices is None:
+            arm_dof_indices = range(num_arm_dofs)
+        if len(arm_dof_indices) != num_arm_dofs:
+            raise ValueError("num_arm_dofs must match the number of arm_dof_indices")
+        if len(arm_dof_indices) == 0:
+            raise ValueError("arm_dof_indices must name at least one articulation DOF")
         self._robot = robot
         self._ee_link = ee_link
         self._ee_link_index = ee_link_index
-        self._num_arm_dofs = num_arm_dofs
+        self._arm_dof_indices = np.asarray(arm_dof_indices, dtype=np.int64)
+        self._num_arm_dofs = len(self._arm_dof_indices)
         self._method = method
         self._damping = max(1e-6, damping)
         self._min_singular_value = max(1e-8, min_singular_value)
@@ -98,6 +117,7 @@ class VelocityBasedIKController:
         self._goal_orientation: np.ndarray | None = None  # (1, 4) wxyz
         self._last_time: float = 0.0
         self._reachable: bool = True
+        self._floating_base_reported: bool = False
 
     @property
     def reachable(self) -> bool:
@@ -240,7 +260,10 @@ class VelocityBasedIKController:
             current_dofs = self._robot.get_dof_positions().numpy()
             ee_pos, ee_orient = (arr.numpy() for arr in self._ee_link.get_world_poses())
             jacobians = self._robot.get_jacobian_matrices().numpy()
-            jacobian_ee = jacobians[:, self._ee_link_index - 1, :, : self._num_arm_dofs]
+            jacobian_ee = slice_ee_jacobian(jacobians, self._robot.num_dofs, self._ee_link_index, self._arm_dof_indices)
+        except FloatingBaseArticulationError as exc:
+            self._report_floating_base(exc)
+            return None
         except (AssertionError, RuntimeError):
             return None
 
@@ -259,7 +282,7 @@ class VelocityBasedIKController:
         delta = dq_vel * dt
         if self._max_joint_step_rad > 0.0:
             delta = np.clip(delta, -self._max_joint_step_rad, self._max_joint_step_rad)
-        new_positions = current_dofs[:, : self._num_arm_dofs] + delta
+        new_positions = current_dofs[:, self._arm_dof_indices] + delta
 
         pos_err_norm = float(np.linalg.norm(pos_error))
         self._reachable = pos_err_norm < 0.5
@@ -272,6 +295,18 @@ class VelocityBasedIKController:
         self._goal_orientation = None
         self._last_time = 0.0
         self._reachable = True
+
+    def _report_floating_base(self, error: FloatingBaseArticulationError) -> None:
+        """Report a refused floating-base articulation once per solver.
+
+        Args:
+            error: The refusal raised while slicing the Jacobian.
+        """
+        self._reachable = False
+        if self._floating_base_reported:
+            return
+        self._floating_base_reported = True
+        carb.log_warn(f"[Teleop][IK] {error}")
 
     def _compute_joint_velocity(self, jacobian_ee: np.ndarray, x_error: np.ndarray) -> np.ndarray:
         """Compute velocity-space joint update with selectable Jacobian method.
@@ -292,7 +327,10 @@ class VelocityBasedIKController:
             e = x_error[i, :, 0]
             if self._method == "singular-value-decomposition":
                 U, S, Vh = np.linalg.svd(J)
-                inv_s = np.where(self._min_singular_value < S, 1.0 / S, 0.0)
+                # Filtered singular values are dropped rather than inverted. A
+                # degenerate configuration puts exact zeros in `S`, and inverting
+                # the whole array before selecting would divide by them.
+                inv_s = np.divide(1.0, S, out=np.zeros_like(S), where=np.greater(S, self._min_singular_value))
                 J_pinv = Vh.T @ np.diag(inv_s) @ U.T
                 dq[i] = self._gain * (J_pinv @ e)
             elif self._method == "pseudoinverse":

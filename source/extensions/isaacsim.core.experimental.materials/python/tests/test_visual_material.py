@@ -25,6 +25,7 @@ from isaacsim.core.experimental.materials import (
     PreviewSurfaceMaterial,
     VisualMaterial,
 )
+from pxr import UsdShade
 
 
 async def populate_stage(max_num_prims: int, operation: Literal["wrap", "create"]) -> None:
@@ -83,3 +84,13 @@ class TestVisualMaterial(omni.kit.test.AsyncTestCase):
         self.assertIsInstance(instances[1], OmniGlassMaterial)
         self.assertIsInstance(instances[2], OmniPbrMaterial)
         self.assertIsInstance(instances[3], PreviewSurfaceMaterial)
+
+    async def test_discovery_handles_material_without_surface_shader(self) -> None:
+        """Test discovery of a material without a connected surface shader."""
+        stage = await stage_utils.create_new_stage_async()
+        path = "/World/material_without_shader"
+        UsdShade.Material.Define(stage, path)
+
+        for material_class in (OmniGlassMaterial, OmniPbrMaterial, PreviewSurfaceMaterial):
+            self.assertFalse(material_class.are_of_type(path).numpy().item())
+        self.assertEqual(VisualMaterial.fetch_instances([path]), [None])

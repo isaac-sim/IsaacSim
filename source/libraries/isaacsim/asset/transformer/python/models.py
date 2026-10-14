@@ -294,6 +294,13 @@ class ExecutionReport:
         results: Rule execution results.
         output_stage_path: File path of the final working stage after all rules
             have executed. Callers can use this to load the transformed asset.
+        composition_errors: Unresolved composition arcs on the final output
+            stage. Non-empty means the output is missing content that the
+            source stage composed, even when every rule succeeded.
+        composition_errors_truncated: True when the search for the above was
+            cut short, so ``composition_errors`` is a lower bound rather than
+            the complete set. An empty ``composition_errors`` alongside this
+            flag means "not checked", not "clean".
 
     """
 
@@ -309,6 +316,10 @@ class ExecutionReport:
 
     Callers can use this path to load the transformed asset.
     """
+    composition_errors: list[str] = field(default_factory=list)
+    """Unresolved composition arcs on the final output stage. Non-empty means the output is missing composed content."""
+    composition_errors_truncated: bool = False
+    """True when the composition-error search was cut short, making ``composition_errors`` a lower bound."""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the report to a dictionary suitable for JSON.
@@ -331,6 +342,8 @@ class ExecutionReport:
             "finished_at": self.finished_at,
             "results": [asdict(r) for r in self.results],
             "output_stage_path": self.output_stage_path,
+            "composition_errors": list(self.composition_errors),
+            "composition_errors_truncated": self.composition_errors_truncated,
         }
 
     def to_json(self) -> str:

@@ -15,14 +15,20 @@
 
 """Tests for the robot assembler assembly and disassembly workflows."""
 
+import inspect
+from pathlib import Path
+
+import carb
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import omni.kit.test
 from isaacsim.core.experimental.objects import SphereLight
+from isaacsim.core.experimental.prims import Articulation
 from isaacsim.robot_setup.assembler import RobotAssembler
+from isaacsim.robot_setup.assembler.robot_assembler import AssemblyStatus
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import Gf, Sdf, UsdGeom
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
 
 
 # Having a test class derived from omni.kit.test.AsyncTestCase declared on the root of module will
@@ -94,7 +100,12 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         )
 
         self._robot_base = "/World/ur10e"
-        self._robot_base_mount = "/ee_link"
+        # ``flange`` is the tool mount frame the extension UI offers for this robot. It is not
+        # itself a rigid body, but it is nested under the ``wrist_3_link`` rigid body, which is
+        # what the assembler's fixed joint binds to. The previously used ``ee_link`` has no rigid
+        # body anywhere in its ancestry, so the joint could not bind and the assembly silently
+        # dropped every attachment DOF.
+        self._robot_base_mount = "/wrist_3_link/flange"
         self._robot_attach = "/World/allegro_hand"
         self._robot_attach_mount = "/allegro_mount"
 
@@ -184,6 +195,125 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         # Direct reset on a fresh instance must likewise be safe.
         RobotAssembler().reset()
 
+    async def _wait_for_stage_load(self) -> None:
+        """Wait until every referenced asset has finished loading."""
+        while omni.usd.get_context().get_stage_loading_status()[2] > 0:
+            await app_utils.update_app_async()
+        await app_utils.update_app_async(steps=2)
+
+    async def test_resolve_joint_body_path(self) -> None:
+        """Test that joint body targets resolve to the nearest rigid body at or above them."""
+        # ``flange`` is a plain frame nested under the ``wrist_3_link`` rigid body.
+        self.assertEqual(
+            self._robot_assembler.resolve_joint_body_path(self._robot_base + "/wrist_3_link/flange"),
+            self._robot_base + "/wrist_3_link",
+        )
+        # A rigid body resolves to itself.
+        self.assertEqual(
+            self._robot_assembler.resolve_joint_body_path(self._robot_base + "/wrist_3_link"),
+            self._robot_base + "/wrist_3_link",
+        )
+        # ``ee_link`` is a top level frame with no rigid body anywhere in its ancestry.
+        self.assertEqual(self._robot_assembler.resolve_joint_body_path(self._robot_base + "/ee_link"), "")
+        self.assertEqual(self._robot_assembler.resolve_joint_body_path(""), "")
+
+    async def test_robot_assembler_rejects_mount_frame_without_rigid_body(self) -> None:
+        """Regression: a mount frame the fixed joint cannot bind to must raise, not assemble.
+
+        ``ee_link`` has no rigid body at or above it. Assembling onto it used to succeed
+        silently: the fixed joint was created inert, the attachment robot's Articulation Root
+        API was removed anyway, and the resulting articulation exposed only the base robot's
+        DOFs with nothing in the log naming the joint or the failed merge.
+        """
+        with self.assertRaises(ValueError):
+            self._robot_assembler.begin_assembly(
+                self.stage,
+                self._robot_base,
+                self._robot_base + "/ee_link",
+                self._robot_attach,
+                self._robot_attach + self._robot_attach_mount,
+                "Gripper",
+                "allegro_hand",
+            )
+
+        # Rejection must happen before any stage edit, so no assembly is left in flight.
+        self.assertEqual(self._robot_assembler._status, AssemblyStatus.IDLE)
+
+        # An empty mount frame is likewise rejected rather than silently auto-created.
+        with self.assertRaises(ValueError):
+            self._robot_assembler.begin_assembly(
+                self.stage,
+                self._robot_base,
+                self._robot_base + self._robot_base_mount,
+                self._robot_attach,
+                "",
+                "Gripper",
+                "allegro_hand",
+            )
+
+    async def test_robot_assembler_merged_articulation_contains_attachment_dofs(self) -> None:
+        """Regression: the assembled robot's articulation must contain the attachment's DOFs.
+
+        The assembler removes the attachment robot's Articulation Root API and relies on the
+        fixed joint it creates to fold the attachment into the base articulation. When that
+        joint cannot bind, the merge yields only the base robot's DOFs while every other
+        success signal, including the single remaining Articulation Root API, still looks
+        correct. The attachment robot is also left welded in place, so pose assertions cannot
+        detect the loss; the DOFs of the merged articulation have to be inspected directly.
+
+        The physics view is created only after the assembly is complete. Views registered
+        before the assembly stay subscribed to physics events and are re-evaluated against the
+        restructured stage on the next play, which crashes the USD layer lookup.
+        """
+        await self._wait_for_stage_load()
+
+        self._robot_assembler.begin_assembly(
+            self.stage,
+            self._robot_base,
+            self._robot_base + self._robot_base_mount,
+            self._robot_attach,
+            self._robot_attach + self._robot_attach_mount,
+            "Gripper",
+            "allegro_hand",
+        )
+        await app_utils.update_app_async(steps=5)
+        self._robot_assembler.assemble()
+        await app_utils.update_app_async(steps=5)
+        self._robot_assembler.finish_assemble()
+        await app_utils.update_app_async(steps=10)
+
+        # Exactly one articulation root must remain, and it must be the base robot's.
+        self.assertEqual(
+            self._robot_assembler.get_articulation_root_api_path(self._robot_attach),
+            "",
+            "attachment robot kept its own articulation root, so the robots were not merged",
+        )
+
+        self._timeline.play()
+        await app_utils.update_app_async(steps=30)
+
+        articulation = Articulation(self._robot_assembler.get_articulation_root_api_path(self._robot_base))
+        dof_paths = [path for paths in articulation.dof_paths for path in paths]
+
+        base_dof_paths = [path for path in dof_paths if path.startswith(self._robot_base)]
+        attach_dof_paths = [path for path in dof_paths if path.startswith(self._robot_attach)]
+
+        self.assertGreater(len(base_dof_paths), 0, "merged articulation contains no base robot DOFs")
+        self.assertGreater(
+            len(attach_dof_paths),
+            0,
+            "Merged articulation contains none of the attachment robot's DOFs. The fixed joint "
+            f"did not fold {self._robot_attach} into the base articulation. Merged DOFs: {dof_paths}",
+        )
+        self.assertEqual(
+            len(dof_paths),
+            len(base_dof_paths) + len(attach_dof_paths),
+            f"merged articulation exposes unexpected DOFs: {dof_paths}",
+        )
+
+        self._timeline.stop()
+        await app_utils.update_app_async()
+
     async def _assert_pose(self) -> None:
         robot_base_pose = omni.usd.get_world_transform_matrix(
             self.stage.GetPrimAtPath(self._robot_base + self._robot_base_mount)
@@ -207,6 +337,139 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
         await app_utils.update_app_async(steps=20)
         await self._assert_pose()
 
+    async def test_articulated_attachment_requires_base_articulation(self) -> None:
+        """Reject an articulated attachment when only its own root is present."""
+        base_path = "/World/plain_base"
+        attach_path = base_path + "/tool"
+        base = self.stage.DefinePrim(base_path, "Xform")
+        attachment = self.stage.DefinePrim(attach_path, "Xform")
+        UsdPhysics.RigidBodyAPI.Apply(base)
+        UsdPhysics.RigidBodyAPI.Apply(attachment)
+        root_joint = UsdPhysics.FixedJoint.Define(self.stage, attach_path + "/root_joint")
+        root_joint.CreateBody1Rel().SetTargets([Sdf.Path(attach_path)])
+        UsdPhysics.ArticulationRootAPI.Apply(root_joint.GetPrim())
+
+        # The generic subtree lookup finds the nested attachment root; it is not a base articulation.
+        self.assertEqual(self._robot_assembler.get_articulation_root_api_path(base_path), str(root_joint.GetPath()))
+        before = self.stage.GetRootLayer().ExportToString()
+        with self.assertRaisesRegex(ValueError, "no active articulation root"):
+            self._robot_assembler.begin_assembly(
+                self.stage, base_path, base_path, attach_path, attach_path, "Gripper", "tool"
+            )
+        self.assertEqual(self._robot_assembler._status, AssemblyStatus.IDLE)
+        self.assertEqual(self.stage.GetRootLayer().ExportToString(), before)
+        with self.assertRaisesRegex(ValueError, "no active articulation root"):
+            self._robot_assembler._assemble_rigid_bodies(base_path, attach_path, base_path, attach_path)
+
+        self.assertTrue(root_joint.GetPrim().IsActive())
+        self.assertTrue(root_joint.GetPrim().HasAPI(UsdPhysics.ArticulationRootAPI))
+        self.assertFalse(self.stage.GetPrimAtPath(attach_path + "/AssemblerFixedJoint").IsValid())
+
+        UsdPhysics.ArticulationRootAPI.Apply(base)
+        assembled = self._robot_assembler._assemble_rigid_bodies(base_path, attach_path, base_path, attach_path)
+        self.assertEqual(assembled.fixed_joint.GetBody0Rel().GetTargets(), [Sdf.Path(base_path)])
+        self.assertEqual(assembled.fixed_joint.GetBody1Rel().GetTargets(), [Sdf.Path(attach_path)])
+        self.assertFalse(root_joint.GetPrim().IsActive())
+        self.assertTrue(base.HasAPI(UsdPhysics.ArticulationRootAPI))
+
+    async def test_ur10e_robotiq_requires_active_physics_variant(self) -> None:
+        """Reject inactive physics, then assemble and actuate all five mimic followers."""
+        self.assertEqual(Path(inspect.getfile(RobotAssembler)).resolve().parent, Path(__file__).resolve().parent.parent)
+        await stage_utils.create_new_stage_async()
+        self.stage = omni.usd.get_context().get_stage()
+        self.stage.SetDefaultPrim(self.stage.DefinePrim("/World", "Xform"))
+        assets_root = await get_assets_root_path_async()
+        samples = assets_root + "/Isaac/Samples/Rigging/Manipulator/import_manipulator"
+        stage_utils.add_reference_to_stage(samples + "/ur10e/ur/ur.usda", "/ur")
+        stage_utils.add_reference_to_stage(samples + "/robotiq_2f_140/robotiq_2f_140.usd", "/ur/robotiq_2f_140")
+        await app_utils.update_app_async(steps=5)
+        await self._wait_for_stage_load()
+
+        base = self.stage.GetPrimAtPath("/ur")
+        root_joint = self.stage.GetPrimAtPath("/ur/robotiq_2f_140/root_joint")
+        base_mount = (
+            "/ur/Geometry/world/base_link/base_link_inertia/shoulder_link/upper_arm_link/"
+            "forearm_link/wrist_1_link/wrist_2_link/wrist_3_link"
+        )
+        attach_mount = "/ur/robotiq_2f_140/robotiq_arg2f_base_link"
+        variants = base.GetVariantSet("Physics")
+        # An explicit empty selection also blocks any selection authored in the referenced asset.
+        variants.BlockVariantSelection()
+        before = self.stage.GetRootLayer().ExportToString()
+        with self.assertRaisesRegex(ValueError, "no active articulation root"):
+            self._robot_assembler.begin_assembly(
+                self.stage, "/ur", base_mount, "/ur/robotiq_2f_140", attach_mount, "Gripper", "robotiq"
+            )
+        self.assertEqual(self.stage.GetRootLayer().ExportToString(), before)
+        self.assertTrue(root_joint.IsActive())
+
+        self.assertTrue(variants.SetVariantSelection("physx"))
+        self._robot_assembler.begin_assembly(
+            self.stage, "/ur", base_mount, "/ur/robotiq_2f_140", attach_mount, "Gripper", "robotiq"
+        )
+        self.apply_rotation(Gf.Vec3d(0, 0, 1), 90)
+        # Changing Physics while adjusting the assembly must also fail before removing the gripper root.
+        with Usd.EditContext(self.stage, self.stage.GetRootLayer()):
+            variants.BlockVariantSelection()
+        with self.assertRaisesRegex(ValueError, "no active articulation root"):
+            self._robot_assembler.assemble()
+        self.assertTrue(root_joint.IsActive())
+        with Usd.EditContext(self.stage, self.stage.GetRootLayer()):
+            variants.SetVariantSelection("physx")
+        self._robot_assembler.assemble()
+        self.assertFalse(root_joint.IsActive())
+        roots = [str(p.GetPath()) for p in Usd.PrimRange(base) if p.HasAPI(UsdPhysics.ArticulationRootAPI)]
+        self.assertEqual(roots, ["/ur/Geometry/world"])
+
+        # Give the input finger drive deterministic gains, without modifying the referenced asset.
+        drive = UsdPhysics.DriveAPI.Get(self.stage.GetPrimAtPath("/ur/robotiq_2f_140/joints/finger_joint"), "angular")
+        self.assertTrue(drive)
+        drive.CreateStiffnessAttr().Set(1000.0)
+        drive.CreateDampingAttr().Set(100.0)
+        drive.CreateTargetPositionAttr().Set(0.0)
+        app_utils.play()
+        await app_utils.update_app_async(steps=30)
+        articulation = Articulation("/ur/Geometry/world")
+        names = articulation.dof_names
+        followers = [
+            "left_inner_finger_joint",
+            "left_inner_knuckle_joint",
+            "right_inner_knuckle_joint",
+            "right_outer_knuckle_joint",
+            "right_inner_finger_joint",
+        ]
+        expected = followers + [
+            "finger_joint",
+            "shoulder_pan_joint",
+            "shoulder_lift_joint",
+            "elbow_joint",
+            "wrist_1_joint",
+            "wrist_2_joint",
+            "wrist_3_joint",
+        ]
+        self.assertEqual(set(names), set(expected))
+        start = articulation.get_dof_positions().numpy().copy()
+        articulation.set_dof_position_targets([0.3], dof_indices=[names.index("finger_joint")])
+        await app_utils.update_app_async(steps=120)
+        end = articulation.get_dof_positions().numpy()
+        self.assertTrue(np.isfinite(end).all())
+        self.assertAlmostEqual(float(end[0, names.index("finger_joint")]), 0.3, delta=0.03)
+        for name in followers:
+            index = names.index(name)
+            self.assertGreater(abs(float(end[0, index] - start[0, index])), 0.03, name)
+        base_pose = omni.usd.get_world_transform_matrix(self.stage.GetPrimAtPath(base_mount))
+        attach_pose = omni.usd.get_world_transform_matrix(self.stage.GetPrimAtPath(attach_mount))
+        distance = (base_pose.ExtractTranslation() - attach_pose.ExtractTranslation()).GetLength()
+        self.assertLess(distance, 0.01)
+        carb.log_info(
+            f"UR10e/Robotiq simulation: {len(names)} DOFs, finger={end[0, names.index('finger_joint')]:.4f}, "
+            f"all five mimic followers moved, mount separation={distance:.6f} m"
+        )
+        app_utils.stop()
+        await app_utils.update_app_async()
+        self._robot_assembler.cancel_assembly()
+        await app_utils.update_app_async(steps=5)
+
     async def test_robot_assembler_assemble(self) -> None:
         """Test assembling robots and verifying pose during simulation."""
         await self.test_robot_assembler_begin_assembly()
@@ -224,7 +487,7 @@ class TestRobotAssembler(omni.kit.test.AsyncTestCase):
     async def test_robot_assembler_finish_assembly(self) -> None:
         """Test finishing assembly and verifying pose persists after timeline stop."""
         await self.test_robot_assembler_assemble()
-        self._robot_assembler.finish_assemble()
+        await self._robot_assembler.finish_assemble()
         await app_utils.update_app_async(steps=10)
         attachment_root_joint = self.stage.GetPrimAtPath(self._robot_attach + "/root_joint")
         self.assertFalse(attachment_root_joint.IsActive())

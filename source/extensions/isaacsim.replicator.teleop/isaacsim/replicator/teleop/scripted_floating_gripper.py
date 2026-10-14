@@ -29,6 +29,11 @@ import numpy as np
 from isaacsim.core.experimental.prims import Articulation, RigidPrim
 from pxr import PhysxSchema, Sdf, Usd, UsdPhysics
 
+from ._asset_paths import (
+    _resolve_definition_grasp_config_path,
+    _resolve_definition_relative_asset_path,
+    resolve_floating_gripper_asset_path_async,
+)
 from .controllers import FloatingRigidBodyController, GraspController, load_grasp_config
 from .coordinate_utils import CoordinateSystem
 from .markers_manager import MarkersManager
@@ -118,7 +123,7 @@ def _load_floating_gripper_definitions() -> dict[str, dict[str, Any]]:
 
         definitions[name] = {
             "name": name,
-            "asset_path": str(data["asset_path"]),
+            "asset_path": _resolve_definition_relative_asset_path(str(data["asset_path"]), path.parent)[0],
             "root_xform_name": str(data["root_xform_name"]),
             "rigid_root_name": str(data["rigid_root_name"]),
             "gripper_prim_name": str(data["gripper_prim_name"]),
@@ -137,7 +142,7 @@ def _load_floating_gripper_definitions() -> dict[str, dict[str, Any]]:
                 "rotation_offset_degrees": tuple(float(value) for value in rotation_offset),
             },
             "grasp_controller": {
-                "config_path": str(grasp["config_path"]),
+                "config_path": _resolve_definition_grasp_config_path(str(grasp["config_path"]), path.parent),
             },
         }
     if not definitions:
@@ -244,16 +249,17 @@ async def load_floating_grippers_async(
     """Load config-defined grippers and attach them to floating rigid roots."""
     import isaacsim.core.experimental.utils.app as app_utils
     from isaacsim.core.experimental.prims import XformPrim
-    from isaacsim.storage.native import get_assets_root_path_async
 
     if set(assignments) != set(spawn_poses):
         raise ValueError("Assignment and spawn-pose sides must match")
     if not assignments:
         raise ValueError("At least one gripper assignment is required")
 
-    assets_root = await get_assets_root_path_async()
-    if not assets_root:
-        raise RuntimeError("Could not resolve the Isaac assets root")
+    # Resolve all assets before modifying the stage; local-only loads need no assets server.
+    specs = {side: get_floating_gripper_spec(name) for side, name in assignments.items()}
+    asset_paths = {
+        side: await resolve_floating_gripper_asset_path_async(spec["asset_path"]) for side, spec in specs.items()
+    }
 
     stage_utils.define_prim(teleop_root, "Xform")
     origins_path = f"{teleop_root}/gripper_origin_xform"
@@ -263,8 +269,7 @@ async def load_floating_grippers_async(
     )
 
     resolved: dict[str, dict[str, str]] = {}
-    for side, gripper_name in assignments.items():
-        spec = get_floating_gripper_spec(gripper_name)
+    for side, spec in specs.items():
         paths = get_floating_gripper_paths(teleop_root, side, spec)
         position, _orientation = make_pose(*spawn_poses[side])
         stage_utils.define_prim(paths["root_xform"], "Xform")
@@ -276,7 +281,7 @@ async def load_floating_grippers_async(
             orientations=np.asarray([[1.0, 0.0, 0.0, 0.0]], dtype=np.float64),
         )
         _create_floating_rigid_root(paths["rigid_root"])
-        stage_utils.add_reference_to_stage(assets_root + spec["asset_path"], paths["gripper"])
+        stage_utils.add_reference_to_stage(asset_paths[side], paths["gripper"])
         resolved[side] = paths
 
     for _ in range(300):
@@ -288,7 +293,7 @@ async def load_floating_grippers_async(
 
     stage = stage_utils.get_current_stage()
     for side, paths in resolved.items():
-        spec = get_floating_gripper_spec(assignments[side])
+        spec = specs[side]
         _attach_to_floating_root(stage, paths)
         _create_tcp_xform(paths["tcp"], spec["tcp"]["translation"])
         if disable_gravity:

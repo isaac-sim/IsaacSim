@@ -17,6 +17,9 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import isaacsim.test.utils.menu_utils as menu_utils
 import omni.kit.app
 import omni.kit.ui_test as ui_test
 from isaacsim.core.experimental.utils import stage as stage_utils
@@ -29,6 +32,7 @@ from isaacsim.test.utils.menu_utils import (
     menu_click_with_retry,
     navigate_menu_visual,
     perform_widget_action,
+    trigger_menu_item,
 )
 from isaacsim.test.utils.timed_async_test import TimedAsyncTestCase
 
@@ -48,6 +52,83 @@ def _has_menubar() -> bool:
         return menubar is not None and len(menubar.find_all("*")) > 0
     except Exception:
         return False
+
+
+class _FakeMenuRef:
+    """Small menu-tree node used to test path resolution without a main window.
+
+    Args:
+        widget: Optional leaf widget represented by this node.
+        children: Direct child nodes keyed by menu text.
+    """
+
+    def __init__(self, widget: object | None = None, children: dict[str, _FakeMenuRef] | None = None) -> None:
+        self.widget = widget
+        self._children = children or {}
+
+    def find_menu(self, name: str) -> _FakeMenuRef | None:
+        """Return the named direct child, if present.
+
+        Args:
+            name: Menu text to find.
+
+        Returns:
+            The matching child node, or ``None``.
+        """
+        return self._children.get(name)
+
+
+class _FakeMenuItem:
+    """Actionable leaf widget used by direct-trigger tests.
+
+    Args:
+        enabled: Whether the menu item is enabled.
+        has_action: Whether the menu item has a registered callback.
+    """
+
+    def __init__(self, enabled: bool = True, has_action: bool = True) -> None:
+        self.enabled = enabled
+        self.has_action = has_action
+        self.trigger_count = 0
+
+    def has_triggered_fn(self) -> bool:
+        """Return whether the fake item has an action callback.
+
+        Returns:
+            True when an action callback is registered.
+        """
+        return self.has_action
+
+    def call_triggered_fn(self) -> None:
+        """Record one invocation of the fake action callback."""
+        self.trigger_count += 1
+
+
+class _FakeMenu:
+    """Fake submenu widget type for endpoint validation."""
+
+
+class _FakeUi:
+    """Minimal replacement for the ``omni.ui`` type namespace."""
+
+    Menu = _FakeMenu
+
+
+def _make_menu_tree(menu_path: str, widget: object) -> tuple[_FakeMenuRef, _FakeMenuRef]:
+    """Build a fake menubar containing one slash-separated path.
+
+    Args:
+        menu_path: Slash-separated path to create.
+        widget: Widget stored at the leaf node.
+
+    Returns:
+        The fake menubar root and the leaf menu reference.
+    """
+    menu_item = _FakeMenuRef(widget=widget)
+    node = menu_item
+    for segment in reversed(menu_path.split("/")):
+        node = _FakeMenuRef(children={segment: node})
+    return node, menu_item
 
 
 class TestGetAllMenuPaths(TimedAsyncTestCase):
@@ -266,6 +347,58 @@ class TestMenuClickWithRetry(TimedAsyncTestCase):
         stage = stage_utils.get_current_stage()
         cube_found = any(prim.GetTypeName() == "Cube" for prim in stage.Traverse())
         self.assertTrue(cube_found, "No Cube prim found on stage after menu click")
+
+
+class TestTriggerMenuItem(TimedAsyncTestCase):
+    """Tests for direct, non-visual menu action triggering."""
+
+    async def test_trigger_menu_item_create_mesh_cube(self) -> None:
+        """Verify that an available leaf action is triggered and returned."""
+        widget = _FakeMenuItem()
+        menubar, expected_menu_item = _make_menu_tree("Create/Mesh/Cube", widget)
+
+        with patch.object(menu_utils, "get_menubar", return_value=menubar):
+            menu_item = await trigger_menu_item("Create/Mesh/Cube")
+
+        self.assertIs(menu_item, expected_menu_item)
+        self.assertEqual(widget.trigger_count, 1)
+
+    async def test_trigger_menu_item_missing_path_raises(self) -> None:
+        """Verify that an unavailable menu path raises TimeoutError."""
+        with patch.object(menu_utils, "get_menubar", return_value=_FakeMenuRef()):
+            with self.assertRaises(TimeoutError):
+                await trigger_menu_item("NonExistent/Menu/Item", max_frames=2)
+
+    async def test_trigger_menu_item_unavailable_menubar_times_out(self) -> None:
+        """Verify that a minimal app without a main window produces a timeout."""
+        with patch.object(menu_utils, "get_menubar", side_effect=ModuleNotFoundError):
+            with self.assertRaises(TimeoutError):
+                await trigger_menu_item("Tools/Robotics/Robot Poser", max_frames=2)
+
+    async def test_trigger_menu_item_submenu_raises(self) -> None:
+        """Verify that a submenu cannot be triggered as a leaf action."""
+        menubar, _ = _make_menu_tree("Create/Mesh", _FakeMenu())
+
+        with patch.object(menu_utils, "get_menubar", return_value=menubar):
+            with patch.object(menu_utils, "ui", _FakeUi):
+                with self.assertRaises(ValueError):
+                    await trigger_menu_item("Create/Mesh")
+
+    async def test_trigger_menu_item_requires_enabled_action(self) -> None:
+        """Verify that disabled and actionless leaves cannot be triggered."""
+        for widget in (_FakeMenuItem(enabled=False), _FakeMenuItem(has_action=False)):
+            with self.subTest(enabled=widget.enabled, has_action=widget.has_action):
+                menubar, _ = _make_menu_tree("Tools/Action", widget)
+                with patch.object(menu_utils, "get_menubar", return_value=menubar):
+                    with self.assertRaises(RuntimeError):
+                        await trigger_menu_item("Tools/Action")
+
+    async def test_trigger_menu_item_invalid_arguments_raise(self) -> None:
+        """Verify validation of the path and polling frame limit."""
+        with self.assertRaises(ValueError):
+            await trigger_menu_item("Create//Cube")
+        with self.assertRaises(ValueError):
+            await trigger_menu_item("Create/Mesh/Cube", max_frames=0)
 
 
 class TestNavigateMenuVisual(TimedAsyncTestCase):

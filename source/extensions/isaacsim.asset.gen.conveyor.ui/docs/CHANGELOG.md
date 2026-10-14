@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.3] - 2026-10-01
+### Fixed
+- Initialize the default conveyor assets directory without probing the asset server or changing the global asset timeout.
+
+## [2.3.2] - 2026-09-23
+### Fixed
+- Handle default and root-level track placement and allow deleting tracks loaded from existing stages.
+
 ## [2.3.1] - 2026-06-09
 ### Fixed
 - Fix linter errors and missing or incomplete docstrings.

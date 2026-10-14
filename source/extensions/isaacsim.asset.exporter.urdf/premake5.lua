@@ -14,10 +14,15 @@
 -- limitations under the License.
 
 local ext = get_current_extension_info()
+dofile(root .. "/tools/isaac_build/extension_wheel.lua")
+
 project_ext(ext)
+stage_isaacsim_extension_wheel_with_python_overlays(ext, "isaacsim.asset.exporter.urdf", {
+    "isaacsim/asset/exporter/urdf/extension.py",
+})
 
 repo_build.prebuild_link {
     { "docs", ext.target_dir .. "/docs" },
     { "data", ext.target_dir .. "/data" },
-    { "isaacsim", ext.target_dir .. "/isaacsim" },
+    { "isaacsim/asset/exporter/urdf/tests", ext.target_dir .. "/isaacsim/asset/exporter/urdf/tests" },
 }

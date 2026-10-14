@@ -32,8 +32,13 @@ from .actuator_compatibility import (
     ACTUATOR_RUNTIME_EXPLICIT,
     ACTUATOR_RUNTIME_IMPLICIT,
     ACTUATOR_RUNTIME_MIXED,
+    EXPLICIT_ACTUATOR_POLICY_AUTHORED_ONLY,
+    EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED,
+    PHYSICS_BACKEND_AUTO,
+    PHYSICS_BACKEND_NEWTON,
+    PHYSICS_BACKEND_PHYSX,
 )
-from .parameter_apply_torch import validate_differentiable_entries
+from .backend_capabilities import resolve_backend_capabilities
 from .preset_loader import ParameterPreset
 from .residual_config import ResidualWeightConfig
 from .run_spec import (
@@ -56,6 +61,11 @@ _VALID_ACTUATOR_RUNTIMES = {
     ACTUATOR_RUNTIME_IMPLICIT,
     ACTUATOR_RUNTIME_EXPLICIT,
     ACTUATOR_RUNTIME_MIXED,
+}
+_VALID_PHYSICS_BACKENDS = {PHYSICS_BACKEND_AUTO, PHYSICS_BACKEND_PHYSX, PHYSICS_BACKEND_NEWTON}
+_VALID_EXPLICIT_ACTUATOR_POLICIES = {
+    EXPLICIT_ACTUATOR_POLICY_AUTHORED_ONLY,
+    EXPLICIT_ACTUATOR_POLICY_PROMOTE_SELECTED,
 }
 _SOLVER_INT_KEYS = (
     "max_iterations",
@@ -242,7 +252,7 @@ def synthesize_run_spec_from_quickstart(
 
     Populates ``parameters.selected`` from the recipe's registry with the registry
     default bounds when the robot's joint/link counts are known, filtering families
-    the differentiable bridge rejects when the recipe targets it.
+    that the selected simulation backend rejects.
 
     Returns:
         ``(spec, notes)`` — notes include recipe application notes plus quick-start
@@ -278,11 +288,17 @@ def synthesize_run_spec_from_quickstart(
         space = recipe.build_parameter_space(num_joints=int(num_joints), num_links=max(1, int(num_links or 1)))
         selected_types = recipe_parameter_type_values(recipe)
         entries = [item for item in space.specs if item.param_type.value in selected_types]
-        if spec.simulation.newton.solver == NEWTON_SOLVER_FEATHERSTONE_DIFF:
-            rejected = validate_differentiable_entries([item.entry for item in entries])
+        capabilities = resolve_backend_capabilities(spec.simulation)
+        if capabilities is not None:
+            rejected = capabilities.unsupported_parameter_types([item.entry for item in entries])
             if rejected:
-                notes.append(f"Dropped parameters the differentiable bridge rejects: {', '.join(rejected)}.")
+                notes.append(f"Dropped parameters unsupported by {capabilities.label}: {', '.join(rejected)}.")
                 entries = [item for item in entries if item.param_type.value not in set(rejected)]
+        else:
+            notes.append(
+                "Backend capabilities are unknown for the selected execution axes; parameter support was not "
+                "checked and unsupported parameters may fail at solve time."
+            )
         spec.parameters.selected = [
             ParameterRunSpec.from_entry(
                 item.entry,
@@ -354,6 +370,8 @@ def _apply_simulation_section(spec: SysIdRunSpec, preset: ParameterPreset) -> li
                 notes.append(f"Skipped unknown Newton feedforward mode '{feedforward}'.")
         if "featherstone_substeps" in newton_section:
             spec.simulation.newton.featherstone_substeps = max(1, int(newton_section["featherstone_substeps"]))
+        if "mujoco_substeps" in newton_section:
+            spec.simulation.newton.mujoco_substeps = max(1, int(newton_section["mujoco_substeps"]))
         if "device" in newton_section:
             spec.simulation.newton.device = str(newton_section["device"])
         if "cuda_graph_capture" in newton_section:
@@ -368,6 +386,18 @@ def _apply_simulation_section(spec: SysIdRunSpec, preset: ParameterPreset) -> li
             spec.simulation.actuator_runtime = str(actuator_runtime)
         else:
             notes.append(f"Skipped unknown actuator runtime '{actuator_runtime}'.")
+    physics_backend = section.get("physics_backend")
+    if physics_backend is not None:
+        if str(physics_backend) in _VALID_PHYSICS_BACKENDS:
+            spec.simulation.physics_backend = str(physics_backend)
+        else:
+            notes.append(f"Skipped unknown physics backend '{physics_backend}'.")
+    actuator_policy = section.get("explicit_actuator_policy")
+    if actuator_policy is not None:
+        if str(actuator_policy) in _VALID_EXPLICIT_ACTUATOR_POLICIES:
+            spec.simulation.explicit_actuator_policy = str(actuator_policy)
+        else:
+            notes.append(f"Skipped unknown explicit actuator policy '{actuator_policy}'.")
     return notes
 
 

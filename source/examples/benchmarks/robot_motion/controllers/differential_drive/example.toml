@@ -1,0 +1,37 @@
+id = "benchmarks.robot_motion.controllers.differential_drive"
+title = "Differential Drive Controller"
+summary = "Drive a two-wheeled differential-drive robot using forward speed and yaw rate."
+owners = [
+    "isaacsim.performance.benchmarking",
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.entities",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.robot_motion.controllers",
+    "isaacsim.ovgl_viewport.debug",
+]
+topics = ["controllers", "differential_drive", "motion_generation", "physics", "rendering", "robotics", "viewport"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+modules = [
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+    { name = "isaacsim_physics", surfaces = ["python"] },
+    { name = "isaacsim_physics_engines", surfaces = ["python"] },
+    { name = "isaacsim_robot_motion", surfaces = ["python"] },
+    { name = "isaacsim_ovgl_viewport", surfaces = ["python"] },
+    { name = "isaacsim_performance", surfaces = ["python"] },
+]
+
+[[test]]
+name = "smoke"
+path = "test.py"
+timeout_seconds = 300
+stdout_contains = ["Benchmark smoke test passed."]

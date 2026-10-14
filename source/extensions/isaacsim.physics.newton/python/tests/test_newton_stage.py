@@ -27,6 +27,7 @@ import omni.usd
 import warp as wp
 from isaacsim.physics.newton.impl import carb_config
 from isaacsim.physics.newton.impl.newton_stage import NewtonStage
+from isaacsim.physics.newton.impl.solver_config import MuJoCoSolverConfig
 from isaacsim.physics.newton.impl.usd import UsdManager
 from isaacsim.physics.newton.impl.utils import newton_solver_to_api_schema
 from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdPhysics
@@ -391,6 +392,22 @@ class TestNewtonStageInitialization(omni.kit.test.AsyncTestCase):
             newton_stage._initialize_joint_state_from_body_poses()
 
         np.testing.assert_allclose(state.joint_q.numpy(), [0.6], rtol=0.0, atol=1.0e-6)
+
+    async def test_mujoco_cone_override_is_forwarded_to_solver(self) -> None:
+        """Forward an explicit friction-cone override while preserving scene settings by default."""
+        model = Mock()
+        solver_factory = Mock()
+        self.assertIsNone(MuJoCoSolverConfig().cone)
+
+        with patch.dict(
+            "isaacsim.physics.newton.impl.newton_stage.newton_solver_to_solver_object",
+            {"mujoco": solver_factory},
+            clear=True,
+        ):
+            NewtonStage._create_solver(model, MuJoCoSolverConfig(cone="elliptic"))
+
+        solver_factory.assert_called_once()
+        self.assertEqual(solver_factory.call_args.kwargs["cone"], "elliptic")
 
 
 class TestNewtonStagePhysicsSceneSelection(omni.kit.test.AsyncTestCase):

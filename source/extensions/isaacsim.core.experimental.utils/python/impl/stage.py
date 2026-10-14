@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import threading
 from collections.abc import Generator
 from typing import Literal
@@ -26,9 +27,10 @@ import carb
 import omni.kit.stage_templates
 import omni.usd
 import omni.usd.commands
+import omni.usd.editor
 import usdrt
 from omni.metrics.assembler.core import get_metrics_assembler_interface
-from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdUtils
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from . import _templates as stage_templates
 from . import backend as backend_utils
@@ -316,6 +318,9 @@ def open_stage(usd_path: str) -> tuple[bool, Usd.Stage | None]:
 
     Backends: :guilabel:`usd`.
 
+    A missing or unreadable file is reported through the returned success flag, not an
+    exception. Check that flag before using the stage.
+
     Args:
         usd_path: USD file path to open.
 
@@ -324,7 +329,8 @@ def open_stage(usd_path: str) -> tuple[bool, Usd.Stage | None]:
         2) Opened USD stage instance or None if the USD file was not opened.
 
     Raises:
-        ValueError: If the USD file does not exist or is not a valid (shallow check).
+        ValueError: If the file extension is not one USD can open. This is a shallow
+            check on the path only; it does not verify that the file exists.
 
     Example:
 
@@ -358,6 +364,9 @@ async def open_stage_async(usd_path: str) -> tuple[bool, Usd.Stage | None]:
 
     This function is the asynchronous version of :py:func:`open_stage`.
 
+    A missing or unreadable file is reported through the returned success flag, not an
+    exception. Check that flag before using the stage.
+
     Args:
         usd_path: USD file path to open.
 
@@ -366,7 +375,8 @@ async def open_stage_async(usd_path: str) -> tuple[bool, Usd.Stage | None]:
         2) Opened USD stage instance or None if the USD file was not opened.
 
     Raises:
-        ValueError: If the USD file does not exist or is not a valid (shallow check).
+        ValueError: If the file extension is not one USD can open. This is a shallow
+            check on the path only; it does not verify that the file exists.
     """
     if not Usd.Stage.IsSupportedFile(usd_path):
         raise ValueError(f"The file ({usd_path}) is not USD open-able")
@@ -404,6 +414,14 @@ def save_stage(usd_path: str) -> bool:
     if not Usd.Stage.IsSupportedFile(usd_path):
         raise ValueError(f"The file ({usd_path}) is not USD open-able")
     root_layer = get_current_stage(backend="usd").GetRootLayer()
+    destination_layer = Sdf.Layer.Find(usd_path)
+    if destination_layer is root_layer:
+        return root_layer.Save()
+    try:
+        if root_layer.realPath and os.path.samefile(root_layer.realPath, usd_path):
+            return root_layer.Save()
+    except OSError:
+        pass
     layer = Sdf.Layer.CreateNew(usd_path)
     layer.TransferContent(root_layer)
     omni.usd.resolve_paths(root_layer.identifier, layer.identifier)
@@ -768,6 +786,110 @@ def define_prim(path: str, type_name: str = "Xform") -> Usd.Prim | usdrt.Usd.Pri
     return stage.DefinePrim(path, type_name)
 
 
+def _has_hidden_local_dependency(stage: Usd.Stage, target: Sdf.Path) -> bool:
+    """Check for local path dependencies that namespace editing cannot discover."""
+
+    def _references_target(path_list: object, anchor: Sdf.Path) -> bool:
+        for field in [
+            "explicitItems",
+            "addedItems",
+            "prependedItems",
+            "appendedItems",
+            "deletedItems",
+            "orderedItems",
+        ]:
+            for path in getattr(path_list, field):
+                path = path if path.IsAbsolutePath() else path.MakeAbsolutePath(anchor)
+                if path.HasPrefix(target):
+                    return True
+        return False
+
+    for layer in stage.GetLayerStack():
+        found = False
+
+        def _visit(path: Sdf.Path) -> None:
+            nonlocal found
+            if found:
+                return
+            spec = layer.GetObjectAtPath(path)
+            if isinstance(spec, (Sdf.RelationshipSpec, Sdf.AttributeSpec)):
+                composed_path = path.StripAllVariantSelections()
+                prim = stage.GetPrimAtPath(composed_path.GetPrimPath())
+                prop = stage.GetPropertyAtPath(composed_path)
+                is_visible = (
+                    prim.IsValid()
+                    and prim.IsActive()
+                    and prim.IsLoaded()
+                    and prop.IsValid()
+                    and spec in prop.GetPropertyStack()
+                )
+                path_list = spec.targetPathList if isinstance(spec, Sdf.RelationshipSpec) else spec.connectionPathList
+                if not is_visible and _references_target(path_list, composed_path.GetPrimPath()):
+                    found = True
+                return
+
+            prim_spec = layer.GetPrimAtPath(path)
+            if not isinstance(prim_spec, Sdf.PrimSpec):
+                return
+            composed_path = path.StripAllVariantSelections()
+            prim = stage.GetPrimAtPath(composed_path)
+            is_visible = prim.IsValid() and prim.IsActive() and prim.IsLoaded() and prim_spec in prim.GetPrimStack()
+            if is_visible:
+                return
+            for path_list in [prim_spec.inheritPathList, prim_spec.specializesList]:
+                if _references_target(path_list, composed_path):
+                    found = True
+                    return
+            for path_list in [prim_spec.referenceList, prim_spec.payloadList]:
+                for field in [
+                    "explicitItems",
+                    "addedItems",
+                    "prependedItems",
+                    "appendedItems",
+                    "deletedItems",
+                    "orderedItems",
+                ]:
+                    for arc in getattr(path_list, field):
+                        if not arc.assetPath:
+                            arc_path = (
+                                arc.primPath
+                                if arc.primPath.IsAbsolutePath()
+                                else arc.primPath.MakeAbsolutePath(composed_path)
+                            )
+                            if arc_path.HasPrefix(target):
+                                found = True
+                                return
+
+        layer.Traverse(Sdf.Path.absoluteRootPath, _visit)
+        if found:
+            return True
+    return False
+
+
+def _rekey_load_rules(load_rules: Usd.StageLoadRules, source: Sdf.Path, destination: Sdf.Path) -> Usd.StageLoadRules:
+    """Return stage load rules with source rules moved to the destination namespace."""
+    source_rule = load_rules.GetEffectiveRuleForPath(source)
+    rules = load_rules.GetRules()
+    moved = [(path.ReplacePrefix(source, destination), rule) for path, rule in rules if path.HasPrefix(source)]
+    kept = [(path, rule) for path, rule in rules if not path.HasPrefix(source) and not path.HasPrefix(destination)]
+    result = Usd.StageLoadRules()
+    result.SetRules(sorted(kept + moved, key=lambda entry: entry[0]))
+    if result.GetEffectiveRuleForPath(destination) != source_rule:
+        result.AddRule(destination, source_rule)
+    return result
+
+
+def _inherits_parent_transform(prim: Usd.Prim) -> bool:
+    """Check whether any affected Xformable root inherits the target prim's parent transform."""
+    iterator = iter(Usd.PrimRange(prim))
+    for descendant in iterator:
+        if descendant.IsA(UsdGeom.Xformable):
+            iterator.PruneChildren()
+            if not UsdGeom.Xformable(descendant).GetResetXformStack():
+                return True
+    return False
+
+
 def delete_prim(prim: str | Usd.Prim) -> bool:
     """Delete a prim from the stage.
 
@@ -795,9 +917,20 @@ def delete_prim(prim: str | Usd.Prim) -> bool:
     path = prim if isinstance(prim, str) else prim.GetPath().pathString
     # check if target prim is an existing prim
     stage = get_current_stage(backend="usd")
-    if not stage.GetPrimAtPath(path).IsValid():
+    target_prim = stage.GetPrimAtPath(path)
+    if not target_prim.IsValid():
         raise ValueError(f"Prim at path '{path}' is not a valid prim")
-    omni.usd.commands.DeletePrimsCommand([path]).do()
+    if omni.usd.get_context_from_stage(stage) is None:
+        if omni.usd.editor.is_no_delete(target_prim):
+            return False
+        # Match the Kit command's refusal to mutate prims introduced by ancestral composition arcs.
+        options = Usd.NamespaceEditor.EditOptions()
+        options.allowRelocatesAuthoring = False
+        editor = Usd.NamespaceEditor(stage, options)
+        if not editor.DeletePrimAtPath(path) or not editor.CanApplyEdits():
+            return False
+        return editor.ApplyEdits() and not stage.GetPrimAtPath(path).IsValid()
+    omni.usd.commands.DeletePrimsCommand([path], stage=stage).do()
     return not stage.GetPrimAtPath(path).IsValid()
 
 
@@ -824,6 +957,8 @@ def move_prim(target: str | Usd.Prim, destination: str | Usd.Prim) -> tuple[bool
         ValueError: If the target prim is not a valid prim.
         ValueError: If the destination path has unexisting parents.
         ValueError: If the destination path is not a valid path string.
+        RuntimeError: If moving between differently transformed parents on a detached stage, where the default-time
+            world transform cannot be preserved.
 
     Example:
 
@@ -848,7 +983,8 @@ def move_prim(target: str | Usd.Prim, destination: str | Usd.Prim) -> tuple[bool
     destination = Sdf.Path(destination)
     # check if target prim is an existing prim
     stage = get_current_stage(backend="usd")
-    if not stage.GetPrimAtPath(target).IsValid():
+    target_prim = stage.GetPrimAtPath(target)
+    if not target_prim.IsValid():
         raise ValueError(f"Prim at path '{target}' is not a valid prim")
     # check if the destination is an existing prim
     if stage.GetPrimAtPath(destination).IsValid():
@@ -857,7 +993,40 @@ def move_prim(target: str | Usd.Prim, destination: str | Usd.Prim) -> tuple[bool
     elif not stage.GetPrimAtPath(destination.GetParentPath()).IsValid():
         raise ValueError(f"Destination path '{destination}' has unexisting parent '{destination.GetParentPath()}'")
     # move prim
-    return omni.usd.commands.MovePrimCommand(path_from=target, path_to=destination).do(), destination.pathString
+    if omni.usd.get_context_from_stage(stage) is None:
+        if omni.usd.editor.is_no_delete(target_prim):
+            return False, destination.pathString
+        # Match the Kit command's refusal to mutate prims introduced by ancestral composition arcs.
+        options = Usd.NamespaceEditor.EditOptions()
+        options.allowRelocatesAuthoring = False
+        editor = Usd.NamespaceEditor(stage, options)
+        if not editor.MovePrimAtPath(target, destination) or not editor.CanApplyEdits():
+            return False, destination.pathString
+        if _has_hidden_local_dependency(stage, target):
+            carb.log_warn(f"Cannot safely move '{target}': hidden local scene description depends on its path")
+            return False, destination.pathString
+        if target.GetParentPath() != destination.GetParentPath() and _inherits_parent_transform(target_prim):
+            # Unlike the Kit command, NamespaceEditor does not preserve a moved prim's world transform.
+            xform_cache = UsdGeom.XformCache(Usd.TimeCode.Default())
+            source_parent_transform = xform_cache.GetLocalToWorldTransform(stage.GetPrimAtPath(target.GetParentPath()))
+            destination_parent_transform = xform_cache.GetLocalToWorldTransform(
+                stage.GetPrimAtPath(destination.GetParentPath())
+            )
+            if not Gf.IsClose(source_parent_transform, destination_parent_transform, 1e-6):
+                raise RuntimeError(
+                    "Cannot move a prim between differently transformed parents on a detached stage while preserving "
+                    "its default-time world transform"
+                )
+        load_rules = _rekey_load_rules(stage.GetLoadRules(), target, destination)
+        result = editor.ApplyEdits()
+        result = result and not stage.GetPrimAtPath(target).IsValid() and stage.GetPrimAtPath(destination).IsValid()
+        if result and load_rules != stage.GetLoadRules():
+            stage.SetLoadRules(load_rules)
+        return result, destination.pathString
+    return (
+        omni.usd.commands.MovePrimCommand(path_from=target, path_to=destination, stage_or_context=stage).do(),
+        destination.pathString,
+    )
 
 
 def generate_next_free_path(path: str | None = None, *, prepend_default_prim: bool = True) -> str:

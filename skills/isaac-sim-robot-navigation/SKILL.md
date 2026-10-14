@@ -1,6 +1,6 @@
 ---
 name: isaac-sim-robot-navigation
-description: "Runtime mobile-robot navigation in custom scripts (RL, baked, per-frame). Use when driving robots live in simulation."
+description: "Live robot navigation and RL policy deployment in Isaac Sim. Use for runtime control or deploying exported robot policies with RobotPolicyRunner, env.yaml, and IO descriptors."
 license: Apache-2.0
 metadata:
   author: Renato Gasoto <info@nvidia.com>
@@ -35,6 +35,13 @@ Runtime navigation specialization. Driving a robot through a USD scene live, in 
 
 ## Read These Skills First
 
+For policy export or deployment, start with [Robot policy deployment](references/policy-deployment.md).
+It covers artifact discovery, direct `env.yaml` reuse, launch commands, validation, failure checks, and teardown.
+Use the linked Unitree H2 sample when a concrete robot example is needed.
+The navigation and rendering prerequisites below apply when also planning paths or capturing renders.
+Do not apply the heavy-stage physics-stripping recipe below to policy deployment. Preserve the actual robot
+roots, ground/contact surfaces, and task objects, including their rigid-body and collision APIs.
+
 - **navigation-primitives** — occupancy maps, A* planning, differential/holonomic kinematics, robot footprints (Spot Z=0.69, etc.), look-at chase camera math, common gotchas. This skill *assumes* you know that substrate.
 - **isaac-sim-rendering** — RT2, persistent session, ACES, frame validation
 - **isaac-sim-troubleshooting** — Kit 110 hang/freeze reference
@@ -44,6 +51,7 @@ Runtime navigation specialization. Driving a robot through a USD scene live, in 
 | Goal | Use |
 |---|---|
 | Drive a robot through a scene in real time, see it move | **this skill** |
+| Export and deploy a robot RL policy in Isaac Sim | **this skill**, [policy deployment workflow](references/policy-deployment.md) |
 | Record trajectories then re-render with sensors for SDG | `mobility-gen` |
 | Publish/subscribe Nav2 topics to ROS 2 | `isaac-sim-ros2-bridge` |
 
@@ -66,7 +74,11 @@ app_utils.play(commit=True)  # WITHOUT THIS, PHYSICS NEVER STEPS
 ```
 
 ### Strip non-robot physics from heavy stages
-On 33K+ prim stages with multiple physic bodies, simulation hangs. Strip ALL physics from non-robot prims:
+
+This legacy recipe is excluded from policy deployment, including locomotion and manipulation. It removes
+all physics outside a hardcoded `/World/Robot` prefix, including ground, task objects, and robots rooted
+elsewhere (such as `/World/H2`). Use it only on a disposable visualization scene where every affected prim
+has been confirmed unnecessary for physics. A large prim count alone does not justify removing physics.
 
 ```python
 from pxr import Usd, UsdPhysics

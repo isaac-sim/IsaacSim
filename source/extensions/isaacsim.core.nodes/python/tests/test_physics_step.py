@@ -19,7 +19,7 @@ import carb
 import omni.graph.core as og
 import omni.kit.test
 from isaacsim.core.simulation_manager import SimulationManager
-from pxr import Sdf
+from pxr import Sdf, UsdPhysics
 
 
 class TestPhysicsStep(omni.kit.test.AsyncTestCase):
@@ -146,3 +146,68 @@ class TestPhysicsStep(omni.kit.test.AsyncTestCase):
         self.assertEqual(size_b, 2.0 + steps)
 
         self._timeline.stop()
+
+    async def test_physics_step_delete_first_node_keeps_second_running(self) -> None:
+        """Verify deleting the node that created the shared callback does not stop its peer."""
+        await self._assert_survivor_continues_after_deletion(
+            "/physics_step_delete_first", "OnPhysicsStepA", "OnPhysicsStepB", "CounterB"
+        )
+
+    async def test_physics_step_delete_second_node_keeps_first_running(self) -> None:
+        """Verify deleting a non-owning node leaves the shared callback and its peer running."""
+        await self._assert_survivor_continues_after_deletion(
+            "/physics_step_delete_second", "OnPhysicsStepB", "OnPhysicsStepA", "CounterA"
+        )
+
+    async def _assert_survivor_continues_after_deletion(
+        self, graph_path: str, deleted_node: str, surviving_node: str, surviving_counter: str
+    ) -> None:
+        carb.settings.get_settings().set_bool("/app/player/useFixedTimeStepping", True)
+        UsdPhysics.Scene.Define(omni.usd.get_context().get_stage(), "/PhysicsScene")
+        keys = og.Controller.Keys
+        graph, _, _, _ = og.Controller.edit(
+            {"graph_path": graph_path, "evaluator_name": "execution"},
+            {
+                keys.CREATE_NODES: [
+                    ("OnPhysicsStepA", "isaacsim.core.nodes.OnPhysicsStep"),
+                    ("CounterA", "omni.graph.action.Counter"),
+                    ("OnPhysicsStepB", "isaacsim.core.nodes.OnPhysicsStep"),
+                    ("CounterB", "omni.graph.action.Counter"),
+                ],
+                keys.CONNECT: [
+                    ("OnPhysicsStepA.outputs:step", "CounterA.inputs:execIn"),
+                    ("OnPhysicsStepB.outputs:step", "CounterB.inputs:execIn"),
+                ],
+            },
+        )
+        graph.change_pipeline_stage(og.GraphPipelineStage.GRAPH_PIPELINE_STAGE_ONDEMAND)
+        counter_a = og.Controller.attribute(f"{graph_path}/CounterA.outputs:count")
+        counter_b = og.Controller.attribute(f"{graph_path}/CounterB.outputs:count")
+        surviving_count = og.Controller.attribute(f"{graph_path}/{surviving_counter}.outputs:count")
+
+        self._timeline.play()
+        try:
+            for _ in range(10):
+                await omni.kit.app.get_app().next_update_async()
+
+            self.assertGreater(counter_a.get(), 0)
+            self.assertEqual(counter_a.get(), counter_b.get())
+            count_before_deletion = surviving_count.get()
+            deleted_node_path = f"{graph_path}/{deleted_node}"
+            og.cmds.DeleteNode(graph=graph, node_path=deleted_node_path, modify_usd=True)
+            self.assertFalse(graph.get_node(deleted_node_path).is_valid())
+
+            for _ in range(10):
+                await omni.kit.app.get_app().next_update_async()
+
+            count_after_deletion = surviving_count.get()
+            self.assertGreater(count_after_deletion, count_before_deletion)
+
+            surviving_node_path = f"{graph_path}/{surviving_node}"
+            og.cmds.DeleteNode(graph=graph, node_path=surviving_node_path, modify_usd=True)
+            self.assertFalse(graph.get_node(surviving_node_path).is_valid())
+            for _ in range(2):
+                await omni.kit.app.get_app().next_update_async()
+            self.assertEqual(surviving_count.get(), count_after_deletion)
+        finally:
+            self._timeline.stop()

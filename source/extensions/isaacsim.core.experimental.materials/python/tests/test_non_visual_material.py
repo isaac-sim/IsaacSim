@@ -215,11 +215,8 @@ class TestNonVisualMaterial(omni.kit.test.AsyncTestCase):
         self.assertEqual(settings.default_value, "omni:simready:nonvisual")
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
-    async def test_surface_shader_authored(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
-        """Each non-visual material gets a surface shader connected to ``outputs:surface``.
-
-        A connected surface shader is required for the non-visual material IDs to resolve after a
-        cold stage load (not only when the material is authored live).
+    async def test_no_surface_shader_authored(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
+        """A non-visual material leaves the stage free of surface shaders it does not need.
 
         Args:
             prim: Material wrapper under test.
@@ -227,14 +224,30 @@ class TestNonVisualMaterial(omni.kit.test.AsyncTestCase):
             device: Simulation device selected by the parametrized case.
             backend: Prim backend selected by the parametrized case.
         """
-        import omni.usd
-
         for material in prim.materials:
-            surface_output = material.GetSurfaceOutput()
-            self.assertTrue(surface_output.HasConnectedSource(), "material outputs:surface is not connected")
-            shader_prim = omni.usd.get_shader_from_material(material.GetPrim(), get_prim=True)
-            self.assertTrue(shader_prim and shader_prim.IsValid(), "no shader connected to the material")
-            self.assertEqual(UsdShade.Shader(shader_prim).GetIdAttr().Get(), "UsdPreviewSurface")
+            self.assertFalse(
+                material.GetSurfaceOutput().HasConnectedSource(),
+                "material outputs:surface is connected",
+            )
+            self.assertFalse(
+                any(child.IsA(UsdShade.Shader) for child in material.GetPrim().GetChildren()),
+                "material has a shader child prim",
+            )
+
+    async def test_existing_surface_shader_preserved(self) -> None:
+        """Wrapping a visual material keeps its shader and ``outputs:surface`` connection intact."""
+        stage = await stage_utils.create_new_stage_async()
+        material = UsdShade.Material.Define(stage, "/World/visual_material")
+        shader = UsdShade.Shader.Define(stage, "/World/visual_material/Shader")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+
+        wrapped = NonVisualMaterial("/World/visual_material", bases="aluminum")
+
+        self.assertTrue(material.GetSurfaceOutput().HasConnectedSource())
+        self.assertEqual(shader.GetIdAttr().Get(), "UsdPreviewSurface")
+        self.assertEqual(wrapped.get_bases(), ["aluminum"])
 
     @parametrize(backends=["usd"], prim_class=NonVisualMaterial, populate_stage_func=populate_stage)
     async def test_encode_decode_multiple_attributes(

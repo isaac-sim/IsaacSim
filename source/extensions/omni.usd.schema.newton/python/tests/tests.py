@@ -39,3 +39,10 @@ class NewtonSchemaTests(omni.kit.test.AsyncTestCaseFailOnLogError):
         self.assertTrue(reg.IsAppliedAPISchema(typeName))
         typeName = "NewtonCollisionAPI"
         self.assertTrue(reg.IsAppliedAPISchema(typeName))
+
+        for typeName in (
+            "NewtonCurvesDeformableMaterialAPI",
+            "NewtonMPMSceneAPI",
+            "NewtonPointsDeformableSimAPI",
+        ):
+            self.assertTrue(reg.IsAppliedAPISchema(typeName), msg=typeName)

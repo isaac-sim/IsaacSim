@@ -50,7 +50,9 @@ GpuArticulationView::~GpuArticulationView()
     safeCudaFree(m_deviceDofPositionIndices);
     safeCudaFree(m_deviceDofVelocityIndices);
     safeCudaFree(m_deviceDofAxisIndices);
+    safeCudaFree(m_deviceDofBodyIndices);
     safeCudaFree(m_deviceLinkFlatIndices);
+    safeCudaFree(m_deviceLinkJointFlatIndices);
     safeCudaFree(m_deviceRootIndices);
     safeCudaFree(m_deviceRootJointQStartIndices);
     safeCudaFree(m_deviceFixedRootJointMapping);
@@ -88,7 +90,9 @@ void GpuArticulationView::_uploadMappingsToGpu()
     upload(m_dofPosIndices, m_deviceDofPositionIndices);
     upload(m_dofVelIndices, m_deviceDofVelocityIndices);
     upload(m_dofAxisIndices, m_deviceDofAxisIndices);
+    upload(m_dofBodyIndices, m_deviceDofBodyIndices);
     upload(m_linkFlatIndices, m_deviceLinkFlatIndices);
+    upload(m_linkJointFlatIndices, m_deviceLinkJointFlatIndices);
     upload(m_rootBodyIndices, m_deviceRootIndices);
     upload(m_rootJointQStartIndices, m_deviceRootJointQStartIndices);
     upload(m_fixedRootJointMapping, m_deviceFixedRootJointMapping);
@@ -122,6 +126,7 @@ void GpuArticulationView::_allocateStagingBuffer()
         m_linkFlatIndices.size() * size_t(7), // transform / COM
         m_rootBodyIndices.size() * size_t(7), // root transform
         m_dofAxisIndices.size() * size_t(2), // paired (limits)
+        m_dofAxisIndices.size() * size_t(3), // friction
         size_t(m_count) * m_maxDofs, // DOF setter input
     });
     if (m_stagingMaxFloats == 0)
@@ -161,7 +166,7 @@ void GpuArticulationView::_allocateStagingBuffer()
 
 bool GpuArticulationView::getDofPositions(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof positions", __FUNCTION__))
         return false;
@@ -172,7 +177,7 @@ bool GpuArticulationView::getDofPositions(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofVelocities(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof velocities", __FUNCTION__))
         return false;
@@ -183,6 +188,8 @@ bool GpuArticulationView::getDofVelocities(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::setDofPositions(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof positions", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -195,6 +202,8 @@ bool GpuArticulationView::setDofPositions(const TensorDesc* srcTensor, const Ten
 
 bool GpuArticulationView::setDofVelocities(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof velocities", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -209,7 +218,7 @@ bool GpuArticulationView::setDofVelocities(const TensorDesc* srcTensor, const Te
 
 bool GpuArticulationView::getDofLimits(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs * 2u, "dof limits", __FUNCTION__))
         return false;
@@ -223,7 +232,7 @@ bool GpuArticulationView::getDofLimits(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofStiffnesses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof stiffnesses", __FUNCTION__))
         return false;
@@ -234,7 +243,7 @@ bool GpuArticulationView::getDofStiffnesses(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofDampings(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof dampings", __FUNCTION__))
         return false;
@@ -245,7 +254,7 @@ bool GpuArticulationView::getDofDampings(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofArmatures(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof armatures", __FUNCTION__))
         return false;
@@ -256,7 +265,7 @@ bool GpuArticulationView::getDofArmatures(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofMaxForces(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof max forces", __FUNCTION__))
         return false;
@@ -267,7 +276,7 @@ bool GpuArticulationView::getDofMaxForces(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofMaxVelocities(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof max velocities", __FUNCTION__))
         return false;
@@ -278,18 +287,18 @@ bool GpuArticulationView::getDofMaxVelocities(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getDofPositionTargets(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof position targets", __FUNCTION__))
         return false;
     return gpuGather([this](float* dst, int n)
-                     { return launchGatherFloat(m_cachedCtrlTargetPos, dst, m_deviceDofAxisIndices, n); },
-                     dstTensor, static_cast<int>(m_dofAxisIndices.size()), 1, m_stagingBuffer);
+                     { return launchGatherFloat(m_cachedCtrlTargetPos, dst, m_deviceDofPositionIndices, n); },
+                     dstTensor, static_cast<int>(m_dofPosIndices.size()), 1, m_stagingBuffer);
 }
 
 bool GpuArticulationView::getDofVelocityTargets(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof velocity targets", __FUNCTION__))
         return false;
@@ -300,7 +309,7 @@ bool GpuArticulationView::getDofVelocityTargets(const TensorDesc* dstTensor) con
 
 bool GpuArticulationView::getDofActuationForces(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs, "dof actuation forces", __FUNCTION__))
         return false;
@@ -344,6 +353,8 @@ bool GpuArticulationView::getDofTypes(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::setDofLimits(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs * 2u, "dof limits", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -363,6 +374,8 @@ bool GpuArticulationView::setDofLimits(const TensorDesc* srcTensor, const Tensor
 
 bool GpuArticulationView::setDofStiffnesses(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof stiffnesses", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -382,6 +395,8 @@ bool GpuArticulationView::setDofStiffnesses(const TensorDesc* srcTensor, const T
 
 bool GpuArticulationView::setDofDampings(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof dampings", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -401,6 +416,8 @@ bool GpuArticulationView::setDofDampings(const TensorDesc* srcTensor, const Tens
 
 bool GpuArticulationView::setDofMaxForces(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof max forces", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -419,6 +436,8 @@ bool GpuArticulationView::setDofMaxForces(const TensorDesc* srcTensor, const Ten
 
 bool GpuArticulationView::setDofMaxVelocities(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof max velocities", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -438,6 +457,8 @@ bool GpuArticulationView::setDofMaxVelocities(const TensorDesc* srcTensor, const
 
 bool GpuArticulationView::setDofArmatures(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof armatures", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -456,6 +477,8 @@ bool GpuArticulationView::setDofArmatures(const TensorDesc* srcTensor, const Ten
 
 bool GpuArticulationView::setDofActuationForces(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof actuation forces", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -468,6 +491,8 @@ bool GpuArticulationView::setDofActuationForces(const TensorDesc* srcTensor, con
 
 bool GpuArticulationView::setDofPositionTargets(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof position targets", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -475,7 +500,8 @@ bool GpuArticulationView::setDofPositionTargets(const TensorDesc* srcTensor, con
     const float* src = ensureGpuSrc(srcTensor, m_stagingBuffer, m_stagingMaxFloats);
     if (!src)
         return false;
-    bool ok = launchFusedDofScatter(src, m_cachedCtrlTargetPos, idx.ptr, m_deviceDofAxisIndices, idx.count, m_maxDofs);
+    bool ok =
+        launchFusedDofScatter(src, m_cachedCtrlTargetPos, idx.ptr, m_deviceDofPositionIndices, idx.count, m_maxDofs);
     if (ok)
     {
         py::gil_scoped_acquire gil;
@@ -486,6 +512,8 @@ bool GpuArticulationView::setDofPositionTargets(const TensorDesc* srcTensor, con
 
 bool GpuArticulationView::setDofVelocityTargets(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs, "dof velocity targets", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -501,7 +529,7 @@ bool GpuArticulationView::setDofVelocityTargets(const TensorDesc* srcTensor, con
 
 bool GpuArticulationView::getRootTransforms(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 7u, "root transform", __FUNCTION__))
         return false;
@@ -515,7 +543,7 @@ bool GpuArticulationView::getRootTransforms(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getRootVelocities(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * 6u, "root velocity", __FUNCTION__))
         return false;
@@ -530,6 +558,8 @@ bool GpuArticulationView::getRootVelocities(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::setRootTransforms(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * 7u, "root transform", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -547,6 +577,8 @@ bool GpuArticulationView::setRootTransforms(const TensorDesc* srcTensor, const T
 
 bool GpuArticulationView::setRootVelocities(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * 6u, "root velocity", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -564,7 +596,7 @@ bool GpuArticulationView::setRootVelocities(const TensorDesc* srcTensor, const T
 
 bool GpuArticulationView::getLinkTransforms(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks * 7u, "link transform", __FUNCTION__))
         return false;
@@ -579,7 +611,7 @@ bool GpuArticulationView::getLinkTransforms(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getLinkVelocities(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks * 6u, "link velocity", __FUNCTION__))
         return false;
@@ -592,11 +624,51 @@ bool GpuArticulationView::getLinkVelocities(const TensorDesc* dstTensor) const
         dstTensor, static_cast<int>(m_linkFlatIndices.size()), 6, m_stagingBuffer);
 }
 
+bool GpuArticulationView::getLinkIncomingJointForce(const TensorDesc* dstTensor) const
+{
+    if (!_checkBinding() || !_hasJointForceOutput())
+        return false;
+    if (!validateFloat32TensorAnyDevice(
+            dstTensor, size_t(m_count) * m_maxLinks * 6u, "link incoming joint force", __FUNCTION__))
+        return false;
+    return gpuGather(
+        [this](float* dst, int n)
+        {
+            return launchGatherIncomingJointForce(reinterpret_cast<const wp::spatial_vector*>(m_cachedBodyParentForce),
+                                                  reinterpret_cast<const wp::transform*>(m_cachedBodyQ),
+                                                  reinterpret_cast<const wp::vec3*>(m_cachedBodyCenterOfMass),
+                                                  reinterpret_cast<const wp::transform*>(m_cachedJointXc), dst,
+                                                  m_deviceLinkFlatIndices, m_deviceLinkJointFlatIndices, n);
+        },
+        dstTensor, static_cast<int>(m_linkFlatIndices.size()), 6, m_stagingBuffer);
+}
+
+bool GpuArticulationView::getDofProjectedJointForces(const TensorDesc* dstTensor) const
+{
+    if (!_checkBinding() || !_hasJointForceOutput())
+        return false;
+    if (!validateFloat32TensorAnyDevice(
+            dstTensor, size_t(m_count) * m_maxDofs, "DOF projected joint forces", __FUNCTION__))
+        return false;
+    if (!_evaluateMotionSubspaces())
+        return false;
+    return gpuGather(
+        [this](float* dst, int n)
+        {
+            return launchGatherProjectedJointForce(reinterpret_cast<const wp::spatial_vector*>(m_cachedBodyParentForce),
+                                                   reinterpret_cast<const wp::transform*>(m_cachedBodyQ),
+                                                   reinterpret_cast<const wp::vec3*>(m_cachedBodyCenterOfMass),
+                                                   reinterpret_cast<const wp::spatial_vector*>(m_cachedMotionSubspaces),
+                                                   dst, m_deviceDofBodyIndices, m_deviceDofAxisIndices, n);
+        },
+        dstTensor, static_cast<int>(m_dofAxisIndices.size()), 1, m_stagingBuffer);
+}
+
 // ---- Body Properties ----
 
 bool GpuArticulationView::getMasses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks, "masses", __FUNCTION__))
         return false;
@@ -607,7 +679,7 @@ bool GpuArticulationView::getMasses(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getInvMasses(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks, "inv masses", __FUNCTION__))
         return false;
@@ -618,6 +690,8 @@ bool GpuArticulationView::getInvMasses(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::setMasses(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxLinks, "masses", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -634,7 +708,7 @@ bool GpuArticulationView::setMasses(const TensorDesc* srcTensor, const TensorDes
 
 bool GpuArticulationView::getCOMs(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks * 7u, "com", __FUNCTION__))
         return false;
@@ -649,6 +723,8 @@ bool GpuArticulationView::getCOMs(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::setCOMs(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxLinks * 7u, "com", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -667,7 +743,7 @@ bool GpuArticulationView::setCOMs(const TensorDesc* srcTensor, const TensorDesc*
 
 bool GpuArticulationView::getInertias(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks * 9u, "inertia", __FUNCTION__))
         return false;
@@ -681,7 +757,7 @@ bool GpuArticulationView::getInertias(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::getInvInertias(const TensorDesc* dstTensor) const
 {
-    if (!m_cacheValid)
+    if (!_checkBinding())
         return false;
     if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxLinks * 9u, "inv inertia", __FUNCTION__))
         return false;
@@ -696,6 +772,8 @@ bool GpuArticulationView::getInvInertias(const TensorDesc* dstTensor) const
 
 bool GpuArticulationView::setInertias(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
 {
+    if (!_checkBinding())
+        return false;
     if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxLinks * 9u, "inertia", __FUNCTION__) ||
         !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
         return false;
@@ -718,6 +796,8 @@ bool GpuArticulationView::applyForcesAndTorquesAtPosition(const TensorDesc* srcF
                                                           const TensorDesc* indexTensor,
                                                           bool isGlobal)
 {
+    if (!_checkBinding())
+        return false;
     const bool hasForce = srcForceTensor && srcForceTensor->data;
     const bool hasTorque = srcTorqueTensor && srcTorqueTensor->data;
     if (!hasForce && !hasTorque)
@@ -759,6 +839,44 @@ bool GpuArticulationView::applyForcesAndTorquesAtPosition(const TensorDesc* srcF
                                     reinterpret_cast<const wp::transform*>(m_cachedBodyQ),
                                     reinterpret_cast<const wp::vec3*>(m_cachedBodyCenterOfMass), indices.count,
                                     m_maxLinks, isGlobal, hasForce, hasTorque, hasPosition);
+}
+
+// ---- Joint Frictions ----//
+
+bool GpuArticulationView::setDofFrictionProperties(const TensorDesc* srcTensor, const TensorDesc* indexTensor)
+{
+    if (!_checkBinding())
+        return false;
+    // We expect 3 properties, but we will only use the first one (static friction)
+    if (!validateFloat32TensorAnyDevice(srcTensor, size_t(m_count) * m_maxDofs * 3u, "friction properties", __FUNCTION__) ||
+        !validateOptionalIndexTensorAnyDevice(indexTensor, __FUNCTION__))
+        return false;
+    auto idx = _resolveGpuIndices(indexTensor, m_deviceIndexScratch);
+    const float* src = ensureGpuSrc(srcTensor, m_stagingBuffer, m_stagingMaxFloats);
+    if (!src)
+        return false;
+    bool ok = launchFusedDofScatterStrided(
+        src, m_cachedJointFriction, idx.ptr, m_deviceDofAxisIndices, idx.count, m_maxDofs, 3u);
+    if (ok)
+    {
+        py::gil_scoped_acquire gil;
+        _notifyJointDofPropertiesChanged();
+    }
+    return ok;
+}
+bool GpuArticulationView::getDofFrictionProperties(const TensorDesc* dstTensor) const
+{
+    if (!_checkBinding())
+        return false;
+    if (!validateFloat32TensorAnyDevice(dstTensor, size_t(m_count) * m_maxDofs * 3u, "friction properties", __FUNCTION__))
+        return false;
+    return gpuGather(
+        [this](float* dst, int n)
+        {
+            const cuda::std::array<float*, 2> src = { m_cachedJointFriction, m_cachedJointFriction };
+            return launchMultiGatherFloatStrided<2>(src, dst, 3u, m_deviceDofAxisIndices, n);
+        },
+        dstTensor, static_cast<int>(m_dofAxisIndices.size()), 3, m_stagingBuffer);
 }
 
 } // namespace tensors

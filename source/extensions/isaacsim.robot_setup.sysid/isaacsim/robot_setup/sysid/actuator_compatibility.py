@@ -93,21 +93,23 @@ def resolve_simulation_compatibility(
     Returns:
         The normalized runtime, physics, and actuator capabilities.
     """
-    engine = str(getattr(simulation, "engine", "isaac_sim") or "isaac_sim")
+    # Normalized the same way as `get_backend_capabilities` so the two never
+    # disagree about which engine a given run-spec selects.
+    engine = str(getattr(simulation, "engine", "isaac_sim") or "isaac_sim").strip().lower()
     runtime = "standalone" if engine == "newton" else "isaac_sim"
 
-    requested_backend = str(
-        getattr(simulation, "physics_backend", PHYSICS_BACKEND_AUTO) or PHYSICS_BACKEND_AUTO
-    ).lower()
+    requested_backend = (
+        str(getattr(simulation, "physics_backend", PHYSICS_BACKEND_AUTO) or PHYSICS_BACKEND_AUTO).strip().lower()
+    )
     if requested_backend == PHYSICS_BACKEND_AUTO:
         physics_backend = PHYSICS_BACKEND_NEWTON if runtime == "standalone" else PHYSICS_BACKEND_PHYSX
     else:
         physics_backend = requested_backend
 
-    requested_actuators = str(
-        getattr(simulation, "actuator_runtime", ACTUATOR_RUNTIME_AUTO) or ACTUATOR_RUNTIME_AUTO
-    ).lower()
-    solver = str(getattr(getattr(simulation, "newton", None), "solver", "mujoco") or "mujoco")
+    requested_actuators = (
+        str(getattr(simulation, "actuator_runtime", ACTUATOR_RUNTIME_AUTO) or ACTUATOR_RUNTIME_AUTO).strip().lower()
+    )
+    solver = str(getattr(getattr(simulation, "newton", None), "solver", "mujoco") or "mujoco").strip().lower()
     if requested_actuators == ACTUATOR_RUNTIME_AUTO:
         if runtime == "standalone" and solver == "featherstone_diff":
             # The differentiable bridge evaluates mapped-joint PD effort in an

@@ -270,6 +270,60 @@ class WheelToolTests(unittest.TestCase):
             self.assertEqual(variant, "usd2511")
             self.assertIn("acme_schema-python-usd2511", run.call_args.args[0])
 
+    def test_strip_release_elf_files_uses_configured_toolchain(self) -> None:
+        """Strip ELF payloads in release stages while leaving ordinary data alone."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            build_directory = root / "build"
+            build_directory.mkdir()
+            strip = root / "toolchain" / "strip"
+            strip.parent.mkdir()
+            strip.touch()
+            (build_directory / "CMakeCache.txt").write_text(f"CMAKE_STRIP:FILEPATH={strip}\n", encoding="utf-8")
+            stage = root / "stage"
+            stage.mkdir()
+            elf = stage / "module.so"
+            elf.write_bytes(b"\x7fELFpayload")
+            (stage / "module.py").write_text("value = 1\n", encoding="utf-8")
+            arguments = _WHEEL._WheelArguments(
+                root,
+                build_directory,
+                root / "dist",
+                "release",
+                (),
+                "cmake",
+                root / "wheel-build",
+            )
+
+            with mock.patch.object(_WHEEL.subprocess, "run") as run:
+                stripped = _WHEEL._strip_release_elf_files(arguments, stage)
+
+            self.assertEqual(stripped, (elf,))
+            run.assert_called_once_with([str(strip), "--strip-unneeded", str(elf)], check=True)
+
+    def test_strip_release_elf_files_preserves_debug_stage(self) -> None:
+        """Keep ELF symbols when assembling a debug wheel."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            stage = root / "stage"
+            stage.mkdir()
+            (stage / "module.so").write_bytes(b"\x7fELFpayload")
+            arguments = _WHEEL._WheelArguments(
+                root,
+                root / "build",
+                root / "dist",
+                "debug",
+                (),
+                "cmake",
+                root / "wheel-build",
+            )
+
+            with mock.patch.object(_WHEEL.subprocess, "run") as run:
+                stripped = _WHEEL._strip_release_elf_files(arguments, stage)
+
+            self.assertEqual(stripped, ())
+            run.assert_not_called()
+
     def test_select_groups_skips_native_only_packages_unless_requested(self) -> None:
         """Test select groups skips native only packages unless requested."""
         with tempfile.TemporaryDirectory() as temporary_directory:

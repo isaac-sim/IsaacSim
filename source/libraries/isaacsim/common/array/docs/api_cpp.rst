@@ -24,7 +24,7 @@ C++ guide
 
 Include ``isaacsim/common/array/Array.hpp`` and link ``isaacsim::common-array``.
 The header transitively includes ``Device.hpp``, ``DLPack.hpp``, ``Dtype.hpp``,
-``Functions.hpp``, and ``Shape.hpp``.
+``Functions.hpp``, ``ManagedAccess.hpp``, and ``Shape.hpp``.
 
 All examples on this page assume the following namespace alias:
 
@@ -73,6 +73,9 @@ Inspection
     a = a.reshape(array::Shape({2, 3}));
 
     a.shape();   // array::Shape({2, 3})
+    a.strides(); // std::vector<int64_t>{3, 1}, measured in elements
+    a.isContiguous(); // true
+    a.isWriteable(); // true
     a.ndim();    // 2
     a.size();            // 6
     a.nbytes();  // 24
@@ -89,9 +92,9 @@ the underlying shared allocation (which may start before element 0 for sliced vi
 Views and reshaping
 -------------------
 
-``reshape()`` and ``at()`` return views over the same buffer with no data duplication,
-as do copy-construction and copy-assignment; ``copy()`` produces an independent,
-compacted deep copy:
+``reshape()`` and ``at()`` return views over the same buffer when the requested layout permits it,
+as do copy-construction and copy-assignment. ``copy()`` produces an independent,
+compacted deep copy, and ``contiguous()`` performs that compaction only when needed:
 
 .. code-block:: cpp
 
@@ -111,6 +114,9 @@ compacted deep copy:
 
     // Deep copy --- independent, compacted buffer (offset reset to 0).
     array::Array compact = matrix.copy();
+
+    // No-op for a contiguous layout; otherwise returns a compacted array.
+    array::Array dense = matrix.contiguous();
 
     // Deep copy --- preserves full buffer layout including any pre-element offset.
     array::Array independent = matrix.clone();
@@ -137,14 +143,20 @@ Device and dtype conversion
 Broadcasting
 ------------
 
-``broadcastTo()`` replicates elements along broadcast axes following NumPy rules.
-It returns the same array if no broadcasting is needed
-(optionally forcing a copy with the second argument), or a new array otherwise:
+``broadcastTo()`` follows NumPy broadcasting rules but materializes an independent,
+writeable contiguous array whenever the shape changes, including rank-only expansion.
+An unchanged shape shares storage unless ``copy`` is true.
+
+Use ``broadcastView()`` for a zero-copy view. Replicated axes have zero strides and
+make the view read-only; derived ``at()``, ``reshape()``, and ``transposeView()`` views
+retain that restriction. ``contiguous()`` only compacts layout and does not promise
+writeability; use ``copy()`` or ``broadcastView(shape, true)`` for independent storage.
 
 .. code-block:: cpp
 
-    array::Array row(std::vector<float>{1.0f, 2.0f, 3.0f});   // shape (3,)
-    array::Array tiled = row.broadcastTo(array::Shape({4, 3})); // shape (4, 3)
+    array::Array row(std::vector<float>{1.0f, 2.0f, 3.0f});
+    array::Array tiled = row.broadcastTo(array::Shape({4, 3})); // independent
+    array::Array view = row.broadcastView(array::Shape({4, 3})); // shared, read-only
 
 Reading and writing elements
 ----------------------------
@@ -476,8 +488,8 @@ Empty arrays reduce to the operation's identity: ``true`` for
 Rearranging elements
 --------------------
 
-``transpose()`` permutes an array's axes and ``take()`` gathers elements along a
-single axis. ``transpose()`` reverses the axes when ``axes`` is
+``transpose()`` returns an independent array with permuted axes, while ``take()``
+gathers elements along a single axis. ``transpose()`` reverses the axes when ``axes`` is
 omitted; with an explicit permutation, axis ``i`` of the result is axis ``axes[i]``
 of the operand. ``take()`` selects the listed positions along ``axis``, resizing that axis
 to the number of indices, and gathers from the flattened operand when ``axis`` is
@@ -513,29 +525,205 @@ throws ``std::out_of_range``, mirroring NumPy's split between ``AxisError`` (a
 
 .. note::
 
-   Where NumPy returns a view, both functions return a newly allocated array holding
-   a copy of the elements. An ``array::Array`` is always densely packed and stores no
-   per-axis strides, so a permuted or gathered view is not representable.
+   ``transpose()`` always returns independent contiguous storage, including an identity
+   permutation. ``transposeView()`` shares the operand's buffer with permuted strides. ``take()`` gathers into a newly allocated array, because an
+   arbitrary index list is not expressible as a strided view.
 
+
+.. _isaacsim-common-array-api-cpp-managed-access:
+
+Managed access
+==============
+
+Free functions in ``isaacsim/common/array/ManagedAccess.hpp`` that hand out retained,
+stream-aware access to the allocation behind an ``array::Array``. ``array::Array`` itself
+covers allocation, layout, and computation; ``data()`` returns a bare pointer that neither
+keeps the allocation alive nor orders CUDA work. Reach for the scopes here whenever a buffer
+crosses a lifetime or stream boundary --- an asynchronous CUDA consumer, a DLPack export, a
+provider filling a staging buffer --- and use the plain accessors for ordinary synchronous work.
+
+``acquireRead()`` and ``acquireWrite()`` return move-only scopes. While a scope is held the
+allocation cannot be freed, even if every ``array::Array`` naming it is destroyed; releasing the
+scope records the CUDA completion event and lets retirement proceed. Readers may overlap, a
+writer is exclusive, and the serialization spans every view of one allocation --- a scope taken
+on ``a.at(0)`` blocks one taken on ``a``.
+
+That last point is the one worth picturing. Scopes serialize against the *allocation*, not
+against the ``array::Array`` you happened to call them on, and several arrays routinely name one
+allocation:
+
+.. code-block:: text
+
+        a                a.at(0)           transposeView(a)
+   ┌─────────┐         ┌─────────┐         ┌─────────┐
+   │  Array  │         │  Array  │         │  Array  │   shape, strides, offset,
+   └────┬────┘         └────┬────┘         └────┬────┘   dtype, writeability
+        │                   │                   │
+        └───────────────────┼───────────────────┘
+                            │  every view shares one
+                            ▼  reference-counted allocation
+              ┌────────────────────────────┐
+              │   allocation (internal)    │  base pointer, capacity, device,
+              │                            │  producer event, reader events
+              └─────────────┬──────────────┘
+                            │
+     acquireRead(view)      │  acquireWrite(view) / tryAcquireWrite(view)
+             ┌──────────────┴─────────────────────┐
+             ▼                                    ▼
+   ┌──────────────────┐                 ┌───────────────────┐
+   │ ArrayReadAccess  │    mutually     │ ArrayWriteAccess  │
+   │   const void*    │◀── exclusive ──▶│      void*        │
+   ├──────────────────┤                 ├───────────────────┤
+   │ readers overlap  │                 │ at most one, and  │
+   │ with each other  │                 │ it blocks every   │
+   │                  │                 │ reader            │
+   └──────────────────┘                 └───────────────────┘
+
+Each scope runs the same three-stage protocol, and the release stage is what makes an
+asynchronous hand-off safe --- it is where the CUDA event that later consumers wait on gets
+recorded:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 42 43
+
+   * - Stage
+     - ``ArrayReadAccess``
+     - ``ArrayWriteAccess``
+   * - Acquire
+     - Waits for an active writer to finish, then orders the stream after the last recorded write.
+     - Waits for every reader *and* writer to finish, then orders the stream after the last write
+       and every completed read.
+   * - Hold
+     - ``data()`` is valid and the allocation cannot be freed, whatever happens to the Arrays.
+     - Same, plus no other scope over the allocation can open.
+   * - Release
+     - Records consumer completion, so retirement is deferred behind the queued reads.
+     - Publishes a new producer-readiness event that later readers on other streams wait on.
+
+.. code-block:: cpp
+
+    array::Array image = array::zeros({1080, 1920, 3}, array::Dtype::UInt8(), array::Device::Cuda());
+
+    {
+        // Orders `stream` after the last recorded write before returning.
+        array::ArrayReadAccess access = array::acquireRead(image, stream);
+        launchConsumer(access.data(), access.nbytes(), stream);
+        // Release records consumer completion on `stream`; the allocation outlives `image`
+        // if it has to.
+    }
+
+    {
+        array::ArrayWriteAccess access = array::acquireWrite(image, stream);
+        launchProducer(access.data(), stream);
+    }
+
+The stream argument is a native ``cudaStream_t`` reinterpreted as ``std::uintptr_t``. Value 0
+selects the CUDA legacy default stream, and is the only accepted value for a CPU array. A stream
+belonging to a different device than the array throws ``std::invalid_argument``.
+
+Non-blocking acquisition and external writes
+--------------------------------------------
+
+``tryAcquireWrite()`` is ``acquireWrite()`` without the wait: it returns ``std::nullopt`` when
+another scope over the allocation is still open. Use it when the caller can publish a fresh
+allocation rather than block --- a reusable staging buffer whose previous contents are still
+held by an exported DLPack tensor, say:
+
+.. code-block:: cpp
+
+    array::ArrayWriteAccess acquireStagingWrite(array::Array& staging)
+    {
+        if (std::optional<array::ArrayWriteAccess> access = array::tryAcquireWrite(staging))
+        {
+            return std::move(*access);
+        }
+        // A consumer still holds the previous buffer; hand it over and stage into a new one.
+        staging = array::zeros(staging.shape(), staging.dtype(), staging.device());
+        return array::acquireWrite(staging);
+    }
+
+``recordCudaWrite()`` republishes producer readiness for a CUDA write this library did not admit.
+It neither admits nor serializes the write, so prefer ``acquireWrite()``; call it only after
+externally synchronizing every alias and submitting the final write through a raw ``data()``
+pointer. It throws if the array is not CUDA-resident or if a scope is currently open.
+
+.. note::
+
+   Acquiring a scope that the calling thread is itself blocking throws ``std::runtime_error``
+   rather than deadlocking. Holding a read access and then asking the same thread for a write
+   over the same allocation can never succeed, so it is reported instead of waiting forever.
+   Contention between *different* threads still waits normally.
 
 .. _isaacsim-common-array-api-cpp-dlpack-conversion:
 
 DLPack conversion
 =================
 
-Use ``fromDLPack()`` and ``toDLPack()`` to create zero-copy, C-contiguous views. The
-conversion supports the Array scalar dtypes on CPU and CUDA devices:
+Non-negative element strides are preserved; a null DLPack strides pointer denotes a
+C-contiguous layout. The conversion supports the Array scalar dtypes on CPU and CUDA
+devices. Every export addresses element 0 through ``data`` and leaves ``byte_offset`` at 0,
+so consumers that ignore ``byte_offset`` still read the right elements from an offset view;
+imports honor a producer's ``byte_offset``.
+
+Borrowed conversion
+-------------------
+
+``fromDLPackBorrowed()`` and ``toDLPackBorrowed()`` create zero-copy views that carry no
+ownership:
 
 .. code-block:: cpp
 
     array::Array values(std::vector<float>{1.0f, 2.0f, 3.0f});
 
     // The DLTensor borrows data and shape metadata from values.
-    DLTensor tensor = array::toDLPack(values);
+    DLTensor tensor = array::toDLPackBorrowed(values);
 
     // The Array borrows the DLTensor's data allocation and copies its metadata.
-    array::Array view = array::fromDLPack(tensor);
+    array::Array view = array::fromDLPackBorrowed(tensor);
 
-The source allocation must outlive a view imported with ``fromDLPack()``. An Array
-exported with ``toDLPack()`` must remain alive and must not be moved from or assigned
-while the ``DLTensor`` is in use. The conversions do not synchronize CUDA streams.
+The source allocation must outlive a view imported with ``fromDLPackBorrowed()``. An Array
+exported with ``toDLPackBorrowed()`` must remain alive and must not be moved from or
+assigned while the ``DLTensor`` is in use. These conversions do not synchronize CUDA
+streams.
+
+Owning conversion
+-----------------
+
+Prefer the owning entry points when the buffer crosses a lifetime boundary. They retain the
+allocation for as long as the peer holds it and perform the CUDA stream handshake. Each name
+carries the DLPack ABI it speaks, so import and export pair up by suffix:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 30 30
+
+   * - Ownership
+     - Import
+     - Export
+   * - Borrowed (``DLTensor``)
+     - ``fromDLPackBorrowed()``
+     - ``toDLPackBorrowed()``
+   * - Owned, unversioned (``DLManagedTensor``)
+     - ``fromDLPackManaged()``
+     - ``toDLPackManaged()``
+   * - Owned, versioned (``DLManagedTensorVersioned``)
+     - ``fromDLPackVersioned()``
+     - ``toDLPackVersioned()``
+
+.. code-block:: cpp
+
+    // Export: the caller owns the result and must eventually call its deleter. Scoped read
+    // access is retained until then, and consumerStream is ordered after the last write.
+    DLManagedTensorVersioned* exported = array::toDLPackVersioned(values);
+    exported->deleter(exported);
+
+    // Import: ownership of the managed tensor transfers to the Array, whose storage calls
+    // the tensor's deleter once every derived view and GPU access has finished.
+    array::Array owned = array::fromDLPackVersioned(exported, producerStream);
+
+``toDLPackVersioned()`` advertises ``DLPACK_FLAG_BITMASK_READ_ONLY`` and
+``fromDLPackVersioned()`` propagates that flag to the imported Array.
+``toDLPackManaged()`` produces the unversioned ``DLManagedTensor``, which has no field in
+which to advertise read-only status, so treat its published view as read-only by
+convention; ``fromDLPackManaged()`` correspondingly imports a writeable Array.

@@ -45,7 +45,7 @@ class OgnPose:
 
         Returns:
             True when pose data or an empty output buffer is written, False when
-            no semantic types are requested.
+            the extent buffer has an invalid layout.
         """
         db.log_warn("Deprecation warning: OgnPose has been deprecated and will be removed in the next major release.")
 
@@ -62,13 +62,16 @@ class OgnPose:
 
         required_semantic_types = db.inputs.semanticTypes
 
-        if db.inputs.bufferSize == 0:
+        # No requested semantic types can produce pose rows, regardless of the
+        # extent buffer received from the upstream bounding-box node.
+        if db.inputs.bufferSize == 0 or len(required_semantic_types) == 0:
             db.outputs.data = np.frombuffer(np.empty(0, dtype=return_data_dtype).tobytes(), dtype=np.uint8)
             db.outputs.exec = og.ExecutionAttributeState.ENABLED
             db.outputs.bufferSize = 0
             db.outputs.height = 0
             db.outputs.width = 0
             db.outputs.idToLabels = "{}"
+            db.outputs.primPaths = []
             return True
 
         num_semantics = db.inputs.sdIMNumSemantics
@@ -89,16 +92,27 @@ class OgnPose:
 
         data_attribute = db.node.get_attribute("inputs:data")
         if not hasattr(data_attribute, "get_array"):
-            data_helper = og.AttributeValueHelper(data_attribute)
-            extent_data = data_helper.get_array(False, False, 0).view(desired_data_dtype)
+            raw_extent = og.AttributeValueHelper(data_attribute).get_array(False, False, 0)
         else:
-            extent_data = data_attribute.get_array(False, False, 0).view(desired_data_dtype)
+            raw_extent = data_attribute.get_array(False, False, 0)
+        extent_bytes = np.ascontiguousarray(raw_extent).view(np.uint8).reshape(-1)
 
-        valid_pose_mask = extent_data["x_min"] != 2147483647
-
-        # If list of semantics is empty, return False
-        if len(required_semantic_types) == 0:
+        # The export node can append metadata to each four-coordinate extent.
+        # Interpret the coordinate prefix using the actual row stride.
+        if num_semantics <= 0 or extent_bytes.nbytes % num_semantics:
+            db.log_error(
+                f"Pose extent buffer has {extent_bytes.nbytes} bytes for {num_semantics} semantics; "
+                "cannot determine the record stride."
+            )
             return False
+        extent_stride = extent_bytes.nbytes // num_semantics
+        if extent_stride < desired_data_dtype.itemsize or extent_stride % np.dtype(np.int32).itemsize:
+            db.log_error(f"Pose extent record stride {extent_stride} is invalid.")
+            return False
+        extent_data = np.ndarray(
+            shape=(num_semantics,), dtype=desired_data_dtype, buffer=extent_bytes, strides=(extent_stride,)
+        )
+        valid_pose_mask = extent_data["x_min"] != 2147483647
 
         instance_to_semantic = instance_semantic_map - min_semantic_idx
 

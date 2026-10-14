@@ -80,6 +80,8 @@
   - def read_rgb(self, name: str, index: int) -> np.ndarray
   - def read_state_dict_rgb(self, index: int) -> dict
   - def read_segmentation(self, name: str, index: int) -> np.ndarray
+  - def read_instance_id_segmentation(self, name: str, index: int) -> np.ndarray
+  - def read_state_dict_instance_id_segmentation(self, index: int) -> dict
   - def read_normals(self, name: str, index: int) -> np.ndarray
   - def read_state_dict_segmentation(self, index: int) -> dict
   - def read_depth(self, name: str, index: int, eps: float = 1e-06) -> np.ndarray
@@ -143,6 +145,7 @@
   - def write_state_dict_common(self, state_dict: dict, step: int)
   - def write_state_dict_rgb(self, state_rgb: dict, step: int)
   - def write_state_dict_segmentation(self, state_segmentation: dict, step: int)
+  - def write_state_dict_instance_id_segmentation(self, state_instance_id_segmentation: dict, step: int)
   - def write_state_dict_depth(self, state_np: dict, step: int)
   - def write_state_dict_normals(self, state_np: dict, step: int)
   - def copy_stage(self, input_path: str)
@@ -159,6 +162,7 @@
   - def state_dict_common(self, prefix: str = '') -> dict[str, object]
   - def state_dict_rgb(self, prefix: str = '') -> dict[str, object]
   - def state_dict_segmentation(self, prefix: str = '') -> dict[str, object]
+  - def state_dict_instance_id_segmentation(self, prefix: str = '') -> dict[str, object]
   - def state_dict_depth(self, prefix: str = '') -> dict[str, object]
   - def state_dict_normals(self, prefix: str = '') -> dict[str, object]
   - def enable_rgb_rendering(self)

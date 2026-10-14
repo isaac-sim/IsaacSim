@@ -17,10 +17,9 @@ target = "hello_world_cpp"
 
 [requirements]
 system = ["cmake", "cpp"]
-
-[[requirements.modules]]
-name = "isaacsim_common"
-surfaces = ["native_sdk"]
+modules = [
+    { name = "isaacsim_common", surfaces = ["native_sdk"] },
+]
 
 [[test]]
 name = "default"

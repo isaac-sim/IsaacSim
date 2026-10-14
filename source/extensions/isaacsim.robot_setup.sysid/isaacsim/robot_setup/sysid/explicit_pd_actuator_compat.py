@@ -36,6 +36,8 @@ from .actuator_compatibility import ACTUATOR_RUNTIME_EXPLICIT
 if TYPE_CHECKING:
     from pxr import Sdf, Usd
 
+_ACTUATOR_SCOPE_NAME = "__sysid_actuators"
+
 
 @dataclass(frozen=True)
 class ExplicitPdActuatorDescriptor:
@@ -138,10 +140,11 @@ def promote_selected_dofs_to_session_actuators(
                 raise ValueError(f"Cannot promote missing joint prim: {target_path}")
             kp, kd, max_effort = _drive_baseline(joint)
             base = target_path.rsplit("/", 1)[-1]
-            candidate = f"{articulation_root.rstrip('/')}/__sysid_actuators/{base}"
+            scope = f"{articulation_root.rstrip('/')}/{_ACTUATOR_SCOPE_NAME}"
+            candidate = f"{scope}/{base}"
             suffix = 1
             while stage.GetPrimAtPath(candidate).IsValid():
-                candidate = f"{articulation_root.rstrip('/')}/__sysid_actuators/{base}_{suffix}"
+                candidate = f"{scope}/{base}_{suffix}"
                 suffix += 1
             prim = stage.DefinePrim(candidate, "Xform")
             prim.AddAppliedSchema("NewtonPIDControlAPI" if kind == "pid" else "NewtonPDControlAPI")
@@ -162,6 +165,23 @@ def promote_selected_dofs_to_session_actuators(
     return promotions
 
 
+def _active_edit_layer(stage: Usd.Stage) -> Sdf.Layer | None:
+    """Return the layer the stage is currently authoring to, if it exposes one.
+
+    Args:
+        stage: Stage whose edit target should be resolved.
+
+    Returns:
+        Active edit-target layer, or None when the stage exposes no edit target.
+    """
+    getter = getattr(stage, "GetEditTarget", None)
+    if not callable(getter):
+        return None
+    target = getter()
+    layer_getter = getattr(target, "GetLayer", None)
+    return layer_getter() if callable(layer_getter) else None
+
+
 def discard_session_actuator_promotions(stage: Usd.Stage, promotions: Iterable[TemporaryActuatorPromotion]) -> None:
     """Remove temporary session-layer prim specs without touching persistent USD.
 
@@ -172,11 +192,21 @@ def discard_session_actuator_promotions(stage: Usd.Stage, promotions: Iterable[T
     from pxr import Sdf, Usd
 
     layer = stage.GetSessionLayer()
+    scope_paths: set[Sdf.Path] = set()
     with Usd.EditContext(stage, layer):
         for item in promotions:
             path = Sdf.Path(item.prim_path)
             if layer.GetPrimAtPath(path) is not None:
                 stage.RemovePrim(path)
+            parent = path.GetParentPath()
+            if parent.name == _ACTUATOR_SCOPE_NAME:
+                scope_paths.add(parent)
+        # Leaving the emptied scope behind would make a discarded run look like
+        # it had promoted actuators.
+        for scope_path in scope_paths:
+            scope_spec = layer.GetPrimAtPath(scope_path)
+            if scope_spec is not None and not scope_spec.nameChildren:
+                stage.RemovePrim(scope_path)
 
 
 def commit_session_actuator_promotions(
@@ -199,6 +229,11 @@ def commit_session_actuator_promotions(
 
     source = stage.GetSessionLayer()
     target = target_layer or stage.GetRootLayer()
+    if target is source:
+        # The promotions already live in the session layer. Copying it onto
+        # itself would succeed and the follow-up discard would then delete the
+        # only copy, so fall back to a durable layer.
+        target = stage.GetRootLayer()
     for item in promotions:
         path = Sdf.Path(item.prim_path)
         if target.GetPrimAtPath(path.GetParentPath()) is None:
@@ -418,21 +453,35 @@ def _load_runtime() -> Any:
     from newton.actuators import (
         ClampingDCMotor,
         ClampingMaxEffort,
-        ControllerPD,
-        ControllerPID,
         Delay,
+        DrivePD,
+        DrivePID,
     )
 
     return SimpleNamespace(
         wp=wp,
         ActuatorConfig=ActuatorConfig,
         ArticulationActuators=ArticulationActuators,
-        ControllerPD=ControllerPD,
-        ControllerPID=ControllerPID,
+        DrivePD=DrivePD,
+        DrivePID=DrivePID,
         Delay=Delay,
         ClampingMaxEffort=ClampingMaxEffort,
         ClampingDCMotor=ClampingDCMotor,
     )
+
+
+def _actuators_by_dof_index(manager: Any) -> dict[int, Any]:
+    """Map articulation DOFs to actuators using the actuators' remapped indices."""
+    n_all_dofs = manager.articulation.num_dofs
+    by_dof_index: dict[int, Any] = {}
+    for actuator in manager.actuators:
+        actuator_dof_indices = {int(index) % n_all_dofs for index in actuator.indices.numpy().reshape(-1)}
+        for dof_index in actuator_dof_indices:
+            existing = by_dof_index.get(dof_index)
+            if existing is not None and existing is not actuator:
+                raise ValueError(f"Multiple runtime actuators control DOF index {dof_index}.")
+            by_dof_index[dof_index] = actuator
+    return by_dof_index
 
 
 def _restore_manager_drive_gains(
@@ -575,13 +624,13 @@ class ExplicitPdActuatorCompat:
                 "const_effort": wp.array([item.const_effort] * env_count, dtype=wp.float32, device=device),
             }
             if item.controller_kind == "pid":
-                controller = runtime.ControllerPID(
+                controller = runtime.DrivePID(
                     **controller_kwargs,
                     ki=wp.array([item.integral_gain] * env_count, dtype=wp.float32, device=device),
                     integral_max=wp.array([item.integral_max] * env_count, dtype=wp.float32, device=device),
                 )
             else:
-                controller = runtime.ControllerPD(**controller_kwargs)
+                controller = runtime.DrivePD(**controller_kwargs)
             delay = runtime.Delay(
                 delay_steps=wp.array([item.delay_steps] * env_count, dtype=wp.int32, device=device),
                 max_delay=max_delay_steps,
@@ -613,9 +662,10 @@ class ExplicitPdActuatorCompat:
             device=device,
             auto_step_pre_physics=True,
         )
-        by_dof_index = dict(zip(manager.actuated_dof_indices, manager.actuators))
         ordered_actuators: list[Any] = []
         try:
+            # Actuators retain config order; `actuated_dof_indices` is sorted independently.
+            by_dof_index = _actuators_by_dof_index(manager)
             for item in descriptors:
                 indices = manager.articulation.get_dof_indices(item.dof_name).numpy().reshape(-1)
                 if indices.size != 1:
@@ -712,13 +762,13 @@ class ExplicitPdActuatorCompat:
             )
 
         for column, actuator in enumerate(self._actuators):
-            actuator.controller.kp.assign(np.ascontiguousarray(kp[:, column], dtype=np.float32))
-            actuator.controller.kd.assign(np.ascontiguousarray(kd[:, column], dtype=np.float32))
+            actuator.drive.kp.assign(np.ascontiguousarray(kp[:, column], dtype=np.float32))
+            actuator.drive.kd.assign(np.ascontiguousarray(kd[:, column], dtype=np.float32))
             if integral_gain is not None:
                 values = np.asarray(integral_gain, dtype=np.float32)
                 if values.shape != expected:
                     raise ValueError(f"Explicit actuator integral-gain shape must be {expected}; got {values.shape}.")
-                controller_ki = getattr(actuator.controller, "ki", None)
+                controller_ki = getattr(actuator.drive, "ki", None)
                 if controller_ki is None:
                     if np.any(np.abs(values[:, column]) > 0.0):
                         raise ValueError(f"DOF '{self.descriptors[column].dof_name}' is PD and cannot accept ki.")
@@ -798,7 +848,12 @@ class ExplicitPdActuatorCompat:
         """
         from pxr import Sdf
 
-        if not self.commit_promotions():
+        # `commit_session_actuator_promotions` copies layer-to-layer, so an
+        # enclosing `Usd.EditContext` does not steer it. Resolve the active
+        # edit target explicitly, otherwise multi-physics runs author the gains
+        # into the solver layer while the actuator prims they target land in the
+        # root layer and are lost if that layer is not shipped.
+        if not self.commit_promotions(target_layer=_active_edit_layer(stage)):
             return False
 
         kp_values = None if kp is None else np.asarray(kp, dtype=np.float64).reshape(-1)

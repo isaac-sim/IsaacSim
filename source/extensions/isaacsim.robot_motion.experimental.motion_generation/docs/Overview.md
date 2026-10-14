@@ -35,6 +35,8 @@ The {class}`Path <isaacsim.robot_motion.experimental.motion_generation.Path>` cl
 
 The {class}`ObstacleStrategy <isaacsim.robot_motion.experimental.motion_generation.ObstacleStrategy>` system manages obstacle representations for planning. {class}`ObstacleConfiguration <isaacsim.robot_motion.experimental.motion_generation.ObstacleConfiguration>` pairs representation types with safety tolerances, while {class}`ObstacleRepresentation <isaacsim.robot_motion.experimental.motion_generation.ObstacleRepresentation>` enumerates supported geometric primitives including spheres, cubes, capsules, meshes, and oriented bounding boxes.
 
+Not every {class}`WorldInterface <isaacsim.robot_motion.experimental.motion_generation.WorldInterface>` backend implements every representation for every shape type. If a backend raises `NotImplementedError` while adding a shape (e.g. `add_meshes not implemented`), use `ObstacleStrategy.set_default_configuration()` before initializing the {class}`WorldBinding <isaacsim.robot_motion.experimental.motion_generation.WorldBinding>` to remap that shape to a legal representation the backend supports. Some shapes, such as planes, have no alternative representation. Check the backend's own documentation for which shape/representation pairs it implements.
+
 ### World Interface
 
 The {class}`WorldBinding <isaacsim.robot_motion.experimental.motion_generation.WorldBinding>` class initializes planning-world obstacles from USD stage objects through the {class}`WorldInterface <isaacsim.robot_motion.experimental.motion_generation.WorldInterface>`. It can then synchronize the positions and orientations of tracked obstacles; shape properties and collision-enabled state are read only after initialization.

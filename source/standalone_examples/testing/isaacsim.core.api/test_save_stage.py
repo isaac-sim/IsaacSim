@@ -24,7 +24,7 @@ import sys
 import tempfile
 
 from isaacsim.core.api import SimulationContext
-from isaacsim.core.utils.stage import add_reference_to_stage, save_stage
+from isaacsim.core.utils.stage import add_reference_to_stage, close_stage, save_stage
 from isaacsim.storage.native import get_assets_root_path
 
 assets_root_path = get_assets_root_path()
@@ -54,6 +54,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
     if simulation_context._sim_context_initialized:
         print(f"[fatal] simulation context should not be initialized")
         sys.exit(1)
+    simulation_context.stop()
+    close_stage()
 
-simulation_context.stop()
 simulation_app.close()

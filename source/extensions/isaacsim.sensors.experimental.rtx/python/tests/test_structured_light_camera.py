@@ -321,6 +321,17 @@ class TestStructuredLightCameraAuthoring(_StructuredLightCameraTestBase):
                 projector_direction_texture=None,
             )
 
+    async def test_multiple_camera_prims_raise(self) -> None:
+        """Reject a path that resolves to more than one camera prim."""
+        stage_utils.define_prim("/World/camera_0", "Camera")
+        stage_utils.define_prim("/World/camera_1", "Camera")
+        with self.assertRaisesRegex(ValueError, "Only one Camera prim is supported"):
+            StructuredLightCamera(
+                "/World/camera_.*",
+                projector_light_patterns=self._patterns,
+                projector_direction_texture=_PLACEHOLDER_DIRECTION_TEXTURE,
+            )
+
     async def test_single_pattern_accepted(self) -> None:
         """Accept a single structured-light projector pattern and infer its cycle period."""
         cam = self._make_camera(

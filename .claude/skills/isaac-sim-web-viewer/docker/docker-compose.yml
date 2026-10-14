@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Prebuilt NGC Isaac Sim + WebRTC web-viewer. No Isaac Sim source checkout.
+#
+#   ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1 \
+#     docker compose -p isim -f docker/docker-compose.yml up --build -d
+#
+# --build builds the web-viewer only; Isaac Sim comes from NGC.
+# ISAAC_SIM_IMAGE must be nvcr.io/nvidia/isaac-sim:<tag>. ACCEPT_EULA=Y is
+# required by the Isaac Sim container; the agent must get operator EULA
+# acknowledgement before compose up. Do not add Docker Hub images.
+
+services:
+
+  isaac-sim:
+    image: ${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}
+    network_mode: "host"
+    runtime: nvidia
+    user: "1234:1234"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
+      test: ["CMD-SHELL", "logdir=/isaac-sim/.nvidia-omniverse/logs/Kit; [ -d \"$$logdir\" ] && latest=$$(ls -t \"$$logdir\"/*/*/kit_*.log 2>/dev/null | head -1) && [ -n \"$$latest\" ] && grep -q AppReady \"$$latest\" && exit 0; exit 1"]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICE:-all}
+      - ACCEPT_EULA=Y
+      - ISAACSIM_HOST=${ISAACSIM_HOST:-127.0.0.1}
+      - ISAACSIM_SIGNAL_PORT=${ISAACSIM_SIGNAL_PORT:-49100}
+      - ISAACSIM_STREAM_PORT=${ISAACSIM_STREAM_PORT:-47998}
+    volumes:
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/cache/main:/isaac-sim/.cache:rw
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/cache/computecache:/isaac-sim/.nv/ComputeCache:rw
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/cache/kit:/isaac-sim/kit/cache:rw
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/logs:/isaac-sim/.nvidia-omniverse/logs:rw
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/config:/isaac-sim/.nvidia-omniverse/config:rw
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/data:/isaac-sim/.local/share/ov/data:rw
+      - ${ISAAC_SIM_DATA:-~/docker/isaac-sim}/pkg:/isaac-sim/.local/share/ov/pkg:rw
+      # Default Hub cache stays under this stack's data dir so we do not share
+      # ~/.cache/ov/hub with other Omniverse/Isaac containers on the host.
+      - ${ISAACSIM_HUB_CACHE_PATH:-~/docker/isaac-sim/hub}:/var/cache/hub:rw
+    restart: unless-stopped
+
+  web-viewer:
+    build:
+      context: ./web-viewer
+      network: host
+      args:
+        ISAACSIM_HOST: ${ISAACSIM_HOST:-127.0.0.1}
+        ISAACSIM_SIGNAL_PORT: ${ISAACSIM_SIGNAL_PORT:-49100}
+        ISAACSIM_STREAM_PORT: ${ISAACSIM_STREAM_PORT:-47998}
+    network_mode: "host"
+    user: "1234:1234"
+    security_opt:
+      - no-new-privileges:true
+    command: ["npx", "vite", "preview", "--host", "${ISAACSIM_HOST:-127.0.0.1}", "--port", "${WEB_VIEWER_PORT:-8210}"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://${ISAACSIM_HOST:-127.0.0.1}:${WEB_VIEWER_PORT:-8210}/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      isaac-sim:
+        condition: service_healthy
+    restart: unless-stopped

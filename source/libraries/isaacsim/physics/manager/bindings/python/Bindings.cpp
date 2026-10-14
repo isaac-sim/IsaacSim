@@ -74,9 +74,14 @@ NB_MODULE(_bindings, module)
              "Return registered engine names and their active state.")
         .def("switch_physics_engine", &PhysicsManager::switchPhysicsEngine, nb::arg("engine"),
              "Select the registered physics engine used for simulation.")
-        .def("create_entity", &PhysicsManager::createEntity, nb::kw_only(), nb::arg("engine"), nb::arg("entity"),
-             nb::arg("paths"), nb::arg("options") = nb::none(),
-             "Create an entity view using a registered physics engine.");
+        .def(
+            "create_entity",
+            [](const PhysicsManager& self, const std::string& engine, const std::string& entity,
+               const std::variant<std::string, std::vector<std::string>>& paths,
+               const std::optional<isaacsim::physics::tensors::EntityOptions>& options)
+            { return details::castTensorEntity(self.createEntity(engine, entity, paths, options)); },
+            nb::kw_only(), nb::arg("engine"), nb::arg("entity"), nb::arg("paths"), nb::arg("options") = nb::none(),
+            "Create an entity view using a registered physics engine.");
 
     bindPythonSubscription(module);
     details::bindPhysicsSceneQuery(module);

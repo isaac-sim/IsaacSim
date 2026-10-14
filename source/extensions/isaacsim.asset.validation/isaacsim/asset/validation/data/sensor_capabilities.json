@@ -1,0 +1,2234 @@
+[
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-ROOT-003",
+    "Requirement name": "Default prim",
+    "Requirement": "For whole-stage sensor-asset validation, defaultPrim shall be authored and resolve to an existing root prim."
+  },
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-ROOT-004",
+    "Requirement name": "Default prim type",
+    "Requirement": "For whole-stage sensor-asset validation, the resolved defaultPrim shall have typeName Xform."
+  },
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-ROOT-005",
+    "Requirement name": "Default prim translation",
+    "Requirement": "The defaultPrim's composed local translation shall be (0,0,0) at the default value and every authored transform time sample."
+  },
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-ROOT-006",
+    "Requirement name": "Default prim rotation",
+    "Requirement": "The defaultPrim's composed local rotation shall be identity at the default value and every authored transform time sample."
+  },
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-ROOT-007",
+    "Requirement name": "Default prim scale",
+    "Requirement": "The defaultPrim's composed local scale shall be (1,1,1) at the default value and every authored transform time sample."
+  },
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-STRUCT-002",
+    "Requirement name": "Sensor placement",
+    "Requirement": "A sensor prim may occur at any namespace depth within the default-prim subtree or explicitly selected prim subtree."
+  },
+  {
+    "Capability name": "Shippable Asset Structure",
+    "Requirement ID": "ASSET-STRUCT-003",
+    "Requirement name": "RenderProduct presence",
+    "Requirement": "Within the default-prim subtree, or explicitly selected prim subtree, at least one sensor prim shall be targeted by a RenderProduct in that scope."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-ASSOC-001",
+    "Requirement name": "One sensor per RenderProduct",
+    "Requirement": "Each RenderProduct camera relationship shall resolve exactly one target."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-ASSOC-002",
+    "Requirement name": "Sensor target existence",
+    "Requirement": "Each resolved camera-relationship target shall identify an existing prim."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-ASSOC-003",
+    "Requirement name": "Uncovered sensor warning",
+    "Requirement": "Validation shall warn for each sensor prim in the default-prim subtree, or explicitly selected prim subtree, that is not targeted by a RenderProduct in that scope."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-ASSOC-004",
+    "Requirement name": "Sensor target type",
+    "Requirement": "Each resolved camera-relationship target shall have an authored typeName equal to the feature's sensorPrimType."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-PRODUCT-001",
+    "Requirement name": "Resolution shape",
+    "Requirement": "Every RenderProduct shall resolve a two-component resolution."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-PRODUCT-002",
+    "Requirement name": "Positive resolution",
+    "Requirement": "Each component of a RenderProduct's resolved resolution shall be greater than zero."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-VAR-001",
+    "Requirement name": "RenderVar presence",
+    "Requirement": "Every RenderProduct orderedVars relationship shall resolve at least one target whose authored typeName equals RenderVar."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-VAR-002",
+    "Requirement name": "RenderVar placement",
+    "Requirement": "Renderer compatibility shall not constrain the ancestry of a source RenderVar."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-VAR-003",
+    "Requirement name": "orderedVars target validity",
+    "Requirement": "Every target of a RenderProduct's orderedVars relationship shall resolve to a valid RenderVar prim."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-VAR-004",
+    "Requirement name": "Unique sourceName",
+    "Requirement": "Within one RenderProduct, ordered RenderVars shall have unique effective sourceName values."
+  },
+  {
+    "Capability name": "Render Graph",
+    "Requirement ID": "RENDER-VAR-005",
+    "Requirement name": "Nonempty sourceName",
+    "Requirement": "Every RenderVar targeted by orderedVars shall resolve a nonempty sourceName."
+  },
+  {
+    "Capability name": "Core Sensor Contract",
+    "Requirement ID": "SENSOR-SCHEMA-001",
+    "Requirement name": "Minimum sensor API",
+    "Requirement": "Every sensor prim shall conform to OmniSensorAPI."
+  },
+  {
+    "Capability name": "Core Sensor Contract",
+    "Requirement ID": "SENSOR-TIME-001",
+    "Requirement name": "Valid tick rate",
+    "Requirement": "omni:sensor:tickRate shall resolve to a value in [0,+∞)."
+  },
+  {
+    "Capability name": "Core Sensor Contract",
+    "Requirement ID": "SENSOR-MODEL-001",
+    "Requirement name": "Feature identity declaration",
+    "Requirement": "Every concrete model feature shall define its effective identity tuple when runtime dispatch uses one."
+  },
+  {
+    "Capability name": "Core Sensor Contract",
+    "Requirement ID": "SENSOR-MODEL-002",
+    "Requirement name": "Model vendor",
+    "Requirement": "When a concrete model is selected, its effective modelVendor shall be nonempty."
+  },
+  {
+    "Capability name": "Core Sensor Contract",
+    "Requirement ID": "SENSOR-MODEL-003",
+    "Requirement name": "Market name",
+    "Requirement": "When model dispatch depends on marketName, its effective marketName shall be nonempty."
+  },
+  {
+    "Capability name": "Camera Core",
+    "Requirement ID": "CAMERA-STRUCT-001",
+    "Requirement name": "Camera presence",
+    "Requirement": "The default-prim subtree, or explicitly selected prim subtree, shall contain at least one Camera prim."
+  },
+  {
+    "Capability name": "Camera Core",
+    "Requirement ID": "CAMERA-SCHEMA-001",
+    "Requirement name": "Camera sensor API",
+    "Requirement": "Every Camera sensor prim shall conform to OmniSensorAPI."
+  },
+  {
+    "Capability name": "RGB Output",
+    "Requirement ID": "CAMERA-OUTPUT-001",
+    "Requirement name": "Required display-ready RGB output",
+    "Requirement": "Every Camera.RGB RenderProduct shall order exactly one RenderVar whose effective sourceName is LdrColor. Other RenderVars may also be ordered."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-001",
+    "Requirement name": "At most one lens-distortion API",
+    "Requirement": "A Camera prim shall not have more than one API schema from the omni_lens_distortion schema family applied."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-002",
+    "Requirement name": "Model token consistency",
+    "Requirement": "If exactly one Omni lens-distortion API is applied, the resolved omni:lensdistortion:model token shall equal that API schema's declared model token."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-003",
+    "Requirement name": "Finite lens values",
+    "Requirement": "Each component of every resolved floating-point attribute defined by the applied Omni lens-distortion API shall be finite."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-004",
+    "Requirement name": "Positive nominal width",
+    "Requirement": "Resolved nominalWidth shall be greater than zero when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-005",
+    "Requirement name": "Positive nominal height",
+    "Requirement": "Resolved nominalHeight shall be greater than zero when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-006",
+    "Requirement name": "Positive image size",
+    "Requirement": "Each component of resolved imageSize shall be greater than zero when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-007",
+    "Requirement name": "Valid maximum FOV",
+    "Requirement": "Resolved maxFov shall satisfy 0 < maxFov <= 360 degrees when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-008",
+    "Requirement name": "Finite optical center",
+    "Requirement": "Each component of resolved opticalCenter shall be finite when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-009",
+    "Requirement name": "Finite cx",
+    "Requirement": "Resolved cx shall be finite when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-010",
+    "Requirement name": "Finite cy",
+    "Requirement": "Resolved cy shall be finite when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-011",
+    "Requirement name": "Positive fx",
+    "Requirement": "Resolved fx shall be greater than zero when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-012",
+    "Requirement name": "Positive fy",
+    "Requirement": "Resolved fy shall be greater than zero when defined by the applied API."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-013",
+    "Requirement name": "Positive IPD",
+    "Requirement": "Resolved interpupillaryDistance shall be greater than zero for OmniLensDistortionOmniDirectionalStereoAPI."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-014",
+    "Requirement name": "Deprecated analytic schema warning",
+    "Requirement": "Kit 110.4 validation shall warn when OmniLensDistortionFthetaAPI, OmniLensDistortionKannalaBrandtK3API, or OmniLensDistortionRadTanThinPrismAPI is applied."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-015",
+    "Requirement name": "F-theta finite polynomial",
+    "Requirement": "The F-theta polynomial shall be finite over the nominal radial image domain admitted by maxFov."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-016",
+    "Requirement name": "F-theta unique inverse root",
+    "Requirement": "For every admitted theta, the F-theta polynomial shall have exactly one nonnegative radial root in the nominal radial image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-017",
+    "Requirement name": "F-theta simple inverse root",
+    "Requirement": "The derivative of the F-theta polynomial shall be nonzero at every root required by CAMERA-LENS-016."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-018",
+    "Requirement name": "Kannala-Brandt finite radial map",
+    "Requirement": "The Kannala-Brandt radial map shall be finite for every theta in [0,maxFov/2]."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-019",
+    "Requirement name": "Kannala-Brandt positive derivative",
+    "Requirement": "The derivative of the Kannala-Brandt radial map shall be strictly positive for every theta in [0,maxFov/2]."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-020",
+    "Requirement name": "RadTan finite radial map",
+    "Requirement": "The RadTan radial map shall be finite for every theta in [0,maxFov/2]."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-021",
+    "Requirement name": "RadTan increasing radial map",
+    "Requirement": "The RadTan radial map shall be strictly increasing on [0,maxFov/2]."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-022",
+    "Requirement name": "RadTan finite inverse Jacobian",
+    "Requirement": "Each entry of the renderer's tangential-plus-thin-prism Jacobian shall be finite throughout the normalized calibration image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-023",
+    "Requirement name": "RadTan nonsingular inverse Jacobian",
+    "Requirement": "The determinant of the RadTan Jacobian shall be nonzero throughout the normalized calibration image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-024",
+    "Requirement name": "OpenCV fisheye edge solution",
+    "Requirement": "The OpenCV fisheye edge equation shall have a finite positive solution theta_edge."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-025",
+    "Requirement name": "OpenCV fisheye increasing inverse domain",
+    "Requirement": "The OpenCV fisheye radial map shall be strictly increasing on [0,theta_edge]."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-026",
+    "Requirement name": "OpenCV pinhole finite denominator",
+    "Requirement": "The OpenCV pinhole radial denominator shall be finite throughout the normalized calibration image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-027",
+    "Requirement name": "OpenCV pinhole nonzero denominator",
+    "Requirement": "The OpenCV pinhole radial denominator shall be nonzero throughout the normalized calibration image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-028",
+    "Requirement name": "OpenCV pinhole finite inverse Jacobian",
+    "Requirement": "Each entry of the OpenCV pinhole distortion Jacobian shall be finite throughout the normalized calibration image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LENS-029",
+    "Requirement name": "OpenCV pinhole nonsingular inverse Jacobian",
+    "Requirement": "The determinant of the OpenCV pinhole distortion Jacobian shall be nonzero throughout the normalized calibration image domain."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-001",
+    "Requirement name": "Ray-entry texture",
+    "Requirement": "rayEnterDirectionTexture shall resolve to an existing image file."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-002",
+    "Requirement name": "Ray-exit texture",
+    "Requirement": "rayExitPositionTexture shall resolve to an existing image file."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-003",
+    "Requirement name": "Ray-entry OpenEXR",
+    "Requirement": "rayEnterDirectionTexture shall resolve to a decodable OpenEXR image."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-004",
+    "Requirement name": "Ray-exit OpenEXR",
+    "Requirement": "rayExitPositionTexture shall resolve to a decodable OpenEXR image."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-005",
+    "Requirement name": "Ray-entry lossless compression",
+    "Requirement": "rayEnterDirectionTexture shall use uncompressed, RLE, ZIPS, ZIP, or PIZ OpenEXR compression."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-006",
+    "Requirement name": "Ray-exit lossless compression",
+    "Requirement": "rayExitPositionTexture shall use uncompressed, RLE, ZIPS, ZIP, or PIZ OpenEXR compression."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-007",
+    "Requirement name": "Ray-entry R channel",
+    "Requirement": "rayEnterDirectionTexture shall contain a named R channel."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-008",
+    "Requirement name": "Ray-entry G channel",
+    "Requirement": "rayEnterDirectionTexture shall contain a named G channel."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-009",
+    "Requirement name": "Ray-entry B channel",
+    "Requirement": "rayEnterDirectionTexture shall contain a named B channel."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-010",
+    "Requirement name": "Ray-exit R channel",
+    "Requirement": "rayExitPositionTexture shall contain a named R channel."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-011",
+    "Requirement name": "Ray-exit G channel",
+    "Requirement": "rayExitPositionTexture shall contain a named G channel."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-012",
+    "Requirement name": "Ray-entry R type",
+    "Requirement": "The R channel of rayEnterDirectionTexture shall use the OpenEXR FLOAT (32-bit) pixel type."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-013",
+    "Requirement name": "Ray-entry G type",
+    "Requirement": "The G channel of rayEnterDirectionTexture shall use the OpenEXR FLOAT (32-bit) pixel type."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-014",
+    "Requirement name": "Ray-entry B type",
+    "Requirement": "The B channel of rayEnterDirectionTexture shall use the OpenEXR FLOAT (32-bit) pixel type."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-015",
+    "Requirement name": "Ray-exit R type",
+    "Requirement": "The R channel of rayExitPositionTexture shall use the OpenEXR FLOAT (32-bit) pixel type."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-016",
+    "Requirement name": "Ray-exit G type",
+    "Requirement": "The G channel of rayExitPositionTexture shall use the OpenEXR FLOAT (32-bit) pixel type."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-017",
+    "Requirement name": "Positive ray-entry width",
+    "Requirement": "The decoded width of rayEnterDirectionTexture shall be greater than zero."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-018",
+    "Requirement name": "Positive ray-entry height",
+    "Requirement": "The decoded height of rayEnterDirectionTexture shall be greater than zero."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-019",
+    "Requirement name": "Positive ray-exit width",
+    "Requirement": "The decoded width of rayExitPositionTexture shall be greater than zero."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-020",
+    "Requirement name": "Positive ray-exit height",
+    "Requirement": "The decoded height of rayExitPositionTexture shall be greater than zero."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-021",
+    "Requirement name": "Matching LUT aspect ratio",
+    "Requirement": "rayEnterDirectionTexture and rayExitPositionTexture shall have identical decoded aspect ratios."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-022",
+    "Requirement name": "Finite ray-entry R values",
+    "Requirement": "Every R-channel texel value in rayEnterDirectionTexture shall be finite."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-023",
+    "Requirement name": "Finite ray-entry G values",
+    "Requirement": "Every G-channel texel value in rayEnterDirectionTexture shall be finite."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-024",
+    "Requirement name": "Finite ray-entry B values",
+    "Requirement": "Every B-channel texel value in rayEnterDirectionTexture shall be finite."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-025",
+    "Requirement name": "Finite ray-exit R values",
+    "Requirement": "Every R-channel texel value in rayExitPositionTexture shall be finite."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-026",
+    "Requirement name": "Finite ray-exit G values",
+    "Requirement": "Every G-channel texel value in rayExitPositionTexture shall be finite."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-027",
+    "Requirement name": "Nonzero ray directions",
+    "Requirement": "At every rayEnterDirectionTexture texel, the vector formed by the R, G, and B values shall have nonzero length."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-028",
+    "Requirement name": "Ray-entry lookup domain",
+    "Requirement": "The normalized texture coordinate addressing rayEnterDirectionTexture shall represent the image normalized-device coordinate."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-029",
+    "Requirement name": "Ray-entry payload layout",
+    "Requirement": "At each rayEnterDirectionTexture texel, the R, G, and B values shall encode the corresponding ray direction in local camera space."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-030",
+    "Requirement name": "Ray-exit lookup domain",
+    "Requirement": "The normalized texture coordinate addressing rayExitPositionTexture shall represent a view direction encoded octahedrally using the renderer's Z-sign convention."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-031",
+    "Requirement name": "Ray-exit payload layout",
+    "Requirement": "At each rayExitPositionTexture texel, the R and G values shall encode the corresponding normalized screen coordinate."
+  },
+  {
+    "Capability name": "Camera Lens Calibration",
+    "Requirement ID": "CAMERA-LUT-032",
+    "Requirement name": "Finite optional ray-entry A values",
+    "Requirement": "If rayEnterDirectionTexture contains an authored A channel, every A-channel texel value shall be finite."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-SCHEMA-001",
+    "Requirement name": "Depth sensor API",
+    "Requirement": "The depth RenderProduct prim shall have OmniSensorDepthSensorSingleViewAPI applied."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-OUTPUT-001",
+    "Requirement name": "LdrColor input",
+    "Requirement": "Every depth RenderProduct shall order exactly one RenderVar whose effective sourceName is LdrColor."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-OUTPUT-002",
+    "Requirement name": "Camera position input",
+    "Requirement": "Every depth RenderProduct shall order exactly one RenderVar whose effective sourceName is Camera3dPositionSD."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-OUTPUT-003",
+    "Requirement name": "Image-plane distance input",
+    "Requirement": "Every depth RenderProduct shall order exactly one RenderVar whose effective sourceName is DistanceToImagePlaneSD."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-OUTPUT-004",
+    "Requirement name": "Depth output activation",
+    "Requirement": "Every depth RenderProduct shall order at least one RenderVar whose effective sourceName is a supported depth output."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-001",
+    "Requirement name": "Finite depth parameters",
+    "Requirement": "Each resolved floating-point attribute defined by OmniSensorDepthSensorSingleViewAPI shall be finite."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-002",
+    "Requirement name": "Positive focal length",
+    "Requirement": "focalLengthPixel shall be greater than zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-003",
+    "Requirement name": "Positive maximum disparity",
+    "Requirement": "maxDisparityPixel shall be greater than zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-004",
+    "Requirement name": "Positive maximum distance",
+    "Requirement": "maxDistance shall be greater than zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-005",
+    "Requirement name": "Minimum sensor size",
+    "Requirement": "sensorSizePixel shall be at least 1."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-006",
+    "Requirement name": "Minimum noise downscale",
+    "Requirement": "noiseDownscaleFactorPixel shall be at least 1."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-007",
+    "Requirement name": "Nonnegative noise mean",
+    "Requirement": "noiseMean shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-008",
+    "Requirement name": "Nonnegative noise sigma",
+    "Requirement": "noiseSigma shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-009",
+    "Requirement name": "Signed baseline",
+    "Requirement": "baselineMM shall be finite; no sign restriction applies."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-010",
+    "Requirement name": "Nonnegative minimum distance",
+    "Requirement": "minDistance shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-011",
+    "Requirement name": "Nonnegative effective distance",
+    "Requirement": "effectiveDistance shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-012",
+    "Requirement name": "Ordered distance bounds",
+    "Requirement": "maxDistance shall be greater than minDistance."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-013",
+    "Requirement name": "Confidence interval",
+    "Requirement": "confidenceThreshold shall lie in [0,1]."
+  },
+  {
+    "Capability name": "Depth Single-View Output",
+    "Requirement ID": "DEPTH-PARAM-014",
+    "Requirement name": "RGB depth output mode",
+    "Requirement": "rgbDepthOutputMode shall be an integer in {0,1,2,3,4,5,6,7}."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-VAR-001",
+    "Requirement name": "Lidar sourceName allowlist",
+    "Requirement": "Every ordered native Lidar RenderVar shall have an effective sourceName in {GenericModelOutput, PointCloud, RtxSensorMetadata}."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-VAR-002",
+    "Requirement name": "Channels API applicability",
+    "Requirement": "RenderVarChannelsAPI shall not be applied to an ordered Lidar RenderVar unless its effective sourceName is GenericModelOutput or PointCloud."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-VAR-004",
+    "Requirement name": "GenericModelOutput channels",
+    "Requirement": "A GenericModelOutput RenderVar's channels shall be empty or contain exactly one string from {NONE, BASIC, EXTRA, FULL}."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-VAR-005",
+    "Requirement name": "PointCloud channels",
+    "Requirement": "A PointCloud RenderVar's channels shall be a unique subset of {Coordinates, Intensity, TimeOffsetNs, Flags, EmitterId, ChannelId, MaterialId, TickId, HitNormal, Velocity, ObjectId, EchoId, TickState}."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-VAR-007",
+    "Requirement name": "Required native output",
+    "Requirement": "Every Lidar RenderProduct shall order at least one native Lidar RenderVar."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-STRUCT-001",
+    "Requirement name": "Lidar presence",
+    "Requirement": "The default-prim subtree, or explicitly selected prim subtree, shall contain at least one OmniLidar prim."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-SCHEMA-001",
+    "Requirement name": "Generic Lidar Core API",
+    "Requirement": "Every OmniLidar sensor prim shall have OmniSensorGenericLidarCoreAPI applied."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-MODEL-001",
+    "Requirement name": "Lidar model name",
+    "Requirement": "The resolved omni:sensor:modelName value on every OmniLidar sensor prim shall equal LidarCore."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-EMITTER-001",
+    "Requirement name": "Required emitter state",
+    "Requirement": "At least one composed OmniSensorGenericLidarCoreEmitterStateAPI instance shall exist on every OmniLidar sensor prim."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-EMITTER-002",
+    "Requirement name": "Emitter-state instance name",
+    "Requirement": "Every OmniSensorGenericLidarCoreEmitterStateAPI instance name shall match ^s[0-9]{3}$."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-EMITTER-003",
+    "Requirement name": "Emitter-state target type",
+    "Requirement": "Every OmniSensorGenericLidarCoreEmitterStateAPI instance shall be applied to an OmniLidar prim."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-EMITTER-004",
+    "Requirement name": "Emitter-state Core dependency",
+    "Requirement": "A prim with an OmniSensorGenericLidarCoreEmitterStateAPI instance shall have OmniSensorGenericLidarCoreAPI applied."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-EMITTER-005",
+    "Requirement name": "Emitter-state namespace",
+    "Requirement": "Every attribute belonging to emitter-state instance <instanceName> shall use omni:sensor:Core:emitterState:<instanceName>:<attrName>."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-ARRAY-001",
+    "Requirement name": "Required emitter arrays",
+    "Requirement": "For every emitter-state instance, each of azimuthDeg, elevationDeg, fireTimeNs, and channelId shall contain exactly numberOfEmitters elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-ARRAY-002",
+    "Requirement name": "Optional emitter arrays",
+    "Requirement": "Every other emitter-state array shall contain either zero elements or exactly numberOfEmitters elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-ARRAY-003",
+    "Requirement name": "Channel ID range",
+    "Requirement": "Every channelId element shall satisfy 1 <= value <= numberOfChannels."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-ARRAY-004",
+    "Requirement name": "Focal-distance values",
+    "Requirement": "Every element of a nonempty focalDistM array shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-ARRAY-005",
+    "Requirement name": "Emitter-power values",
+    "Requirement": "Every element of a nonempty emitterPeakPowerW array shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-001",
+    "Requirement name": "Finite floating-point values",
+    "Requirement": "Every resolved floating-point scalar and array element defined by the Lidar Core or an applied emitter-state API shall be finite."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-002",
+    "Requirement name": "Positive base scan rate",
+    "Requirement": "scanRateBaseHz shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-003",
+    "Requirement name": "Positive firing rate",
+    "Requirement": "patternFiringRateHz shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-004",
+    "Requirement name": "Positive emitter count",
+    "Requirement": "numberOfEmitters shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-005",
+    "Requirement name": "Positive channel count",
+    "Requirement": "numberOfChannels shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-006",
+    "Requirement name": "Positive return count",
+    "Requirement": "maxReturns shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-007",
+    "Requirement name": "Positive state resolution",
+    "Requirement": "stateResolutionStep shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-008",
+    "Requirement name": "Valid sensing range",
+    "Requirement": "Attribute values shall satisfy 0 <= nearRangeM < farRangeM."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-009",
+    "Requirement name": "Nonnegative azimuth error",
+    "Requirement": "azimuthErrorStd shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-010",
+    "Requirement name": "Nonnegative elevation error",
+    "Requirement": "elevationErrorStd shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-011",
+    "Requirement name": "Nonnegative origin error",
+    "Requirement": "Every component of originErrorStd shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-012",
+    "Requirement name": "Reflection power tuning factor",
+    "Requirement": "reflectionPowerFraction shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-013",
+    "Requirement name": "Transmission power tuning factor",
+    "Requirement": "transmissionPowerFraction shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-014",
+    "Requirement name": "Positive minimum reflectance",
+    "Requirement": "minReflectance shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-015",
+    "Requirement name": "Nonnegative quantum efficiency",
+    "Requirement": "quantumEfficiency shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-016",
+    "Requirement name": "Nonnegative range accuracy",
+    "Requirement": "rangeAccuracyM shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-017",
+    "Requirement name": "Nonnegative echo separation",
+    "Requirement": "minDistBetweenEchosM shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-018",
+    "Requirement name": "Nonnegative range offset",
+    "Requirement": "rangeOffsetM shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-019",
+    "Requirement name": "Positive reflection reference range",
+    "Requirement": "minReflectionRangeM shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-020",
+    "Requirement name": "Nonnegative horizontal beam waist",
+    "Requirement": "beamWaistHorM shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-021",
+    "Requirement name": "Nonnegative vertical beam waist",
+    "Requirement": "beamWaistVerM shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-022",
+    "Requirement name": "Nonnegative horizontal divergence",
+    "Requirement": "divergenceHorDeg shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-023",
+    "Requirement name": "Nonnegative vertical divergence",
+    "Requirement": "divergenceVerDeg shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-024",
+    "Requirement name": "Positive range resolution",
+    "Requirement": "rangeResolutionM shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-025",
+    "Requirement name": "Positive focus distance",
+    "Requirement": "focusDistM shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-026",
+    "Requirement name": "Positive peak power",
+    "Requirement": "peakPowerW shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-027",
+    "Requirement name": "Positive wavelength",
+    "Requirement": "waveLengthNm shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-028",
+    "Requirement name": "Positive pulse time",
+    "Requirement": "pulseTimeNs shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-029",
+    "Requirement name": "Positive aspect ratio",
+    "Requirement": "aspectRatio shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-030",
+    "Requirement name": "Positive aperture size",
+    "Requirement": "effectiveApertureSizeM shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-031",
+    "Requirement name": "Positive pixel pitch",
+    "Requirement": "pixelPitch shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-032",
+    "Requirement name": "Positive calibration gain",
+    "Requirement": "calibrationGain shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-033",
+    "Requirement name": "Positive bit-depth resolution",
+    "Requirement": "bitDepthResolution shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-034",
+    "Requirement name": "Beam quality",
+    "Requirement": "Msquared shall be greater than or equal to 1."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-035",
+    "Requirement name": "Exclusive beam representation",
+    "Requirement": "Exactly one complete beam representation shall be active: both beam-waist values positive with both divergence values zero, or both divergence values positive with both beam-waist values zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-036",
+    "Requirement name": "Origin-error mean size",
+    "Requirement": "originErrorMean shall contain exactly three elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-PARAM-037",
+    "Requirement name": "Origin-error deviation size",
+    "Requirement": "originErrorStd shall contain exactly three elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-RANGE-001",
+    "Requirement name": "Minimum-range array cardinality",
+    "Requirement": "rangesMinM shall contain exactly rangeCount elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-RANGE-002",
+    "Requirement name": "Maximum-range array cardinality",
+    "Requirement": "rangesMaxM shall contain exactly rangeCount elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-RANGE-005",
+    "Requirement name": "Range-region ordering",
+    "Requirement": "Every effective range pair shall satisfy rangesMinM[i] <= rangesMaxM[i]."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-RANGE-006",
+    "Requirement name": "Range-ID cardinality",
+    "Requirement": "Every emitter-state rangeId array shall contain either zero elements or exactly numberOfEmitters elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-RANGE-007",
+    "Requirement name": "Range-ID domain",
+    "Requirement": "Every authored rangeId shall satisfy 0 <= value < max(1,rangeCount)."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-RANGE-008",
+    "Requirement name": "Multi-range IDs required",
+    "Requirement": "If rangeCount is greater than 1, every OmniSensorGenericLidarCoreEmitterStateAPI instance shall have a nonempty rangeId array."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-FIRE-001",
+    "Requirement name": "Nondecreasing fire times",
+    "Requirement": "Every emitter-state fireTimeNs array shall be nondecreasing."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-FIRE-002",
+    "Requirement name": "Fire-time tick bound",
+    "Requirement": "The final fireTimeNs element shall be no greater than floor(1e9/patternFiringRateHz)."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-TIMING-001",
+    "Requirement name": "Compatible timing flags",
+    "Requirement": "A validator shall not reject a Lidar profile solely because both accumulateOutputs and instantLidar resolve true."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-INTENSITY-001",
+    "Requirement name": "Mapping-type token",
+    "Requirement": "intensityMappingType shall be in {LINEAR, NONLINEAR, NONLINEAR_ENCODING_ONLY, NONLINEAR_DECODING_ONLY}."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-INTENSITY-002",
+    "Requirement name": "Positive intensity scale",
+    "Requirement": "intensityScalePercent shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-001",
+    "Requirement name": "Custom frame transform size",
+    "Requirement": "Applies when: outputFrameOfReference == CUSTOM\ncustomFrameOfReferenceTrafo shall contain exactly six elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-003",
+    "Requirement name": "Solid-state line count",
+    "Requirement": "Applies when: scanType == SOLID_STATE\nnumLines shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-004",
+    "Requirement name": "Solid-state ray-count cardinality",
+    "Requirement": "Applies when: scanType == SOLID_STATE\nnumRaysPerLine shall contain exactly numLines elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-005",
+    "Requirement name": "Solid-state ray-count storage",
+    "Requirement": "Applies when: scanType == SOLID_STATE\nEvery numRaysPerLine element shall satisfy 0 <= value <= 65535."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-006",
+    "Requirement name": "Solid-state ray-count sum",
+    "Requirement": "Applies when: scanType == SOLID_STATE\nThe sum of numRaysPerLine shall equal numberOfEmitters."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-009",
+    "Requirement name": "Solid-state bank indices",
+    "Requirement": "Applies when: scanType == SOLID_STATE and bank is nonempty\nEvery bank value shall be less than numLines."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-010",
+    "Requirement name": "Active ROI interval",
+    "Requirement": "Applies when: scanType == ROTARY and isROIState == true\nminAzimuthROI shall be less than or equal to 360."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-011",
+    "Requirement name": "Active ROI cardinality",
+    "Requirement": "Applies when: scanType == ROTARY and isROIState == true\nroi shall contain exactly numberOfEmitters elements."
+  },
+  {
+    "Capability name": "RTX Lidar Core",
+    "Requirement ID": "LIDAR-COND-012",
+    "Requirement name": "Active ROI membership",
+    "Requirement": "Applies when: scanType == ROTARY and isROIState == true\nroi shall contain at least one true element."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-001",
+    "Requirement name": "SPG Shader eligibility",
+    "Requirement": "A prim shall be eligible for SPG population when its authored typeName is Shader, it is outside a UsdShade.Material hierarchy, it is not beneath an instanceable prim, and it declares a supported SPG implementation form."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-003",
+    "Requirement name": "Connected-component membership",
+    "Requirement": "Shader-to-shader connections shall define SPG graph connected components."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-005",
+    "Requirement name": "Cross-product latency warning",
+    "Requirement": "A validator shall warn when an SPG output binding's producer and consumer RenderProducts differ."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-006",
+    "Requirement name": "Effective entry point",
+    "Requirement": "Every source-asset SPG Shader shall have one effective entry point."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-007",
+    "Requirement name": "Unique component node name",
+    "Requirement": "Shader prim basenames shall be unique within each shader-connected component."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-008",
+    "Requirement name": "Implementation source",
+    "Requirement": "Exactly one supported implementation form shall resolve for every SPG Shader."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-009",
+    "Requirement name": "Source-asset existence",
+    "Requirement": "Every source-asset SPG implementation shall resolve to an existing asset."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-010",
+    "Requirement name": "Source-asset format",
+    "Requirement": "Every source-asset SPG implementation shall have a supported filename extension."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-011",
+    "Requirement name": "Lua launch asset",
+    "Requirement": "Every source-asset SPG implementation at path P shall resolve an adjacent launch asset at P + .lua; for a package-relative path, the suffix shall be appended to the inner path before the closing bracket."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-012",
+    "Requirement name": "Authored subidentifier",
+    "Requirement": "An explicitly authored source-asset subIdentifier shall be nonempty."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-013",
+    "Requirement name": "Source RenderVar AOV exposure",
+    "Requirement": "Every RenderVar supplying an RTX AOV to an SPG resource input shall expose omni:rtx:aov."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-014",
+    "Requirement name": "Opaque resource input",
+    "Requirement": "Every SPG resource input shall be authored with opaque type."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-015",
+    "Requirement name": "Resource-input connection cardinality",
+    "Requirement": "Every SPG resource input shall have at most one upstream source."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-016",
+    "Requirement name": "Resource-input source domain",
+    "Requirement": "An SPG resource input source shall be an existing SPG Shader output or omni:rtx:aov on a RenderVar."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-017",
+    "Requirement name": "Typed-input connection cardinality",
+    "Requirement": "Every typed non-opaque SPG input shall have at most one value-source connection."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-018",
+    "Requirement name": "Typed-input source compatibility",
+    "Requirement": "A typed-input value-source connection shall have a compatible value type."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-019",
+    "Requirement name": "Legacy parameter deprecation warning",
+    "Requirement": "Validation shall warn when an SPG Shader authors legacy params:* attributes; inputs:* is preferred, while params:* remains accepted."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-020",
+    "Requirement name": "Produced RenderVar placement",
+    "Requirement": "Every SPG-produced RenderVar shall be a direct child of a RenderProduct."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-021",
+    "Requirement name": "Produced RenderVar connection cardinality",
+    "Requirement": "Every SPG-produced RenderVar shall author exactly one connection on omni:rtx:aov."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-022",
+    "Requirement name": "Produced RenderVar source",
+    "Requirement": "Every SPG-produced RenderVar's omni:rtx:aov connection shall target an existing SPG Shader output."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-023",
+    "Requirement name": "SPG output AOV name",
+    "Requirement": "Every SPG-produced RenderVar shall have a nonempty effective sourceName."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-024",
+    "Requirement name": "Duplicate SPG output AOV warning",
+    "Requirement": "Validation shall warn when two SPG-produced RenderVars in one RenderProduct share a sourceName."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-027",
+    "Requirement name": "Opaque resource output",
+    "Requirement": "Every SPG resource output shall be authored with opaque type."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-028",
+    "Requirement name": "Non-opaque output diagnostic",
+    "Requirement": "A non-opaque SPG resource output shall be reported as a portability error."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-029",
+    "Requirement name": "Internal-edge node existence",
+    "Requirement": "Both node endpoints of every internal SPG resource edge shall exist in the same connected component."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-030",
+    "Requirement name": "Internal-edge port existence",
+    "Requirement": "Both port endpoints of every internal SPG resource edge shall exist on their referenced nodes."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-031",
+    "Requirement name": "Internal-edge direction",
+    "Requirement": "Every internal SPG resource edge shall connect an output port to an input port."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-032",
+    "Requirement name": "Acyclic component",
+    "Requirement": "Every shader-connected component shall be acyclic."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-035",
+    "Requirement name": "Schedulable CUDA resource",
+    "Requirement": "Every CUDA node intended to execute shall have at least one valid bound resource."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-036",
+    "Requirement name": "Source entry-point existence",
+    "Requirement": "Static validation shall verify that a source-asset Shader's effective entry point exists."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-037",
+    "Requirement name": "Lua entry-point existence",
+    "Requirement": "Static validation shall verify that the adjacent Lua asset defines the effective entry point."
+  },
+  {
+    "Capability name": "SPG Post-Processing",
+    "Requirement ID": "SPG-038",
+    "Requirement name": "Lua launch-argument compatibility",
+    "Requirement": "Every Lua launch argument that references a Shader port shall name a declared port, or an input SPG provides implicitly, and use a wrapper compatible with that port's kind and direction."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-001",
+    "Requirement name": "Generic Camera Core schema",
+    "Requirement": "The Camera prim shall have OmniSensorGenericCameraCoreAPI applied."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-002",
+    "Requirement name": "Exact dispatch identity",
+    "Requirement": "The effective tuple (modelName,modelVendor,marketName) shall equal (CameraCore,NVIDIA,Generic)."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-003",
+    "Requirement name": "One-camera execution",
+    "Requirement": "A Camera ISP RenderProduct shall resolve exactly one camera target."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-004",
+    "Requirement name": "Required ISP input",
+    "Requirement": "The Camera ISP RenderProduct shall order exactly one RenderVar whose effective sourceName is HdrColor."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-005",
+    "Requirement name": "Maintained ISP output",
+    "Requirement": "The Camera ISP RenderProduct shall order at least one RenderVar whose effective sourceName is in {OmniCameraSensorPreIsp, OmniCameraSensorPostIsp}."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-006",
+    "Requirement name": "Finite ISP numeric values",
+    "Requirement": "Each consumed numeric scalar and array element shall be finite."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-007",
+    "Requirement name": "White-balance array length",
+    "Requirement": "colorCorrectionWhiteBalance shall contain exactly three elements."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-008",
+    "Requirement name": "colorFilterArrayCfaCf00 length",
+    "Requirement": "colorFilterArrayCfaCf00 shall contain exactly three elements."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-009",
+    "Requirement name": "colorFilterArrayCfaCf01 length",
+    "Requirement": "colorFilterArrayCfaCf01 shall contain exactly three elements."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-010",
+    "Requirement name": "colorFilterArrayCfaCf10 length",
+    "Requirement": "colorFilterArrayCfaCf10 shall contain exactly three elements."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-011",
+    "Requirement name": "colorFilterArrayCfaCf11 length",
+    "Requirement": "colorFilterArrayCfaCf11 shall contain exactly three elements."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-012",
+    "Requirement name": "Saturation denominator",
+    "Requirement": "If colorCorrectionApplySaturation is true, colorCorrectionFullwellBlack shall be greater than zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-013",
+    "Requirement name": "Output-float fallback warning",
+    "Requirement": "For assets claiming the Generic Camera Core ISP capability on Kit 110.4, validation shall warn when colorCorrectionOutputFloat16 and colorCorrectionOutputFloat32 both resolve true; the renderer selects float32 in that case."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-014",
+    "Requirement name": "CFA semantic token",
+    "Requirement": "colorFilterArrayCfaSemantic shall resolve to a schema-allowed token."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-015",
+    "Requirement name": "CFA output datatype token",
+    "Requirement": "colorFilterArrayOutputDataTypeFormat shall resolve to a schema-allowed token."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-016",
+    "Requirement name": "CFA maximum value",
+    "Requirement": "colorFilterArrayMaximalValue shall be greater than zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-018",
+    "Requirement name": "HDR segment presence",
+    "Requirement": "noiseHdrCombinationData shall contain at least one pair."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-019",
+    "Requirement name": "HDR composition gains",
+    "Requirement": "Every first component of noiseHdrCombinationData shall be greater than zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-020",
+    "Requirement name": "HDR segment thresholds",
+    "Requirement": "Every second component of noiseHdrCombinationData shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-021",
+    "Requirement name": "HDR threshold ordering",
+    "Requirement": "The second components of noiseHdrCombinationData shall be strictly increasing."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-022",
+    "Requirement name": "Nonnegative noiseDarkShotNoiseGain",
+    "Requirement": "noiseDarkShotNoiseGain shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-023",
+    "Requirement name": "Nonnegative noiseDarkShotNoiseSigma",
+    "Requirement": "noiseDarkShotNoiseSigma shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-024",
+    "Requirement name": "Companding point count",
+    "Requirement": "compandingLinearCompandCoeff shall contain 2 through 255 pairs."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-025",
+    "Requirement name": "Finite companding curve",
+    "Requirement": "Each component of every compandingLinearCompandCoeff pair shall be finite."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-026",
+    "Requirement name": "Increasing companding inputs",
+    "Requirement": "The first components of compandingLinearCompandCoeff shall be strictly increasing."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-027",
+    "Requirement name": "Nonnegative companding outputs",
+    "Requirement": "Every second component of compandingLinearCompandCoeff shall be nonnegative."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-028",
+    "Requirement name": "Monotone companding outputs",
+    "Requirement": "The second components of compandingLinearCompandCoeff shall be nondecreasing."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-029",
+    "Requirement name": "Positive final companding output",
+    "Requirement": "The final second component of compandingLinearCompandCoeff shall be greater than zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-030",
+    "Requirement name": "Nonnegative compandingPrePedestal",
+    "Requirement": "compandingPrePedestal shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-031",
+    "Requirement name": "Nonnegative compandingPostPedestal",
+    "Requirement": "compandingPostPedestal shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-032",
+    "Requirement name": "Up-to-16-bit companding alignment",
+    "Requirement": "When output bit width is at most 16, outputBitWidth-1 <= compandingAlignment <= 15."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-033",
+    "Requirement name": "32-bit companding alignment",
+    "Requirement": "When output bit width is 32, compandingAlignment shall be at most 31."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-034",
+    "Requirement name": "ISP program payload",
+    "Requirement": "ispSmodelCameraProgram shall be valid Base64 whose decoded payload is nonempty."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-035",
+    "Requirement name": "RAW padding token",
+    "Requirement": "ispSmodelRawDataPaddingMode shall resolve to a schema-allowed token."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-036",
+    "Requirement name": "Sensor RAW format token",
+    "Requirement": "ispSmodelSensorRawFormat shall resolve to a schema-allowed token."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-037",
+    "Requirement name": "RAW input path",
+    "Requirement": "If introspectionInputRaw is true, introspectionInputRawPath shall resolve to an existing readable file."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-038",
+    "Requirement name": "Positive introspectionInputRawWidth",
+    "Requirement": "If introspectionInputRaw is true, introspectionInputRawWidth shall be greater than zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-039",
+    "Requirement name": "Positive introspectionInputRawHeight",
+    "Requirement": "If introspectionInputRaw is true, introspectionInputRawHeight shall be greater than zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-040",
+    "Requirement name": "Nonnegative introspectionInputRawSkipFront",
+    "Requirement": "If introspectionInputRaw is true, introspectionInputRawSkipFront shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-041",
+    "Requirement name": "Nonnegative introspectionInputRawSkipBack",
+    "Requirement": "If introspectionInputRaw is true, introspectionInputRawSkipBack shall be greater than or equal to zero."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-042",
+    "Requirement name": "RAW input datatype",
+    "Requirement": "If introspectionInputRaw is true, introspectionInputRawFileDataType shall resolve to a supported token."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-043",
+    "Requirement name": "RAW input byte capacity",
+    "Requirement": "If introspectionInputRaw is true, the input file shall contain enough bytes for the configured frame."
+  },
+  {
+    "Capability name": "Generic Camera Core ISP",
+    "Requirement ID": "CAMERA-ISP-044",
+    "Requirement name": "Output directory presence",
+    "Requirement": "If introspectionOutputFile is true, introspectionOutputFileDirectory shall resolve to a nonempty path."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-STRUCT-001",
+    "Requirement name": "Radar presence",
+    "Requirement": "The default-prim subtree, or explicitly selected prim subtree, shall contain at least one OmniRadar prim."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-001",
+    "Requirement name": "Radar prim type",
+    "Requirement": "The sensor prim authored typeName shall be OmniRadar."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-002",
+    "Requirement name": "Radar core API",
+    "Requirement": "The resolved Radar prim shall have OmniSensorGenericRadarWpmDmatAPI applied."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-003",
+    "Requirement name": "Sensor API",
+    "Requirement": "The resolved Radar prim shall have OmniSensorAPI applied."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-004",
+    "Requirement name": "Encryption API",
+    "Requirement": "The resolved Radar prim shall have OmniSensorEncryptionAPI applied."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-005",
+    "Requirement name": "Default scan API",
+    "Requirement": "The resolved Radar prim shall have OmniSensorGenericRadarWpmDmatScanCfgAPI:s001 applied."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-006",
+    "Requirement name": "Scan cardinality",
+    "Requirement": "The Radar prim shall have between 1 and 255 scan API instances."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-007",
+    "Requirement name": "Nonempty scan instance name",
+    "Requirement": "Every scan API instance name shall be nonempty."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-008",
+    "Requirement name": "Scan instance leading character",
+    "Requirement": "No scan API instance name shall begin with a decimal digit."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-009",
+    "Requirement name": "Case-fold collision warning",
+    "Requirement": "Validation shall warn if two scan instance names compare equal after lowercasing."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-SCHEMA-010",
+    "Requirement name": "Effective scan order",
+    "Requirement": "The validator shall derive scan order by sorting lowercased instance names lexicographically."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-001",
+    "Requirement name": "Native source names",
+    "Requirement": "Every native Radar RenderVar sourceName shall be in {GenericModelOutput, PointCloud, RtxSensorMetadata}."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-002",
+    "Requirement name": "GMO channel cardinality",
+    "Requirement": "A GenericModelOutput channels array shall contain zero or one string."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-003",
+    "Requirement name": "GMO channel domain",
+    "Requirement": "A single GenericModelOutput channel shall be NONE or BASIC."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-004",
+    "Requirement name": "Empty GMO semantics",
+    "Requirement": "An empty GenericModelOutput channels array shall be interpreted as NONE."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-005",
+    "Requirement name": "PointCloud channel domain",
+    "Requirement": "Every PointCloud channel shall be in {Coordinates,RCS,TimeOffsetNs,RadialVelocityMs,Flags}."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-006",
+    "Requirement name": "PointCloud channel uniqueness",
+    "Requirement": "A PointCloud channels array shall not contain duplicates."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-007",
+    "Requirement name": "Empty PointCloud semantics",
+    "Requirement": "An empty PointCloud channels array shall be accepted."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-008",
+    "Requirement name": "Channels API applicability",
+    "Requirement": "RenderVarChannelsAPI shall not be applied to an ordered Radar RenderVar unless its effective sourceName is GenericModelOutput or PointCloud."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-009",
+    "Requirement name": "Primary coordinate representation",
+    "Requirement": "Primary Radar coordinates shall follow the effective elementsCoordsType representation."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-OUTPUT-010",
+    "Requirement name": "Auxiliary angle units",
+    "Requirement": "Radar auxiliary azimuth and elevation limits shall be interpreted in radians."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-001",
+    "Requirement name": "Coordinate token",
+    "Requirement": "elementsCoordsType shall be CARTESIAN or SPHERICAL."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-002",
+    "Requirement name": "Output-frame token",
+    "Requirement": "outputFrameOfReference shall be SENSOR, WORLD, or CUSTOM."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-003",
+    "Requirement name": "CFAR-mode token",
+    "Requirement": "cfarMode shall be 2D or 4D."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-004",
+    "Requirement name": "Custom-transform cardinality",
+    "Requirement": "customFrameOfReferenceTrafo shall contain exactly six values."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-005",
+    "Requirement name": "Custom-transform finiteness",
+    "Requirement": "Every customFrameOfReferenceTrafo value shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-006",
+    "Requirement name": "Custom-transform rotation units",
+    "Requirement": "When outputFrameOfReference is CUSTOM, transform rotation elements shall be interpreted as radians."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-007",
+    "Requirement name": "Wavelength domain",
+    "Requirement": "waveLengthMm shall be finite and greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-008",
+    "Requirement name": "Trace-depth width",
+    "Requirement": "traceTreeDepth shall lie in [0,255]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-009",
+    "Requirement name": "Tick-rate domain",
+    "Requirement": "tickRate shall be finite and greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-010",
+    "Requirement name": "Scan-float finiteness",
+    "Requirement": "Every consumed scan floating-point value shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-011",
+    "Requirement name": "Positive rays per degree",
+    "Requirement": "raysPerDeg shall be greater than zero for every scan."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-012",
+    "Requirement name": "Positive maximum range",
+    "Requirement": "maxRangeM shall be greater than zero for every scan."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-013",
+    "Requirement name": "Positive maximum azimuth",
+    "Requirement": "maxAzAngDeg shall be greater than zero for every scan."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-014",
+    "Requirement name": "Positive maximum elevation",
+    "Requirement": "maxElAngDeg shall be greater than zero for every scan."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-015",
+    "Requirement name": "Positive power factor",
+    "Requirement": "powerFactor shall be greater than zero for every scan."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-016",
+    "Requirement name": "Maximum azimuth limit",
+    "Requirement": "maxAzAngDeg shall be no greater than 90 degrees."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-017",
+    "Requirement name": "Maximum elevation limit",
+    "Requirement": "maxElAngDeg shall be no greater than 90 degrees."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-018",
+    "Requirement name": "Azimuth ray dimension",
+    "Requirement": "The derived azimuth ray dimension shall be at least 1."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-019",
+    "Requirement name": "Elevation ray dimension",
+    "Requirement": "The derived elevation ray dimension shall be at least 1."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-020",
+    "Requirement name": "Ray-count representation",
+    "Requirement": "The derived ray-count product shall not exceed UINT32_MAX."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-022",
+    "Requirement name": "Elevation-mode domain",
+    "Requirement": "elevMode shall be NO_EL, POS_EL, or FULL_EL."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-023",
+    "Requirement name": "Datacube-mode domain",
+    "Requirement": "datacubeMode shall be FAST or WAVEFORM."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-024",
+    "Requirement name": "Window domains",
+    "Requirement": "Every Radar window token shall be RECT, HANN, HAMMING, or BLACKMAN."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-025",
+    "Requirement name": "Tx antenna-mode domain",
+    "Requirement": "txAntennaGainMode shall be CONSTANT, COSINE_FALLOFF, CUSTOM, or PATCH_ARRAY_MODEL."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-026",
+    "Requirement name": "Rx antenna-mode domain",
+    "Requirement": "rxAntennaGainMode shall be CONSTANT, COSINE_FALLOFF, CUSTOM, or PATCH_ARRAY_MODEL."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-027",
+    "Requirement name": "Velocity-sequence cardinality",
+    "Requirement": "maxVelMpsSequence shall contain 1 through 256 elements."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-028",
+    "Requirement name": "Velocity-sequence finiteness",
+    "Requirement": "Every maxVelMpsSequence element shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-029",
+    "Requirement name": "Velocity-sequence positivity",
+    "Requirement": "Every maxVelMpsSequence element shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-030",
+    "Requirement name": "RCS-tuning cardinality",
+    "Requirement": "rcsTuningCoefficients shall contain exactly three elements."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-031",
+    "Requirement name": "RCS-tuning finiteness",
+    "Requirement": "Every rcsTuningCoefficients element shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-032",
+    "Requirement name": "RCS scale domain",
+    "Requirement": "rcsTuningCoefficients[1] shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-034",
+    "Requirement name": "Nonnegative azimuth noise deviation",
+    "Requirement": "The azimuth noise standard deviation shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-035",
+    "Requirement name": "Nonnegative elevation noise deviation",
+    "Requirement": "The elevation noise standard deviation shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-036",
+    "Requirement name": "Nonnegative range noise deviation",
+    "Requirement": "The range noise standard deviation shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-037",
+    "Requirement name": "Nonnegative velocity noise deviation",
+    "Requirement": "The velocity noise standard deviation shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-039",
+    "Requirement name": "Nonnegative RCS noise deviation",
+    "Requirement": "The RCS noise standard deviation shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-040",
+    "Requirement name": "Finite azimuth noise mean",
+    "Requirement": "The azimuth noise mean shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-041",
+    "Requirement name": "Finite elevation noise mean",
+    "Requirement": "The elevation noise mean shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-042",
+    "Requirement name": "Finite range noise mean",
+    "Requirement": "The range noise mean shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-043",
+    "Requirement name": "Finite velocity noise mean",
+    "Requirement": "The velocity noise mean shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-044",
+    "Requirement name": "Finite CFAR noise mean",
+    "Requirement": "The CFAR noise mean shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-045",
+    "Requirement name": "Finite decay factor",
+    "Requirement": "exponentialDecayFactor shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-046",
+    "Requirement name": "Nonnegative CFAR minimum",
+    "Requirement": "cfarMinVal shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-047",
+    "Requirement name": "Nonnegative CFAR offset",
+    "Requirement": "cfarOffset shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-048",
+    "Requirement name": "Nonnegative CFAR deviation",
+    "Requirement": "cfarNoiseSDev shall be nonnegative."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-049",
+    "Requirement name": "CFAR radius width",
+    "Requirement": "Every CFAR T and G field shall lie in [0,255]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-050",
+    "Requirement name": "CFAR guard ordering",
+    "Requirement": "For every effective CFAR dimension whose T or G is nonzero, T shall be greater than G."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-051",
+    "Requirement name": "CFAR background existence",
+    "Requirement": "At least one effective CFAR dimension shall contribute background cells."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-052",
+    "Requirement name": "Positive range resolution",
+    "Requirement": "When FAST and binsFromSpec is true, rangeResM shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-053",
+    "Requirement name": "Positive velocity resolution",
+    "Requirement": "When FAST and binsFromSpec is true, velResMps shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-054",
+    "Requirement name": "Positive azimuth resolution",
+    "Requirement": "When FAST and binsFromSpec is true, boreAzResDeg shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-055",
+    "Requirement name": "Positive elevation resolution",
+    "Requirement": "When FAST and binsFromSpec is true, boreElResDeg shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-056",
+    "Requirement name": "Derived range bin domain",
+    "Requirement": "When FAST and binsFromSpec is true, the derived range bin count shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-057",
+    "Requirement name": "Derived velocity bin domain",
+    "Requirement": "When FAST and binsFromSpec is true, the derived velocity bin count shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-058",
+    "Requirement name": "Derived azimuth bin domain",
+    "Requirement": "When FAST and binsFromSpec is true, the derived azimuth bin count shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-059",
+    "Requirement name": "Derived elevation bin domain",
+    "Requirement": "When FAST and binsFromSpec is true, the derived elevation bin count shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-060",
+    "Requirement name": "Explicit range-bin domain",
+    "Requirement": "When FAST and binsFromSpec is false, rBins shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-061",
+    "Requirement name": "Explicit velocity-bin domain",
+    "Requirement": "When FAST and binsFromSpec is false, vBins shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-062",
+    "Requirement name": "Explicit azimuth-bin domain",
+    "Requirement": "When FAST and binsFromSpec is false, azBins shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-063",
+    "Requirement name": "Explicit elevation-bin domain",
+    "Requirement": "When FAST and binsFromSpec is false, elBins shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-064",
+    "Requirement name": "Datacube product width",
+    "Requirement": "The effective four-dimensional datacube product shall not exceed INT32_MAX."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-065",
+    "Requirement name": "CFAR product width",
+    "Requirement": "The effective range-by-velocity product shall not exceed INT32_MAX."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-067",
+    "Requirement name": "Waveform-mode domain",
+    "Requirement": "In WAVEFORM mode, waveformMode shall be 0, 1, or 2."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-068",
+    "Requirement name": "Positive slowTimeSamples",
+    "Requirement": "In WAVEFORM mode, slowTimeSamples shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-069",
+    "Requirement name": "Positive fastTimeSamples",
+    "Requirement": "In WAVEFORM mode, fastTimeSamples shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-070",
+    "Requirement name": "azimuth padding domain",
+    "Requirement": "In WAVEFORM mode, azimuth padding shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-071",
+    "Requirement name": "elevation padding domain",
+    "Requirement": "In WAVEFORM mode, elevation padding shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-072",
+    "Requirement name": "slow-time padding domain",
+    "Requirement": "In WAVEFORM mode, slow-time padding shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-073",
+    "Requirement name": "fast-time padding domain",
+    "Requirement": "In WAVEFORM mode, fast-time padding shall lie in [1,65535]."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-074",
+    "Requirement name": "azimuth padding coverage",
+    "Requirement": "In WAVEFORM mode, azimuth padding shall be no smaller than its corresponding aperture or sample count."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-075",
+    "Requirement name": "elevation padding coverage",
+    "Requirement": "In WAVEFORM mode, elevation padding shall be no smaller than its corresponding aperture or sample count."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-076",
+    "Requirement name": "slow-time padding coverage",
+    "Requirement": "In WAVEFORM mode, slow-time padding shall be no smaller than its corresponding aperture or sample count."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-077",
+    "Requirement name": "fast-time padding coverage",
+    "Requirement": "In WAVEFORM mode, fast-time padding shall be no smaller than its corresponding aperture or sample count."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-078",
+    "Requirement name": "Positive carrierFrequency",
+    "Requirement": "In WAVEFORM mode, carrierFrequency shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-079",
+    "Requirement name": "Positive chirpDuration",
+    "Requirement": "In WAVEFORM mode, chirpDuration shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-080",
+    "Requirement name": "Positive chirpBandwidth",
+    "Requirement": "In WAVEFORM mode, chirpBandwidth shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-081",
+    "Requirement name": "Positive supportFactor",
+    "Requirement": "In WAVEFORM mode, supportFactor shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-082",
+    "Requirement name": "Chirp timing relation",
+    "Requirement": "In WAVEFORM mode, chirpRepetitionTime shall be at least chirpDuration."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-083",
+    "Requirement name": "Finite chirp frequency step",
+    "Requirement": "In WAVEFORM mode, frequencyStepBetweenChirps shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-084",
+    "Requirement name": "Positive apertureArrayAzimuthElements",
+    "Requirement": "In WAVEFORM mode, apertureArrayAzimuthElements shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-085",
+    "Requirement name": "Positive apertureArrayElevationElements",
+    "Requirement": "In WAVEFORM mode, apertureArrayElevationElements shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-086",
+    "Requirement name": "Positive apertureAzimuthElementSpacing",
+    "Requirement": "In WAVEFORM mode, apertureAzimuthElementSpacing shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-087",
+    "Requirement name": "Positive apertureElevationElementSpacing",
+    "Requirement": "In WAVEFORM mode, apertureElevationElementSpacing shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-088",
+    "Requirement name": "Waveform invertibility",
+    "Requirement": "In WAVEFORM mode, the renderer's inversion determinant absolute value shall be at least 1e-12."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-090",
+    "Requirement name": "Custom-axis cardinality",
+    "Requirement": "For each CUSTOM antenna role, each axis array shall contain at least two elements."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-091",
+    "Requirement name": "Custom-axis finiteness",
+    "Requirement": "For each CUSTOM antenna role, every axis value shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-092",
+    "Requirement name": "Custom-axis ordering",
+    "Requirement": "For each CUSTOM antenna role, each axis array shall be strictly increasing."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-093",
+    "Requirement name": "Custom-gain cardinality",
+    "Requirement": "For each CUSTOM antenna role, each gain array shall contain elevationCount*azimuthCount elements."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-094",
+    "Requirement name": "Custom-gain finiteness",
+    "Requirement": "For each CUSTOM antenna role, every gain value shall be finite."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-095",
+    "Requirement name": "Custom-gain layout",
+    "Requirement": "Custom gain arrays shall be interpreted as elevation rows with azimuth varying fastest."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-096",
+    "Requirement name": "Patch-array azimuth count",
+    "Requirement": "For each PATCH_ARRAY_MODEL role, the azimuth element count shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-097",
+    "Requirement name": "Patch-array elevation count",
+    "Requirement": "For each PATCH_ARRAY_MODEL role, the elevation element count shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-098",
+    "Requirement name": "Patch-array azimuth spacing",
+    "Requirement": "For each PATCH_ARRAY_MODEL role, the azimuth element spacing shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-099",
+    "Requirement name": "Patch-array elevation spacing",
+    "Requirement": "For each PATCH_ARRAY_MODEL role, the elevation element spacing shall be greater than zero."
+  },
+  {
+    "Capability name": "RTX Radar WPM-DMAT",
+    "Requirement ID": "RADAR-PARAM-100",
+    "Requirement name": "Custom-pattern coverage warning",
+    "Requirement": "For each CUSTOM role, validation shall warn unless its axes cover the configured angular extent."
+  }
+]

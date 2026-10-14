@@ -29,20 +29,24 @@ replacement - just match the same interface.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
+import carb
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.usd
 from isaacsim.core.experimental.prims import Articulation, RigidPrim
+from pxr import Sdf, UsdPhysics
 
 from ..coordinate_utils import CoordinateSystem, transform_pose
 from ._utils import (
     DEFAULT_ROTATION_OFFSET_DEG,
+    FLOATING_BASE_MESSAGE,
     quat_mul_xyzw,
     rotation_offset_quat_xyzw,
 )
@@ -165,6 +169,10 @@ class IKValidationResult:
     dof_names: list[str] = field(default_factory=list)
     num_dofs: int = 0
     arm_dofs: int | None = None
+    articulation_root_paths: list[str] = field(default_factory=list)
+    is_fixed_base: bool | None = None
+    arm_dof_names: list[str] = field(default_factory=list)
+    arm_dof_indices: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -177,7 +185,9 @@ class _ArmState:
     ee_rot_y_deg: float = DEFAULT_ROTATION_OFFSET_DEG
     ee_rot_z_deg: float = DEFAULT_ROTATION_OFFSET_DEG
     ik_method: IKMethod = IKMethod.SVD
-    num_arm_dofs: int = 7
+    explicit_num_arm_dofs: int | None = None
+    arm_dof_names: list[str] = field(default_factory=list)
+    arm_dof_indices: list[int] = field(default_factory=list)
     scale: float = 1.0
     damping: float = 0.05
     vr_target_filter: float = 0.0
@@ -214,7 +224,8 @@ def _make_position_ik(arm: _ArmState) -> PositionBasedIKController:
         robot=arm.robot,
         ee_link=arm.ee_link,
         ee_link_index=arm.ee_link_index,
-        num_arm_dofs=arm.num_arm_dofs,
+        num_arm_dofs=len(arm.arm_dof_indices),
+        arm_dof_indices=arm.arm_dof_indices,
         method=arm.ik_method.value,
         scale=arm.scale,
         damping=arm.damping,
@@ -228,7 +239,8 @@ def _make_velocity_ik(arm: _ArmState) -> VelocityBasedIKController:
         robot=arm.robot,
         ee_link=arm.ee_link,
         ee_link_index=arm.ee_link_index,
-        num_arm_dofs=arm.num_arm_dofs,
+        num_arm_dofs=len(arm.arm_dof_indices),
+        arm_dof_indices=arm.arm_dof_indices,
         method=arm.ik_method.value,
         damping=arm.damping,
         gain=arm.gain,
@@ -241,7 +253,8 @@ def _make_lm_ik(arm: _ArmState) -> LMIKController:
         robot=arm.robot,
         ee_link=arm.ee_link,
         ee_link_index=arm.ee_link_index,
-        num_arm_dofs=arm.num_arm_dofs,
+        num_arm_dofs=len(arm.arm_dof_indices),
+        arm_dof_indices=arm.arm_dof_indices,
         damping=arm.damping,
         vr_target_filter=arm.vr_target_filter,
         max_joint_step_rad=arm.max_joint_step,
@@ -253,10 +266,15 @@ def _make_pink_ik(arm: _ArmState) -> PinkIKController:
         robot=arm.robot,
         ee_link=arm.ee_link,
         ee_link_index=arm.ee_link_index,
-        num_arm_dofs=arm.num_arm_dofs,
+        num_arm_dofs=len(arm.arm_dof_indices),
+        arm_dof_indices=arm.arm_dof_indices,
         ee_link_name=arm.ee_link_name,
         articulation_path=arm.resolved_path,
-        export_root_path=arm.resolved_path,
+        # PhysX resolves the articulation at its root link (for example,
+        # ``.../ur3e/base_link``), but the USD joints are commonly authored as
+        # siblings below the configured robot prim.  Export that original scope
+        # so PINK can see the complete kinematic tree.
+        export_root_path=arm.path or arm.resolved_path,
         solver=arm.pink_qp_solver,
         posture_cost=arm.pink_posture_cost,
         lm_damping=arm.pink_lm_damping,
@@ -274,24 +292,71 @@ _SOLVER_FACTORY: dict[IKSolverType, _SolverFactory] = {
 }
 
 
-def _count_chain_dofs(art_path: str, ee_link_name: str) -> int | None:
-    """Count movable joints from articulation root to a given EE link.
+def _find_articulation_root_paths(prim_path: str) -> list[str]:
+    """List every articulation root at or under a prim path.
 
-    Builds a body-to-body adjacency graph from USD joints, then BFS-walks
-    from the root link to the EE link.  Fixed joints contribute to
-    connectivity but not to the DOF count.
+    ``Articulation.fetch_articulation_root_api_prim_paths`` returns only the
+    first root it finds, so a parent prim holding several robots resolves to one
+    of them with no indication that the others exist.
 
     Args:
-        art_path: Value for art path.
-        ee_link_name: Value for ee link name.
+        prim_path: Prim path to search.
 
     Returns:
-        The requested value.
+        Articulation root prim paths in ascending path order.
     """
-    from collections import deque
+    prims = prim_utils.get_all_matching_child_prims(
+        prim_path,
+        predicate=lambda candidate, _: candidate.HasAPI(UsdPhysics.ArticulationRootAPI),
+        include_self=True,
+    )
+    return sorted(str(prim.GetPath()) for prim in prims)
 
-    from pxr import Sdf, UsdPhysics
 
+def _read_physics_fixed_base(robot: Articulation) -> bool | None:
+    """Read whether an articulation has a fixed base from its Jacobian layout.
+
+    ``get_jacobian_matrices`` returns one column per DOF for a fixed base and
+    six extra root columns for a floating base.  A world-anchoring joint in USD
+    is not sufficient on its own: the articulation root has to be applied to
+    that joint, so only the simulated layout answers the question.
+
+    Args:
+        robot: Articulation to query.
+
+    Returns:
+        Whether the base is fixed, or None while the physics tensor entity is
+        invalid - the layout is observable only during simulation.
+    """
+    try:
+        if not robot.is_physics_tensor_entity_valid():
+            return None
+        return bool(robot.get_jacobian_matrices().numpy().shape[-1] == robot.num_dofs)
+    except (AssertionError, AttributeError, RuntimeError):
+        return None
+
+
+def _collect_chain_joint_records(art_path: str, ee_link_name: str) -> list[dict] | None:
+    """Collect the joints from an articulation root to a given EE link, in order.
+
+    Builds a body-to-body adjacency graph from USD joints, then BFS-walks
+    from the root link to the EE link.  Fixed joints are included, because they
+    contribute a constant transform to the chain even though they contribute no
+    DOF.
+
+    Each record carries the joint prim path, its name, the two bodies it
+    relates, and whether the walk crossed it from ``body0`` to ``body1``.  The
+    direction is what lets a caller compose the chain's transforms: a joint
+    traversed the other way contributes the inverse of its own transform.
+
+    Args:
+        art_path: Prim path of the articulation root.
+        ee_link_name: Name of the end-effector link to walk to.
+
+    Returns:
+        Joint records along the root-to-EE chain in kinematic order, or None when
+        the chain cannot be resolved.
+    """
     if not stage_utils.is_stage_set() and omni.usd.get_context().get_stage() is None:
         return None
     stage = stage_utils.get_current_stage()
@@ -310,7 +375,7 @@ def _count_chain_dofs(art_path: str, ee_link_name: str) -> int | None:
         return None
 
     if ee_link_path == root_link_path:
-        return 0
+        return []
 
     link_path_set = set(all_link_paths)
 
@@ -322,7 +387,7 @@ def _count_chain_dofs(art_path: str, ee_link_name: str) -> int | None:
         search_roots.add(str(Sdf.Path(lp).GetParentPath()))
 
     visited_joint_paths: set[str] = set()
-    adjacency: dict[str, list[tuple[str, bool]]] = {}
+    adjacency: dict[str, list[dict]] = {}
 
     for root_path in search_roots:
         prim = stage.GetPrimAtPath(root_path)
@@ -347,23 +412,64 @@ def _count_chain_dofs(art_path: str, ee_link_name: str) -> int | None:
             if not b0 or not b1 or b0 not in link_path_set or b1 not in link_path_set:
                 continue
 
-            movable = not p.IsA(UsdPhysics.FixedJoint)
-            adjacency.setdefault(b0, []).append((b1, movable))
-            adjacency.setdefault(b1, []).append((b0, movable))
+            # A fixed joint links two bodies without contributing a DOF.
+            is_fixed = bool(p.IsA(UsdPhysics.FixedJoint))
+            shared = {
+                "joint_path": jp,
+                "joint_name": Sdf.Path(jp).name,
+                "body0_path": b0,
+                "body1_path": b1,
+                "is_fixed": is_fixed,
+            }
+            adjacency.setdefault(b0, []).append({**shared, "next_link_path": b1, "forward": True})
+            adjacency.setdefault(b1, []).append({**shared, "next_link_path": b0, "forward": False})
 
-    queue: deque[tuple[str, int]] = deque([(root_link_path, 0)])
+    queue: deque[tuple[str, list[dict]]] = deque([(root_link_path, [])])
     visited: set[str] = {root_link_path}
 
     while queue:
-        current, dof_count = queue.popleft()
+        current, records = queue.popleft()
         if current == ee_link_path:
-            return dof_count
-        for neighbor, movable in adjacency.get(current, []):
+            return records
+        for record in adjacency.get(current, []):
+            neighbor = record["next_link_path"]
             if neighbor not in visited:
                 visited.add(neighbor)
-                queue.append((neighbor, dof_count + (1 if movable else 0)))
+                queue.append((neighbor, [*records, record]))
 
     return None
+
+
+def _collect_chain_joint_names(art_path: str, ee_link_name: str) -> list[str] | None:
+    """Collect the movable joint names from an articulation root to a given EE link.
+
+    Args:
+        art_path: Prim path of the articulation root.
+        ee_link_name: Name of the end-effector link to walk to.
+
+    Returns:
+        Joint names along the root-to-EE chain in kinematic order, or None when
+        the chain cannot be resolved.
+    """
+    records = _collect_chain_joint_records(art_path, ee_link_name)
+    if records is None:
+        return None
+    return [record["joint_name"] for record in records if not record["is_fixed"]]
+
+
+def _count_chain_dofs(art_path: str, ee_link_name: str) -> int | None:
+    """Count movable joints from articulation root to a given EE link.
+
+    Args:
+        art_path: Prim path of the articulation root.
+        ee_link_name: Name of the end-effector link to walk to.
+
+    Returns:
+        Number of movable joints on the root-to-EE chain, or None when the
+        chain cannot be resolved.
+    """
+    joint_names = _collect_chain_joint_names(art_path, ee_link_name)
+    return None if joint_names is None else len(joint_names)
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +487,18 @@ class RobotIKController:
     Per-side configuration:
     - Articulation prim path (e.g. ``/World/Franka``)
     - End-effector link name (e.g. ``panda_hand``)
-    - Number of arm DOFs to control (e.g. 7 for Franka, excludes gripper)
+
+    The controlled DOFs are the movable joints on the kinematic chain from the
+    articulation root to the end-effector link, matched to articulation DOFs by
+    name.  Joints outside that chain - a gripper sharing the articulation, for
+    example - are never written to.
+
+    The configured prim path must resolve to exactly one articulation root.
+    Jacobian-based solvers require a fixed base; PINK accepts a moving root.
+    :meth:`validate` rejects paths spanning several roots and, during
+    simulation, floating bases for Jacobian-based solvers. Before simulation,
+    the base type is not observable, so a Jacobian-based solver refuses a
+    floating base on its first step.
 
     Args:
         target_coordinate_system: Value for target coordinate system.
@@ -483,14 +600,70 @@ class RobotIKController:
             return None
         return _count_chain_dofs(arm.resolved_path, arm.ee_link_name)
 
-    def set_num_arm_dofs(self, side: Literal["left", "right"], n: int) -> None:
-        """Set the number of arm DOFs to control for one side.
+    def compute_arm_dof_names(self, side: Literal["left", "right"]) -> list[str] | None:
+        """Return the movable joint names from root to the current EE link.
+
+        Uses BFS over the USD joint graph.  Returns ``None`` when the
+        chain cannot be determined (no path set, no EE link, etc.).
 
         Args:
             side: Value for side.
-            n: Value for n.
+
+        Returns:
+            Joint names in kinematic order, or None when the chain is unresolved.
+
+        Example:
+
+        .. code-block:: python
+
+            controller = RobotIKController()
+            controller.set_articulation_path("right", "/World/Robot")
+            controller.set_ee_link_name("right", "wrist_3_link")
+            if controller.validate("right").valid:
+                names = controller.compute_arm_dof_names("right")
         """
-        self._arm(side).num_arm_dofs = max(1, n)
+        arm = self._arm(side)
+        if not arm.resolved_path or not arm.ee_link_name:
+            return None
+        return _collect_chain_joint_names(arm.resolved_path, arm.ee_link_name)
+
+    def get_arm_dof_indices(self, side: Literal["left", "right"]) -> list[int]:
+        """Return the articulation DOF indices IK writes to for one side.
+
+        Populated by :meth:`validate` and :meth:`configure`; empty before either
+        has succeeded.
+
+        Args:
+            side: Value for side.
+
+        Returns:
+            DOF indices in ascending articulation order.
+
+        Example:
+
+        .. code-block:: python
+
+            controller = RobotIKController()
+            controller.set_articulation_path("right", "/World/Robot")
+            controller.set_ee_link_name("right", "wrist_3_link")
+            if controller.validate("right").valid:
+                indices = controller.get_arm_dof_indices("right")
+        """
+        return list(self._arm(side).arm_dof_indices)
+
+    def set_num_arm_dofs(self, side: Literal["left", "right"], n: int) -> None:
+        """Pin the expected number of arm DOFs for one side.
+
+        The controlled joints are always derived from the root-to-EE kinematic
+        chain.  An explicit count is an assertion about that chain, so validation
+        fails when the two disagree and names both.  Pass a value below 1 to drop
+        the assertion and accept whatever the chain yields.
+
+        Args:
+            side: Value for side.
+            n: Expected number of movable joints between the root and the EE link.
+        """
+        self._arm(side).explicit_num_arm_dofs = n if n > 0 else None
 
     def set_ik_method(self, side: Literal["left", "right"], method: IKMethod) -> None:
         """Set the differential IK method for one side.
@@ -588,7 +761,7 @@ class RobotIKController:
                 arm.solver_type = previous_solver_type
                 arm.ctrl = previous_ctrl
                 message = f"Solver creation failed ({solver_type.value}): {exc}"
-                print(f"[Teleop][IK] {message}")
+                carb.log_warn(f"[Teleop][IK] {message}")
                 return False, message
             if previous_ctrl is not None:
                 previous_ctrl.reset()
@@ -780,9 +953,16 @@ class RobotIKController:
     def validate(self, side: Literal["left", "right"]) -> IKValidationResult:
         """Validate and discovers the articulation under the given prim path.
 
-        Searches the prim and its descendants for the first ArticulationRootAPI.
-        On success, populates link_names, dof_names, and num_dofs so the UI can
+        Searches the prim and its descendants for ArticulationRootAPI.  On
+        success, populates link_names, dof_names, and num_dofs so the UI can
         auto-fill the EE dropdown and DOF count.
+
+        Fails when the path spans more than one articulation root, when the
+        root-to-EE chain does not resolve against the articulation DOFs, or when
+        a running simulation reports a floating base for a Jacobian-based solver.
+        PINK uses its own kinematic model and accepts a moving root.
+        ``is_fixed_base`` is None while simulation is stopped, when the base
+        type is not observable.
 
         Args:
             side: Value for side.
@@ -804,6 +984,18 @@ class RobotIKController:
             return IKValidationResult(
                 valid=False,
                 message=f"No ArticulationRootAPI found at or under '{arm.path}'.",
+            )
+
+        root_paths = _find_articulation_root_paths(arm.path)
+        if len(root_paths) > 1:
+            return IKValidationResult(
+                valid=False,
+                message=(
+                    f"'{arm.path}' contains {len(root_paths)} articulation roots: {root_paths}. "
+                    f"IK would bind '{art_path}' alone and leave the others uncontrolled. "
+                    f"Set the arm path to a single articulation root."
+                ),
+                articulation_root_paths=root_paths,
             )
 
         arm.resolved_path = art_path
@@ -828,24 +1020,64 @@ class RobotIKController:
         dof_names = list(dof_names_raw)
         num_dofs = len(dof_names)
 
-        if arm.num_arm_dofs > num_dofs:
-            arm.num_arm_dofs = num_dofs
-
         partial = IKValidationResult(
             valid=False,
             message="",
             articulation_path=art_path,
+            articulation_root_paths=root_paths,
             link_names=link_names,
             dof_names=dof_names,
             num_dofs=num_dofs,
         )
 
+        partial.is_fixed_base = _read_physics_fixed_base(robot)
+        if partial.is_fixed_base is False and arm.solver_type != IKSolverType.PINK:
+            partial.message = FLOATING_BASE_MESSAGE.format(context=f"articulation '{art_path}'")
+            return partial
+
         if not arm.ee_link_name or arm.ee_link_name not in link_names:
             partial.message = f"Articulation: {art_path} ({num_dofs} DOFs). Select EE link."
             return partial
 
+        chain = _collect_chain_joint_names(art_path, arm.ee_link_name)
+        context = f"arm '{art_path}', EE link '{arm.ee_link_name}'"
+        if not chain:
+            partial.message = f"No movable joints on the kinematic chain for {context}. Articulation DOFs: {dof_names}."
+            return partial
+
+        dof_index_by_name = {name: index for index, name in enumerate(dof_names)}
+        missing = [name for name in chain if name not in dof_index_by_name]
+        if missing:
+            partial.message = (
+                f"Chain joints {missing} are not articulation DOFs for {context}. "
+                f"Chain joints: {chain}. Articulation DOFs: {dof_names}."
+            )
+            return partial
+
+        indices = sorted({dof_index_by_name[name] for name in chain})
+        if len(indices) != len(chain):
+            partial.message = (
+                f"Chain joint names are ambiguous for {context}; {len(chain)} chain joints "
+                f"resolve to {len(indices)} DOFs. Chain joints: {chain}. Articulation DOFs: {dof_names}."
+            )
+            return partial
+
+        if arm.explicit_num_arm_dofs is not None and arm.explicit_num_arm_dofs != len(chain):
+            partial.message = (
+                f"Configured arm DOF count {arm.explicit_num_arm_dofs} does not match the "
+                f"{len(chain)} joints on the kinematic chain for {context}. "
+                f"Chain joints: {chain}. Articulation DOFs: {dof_names}."
+            )
+            return partial
+
+        arm.arm_dof_indices = indices
+        arm.arm_dof_names = [dof_names[index] for index in indices]
+
         partial.valid = True
-        partial.message = f"EE: {arm.ee_link_name}, DOFs: {arm.num_arm_dofs}/{num_dofs}"
+        partial.arm_dofs = len(indices)
+        partial.arm_dof_names = list(arm.arm_dof_names)
+        partial.arm_dof_indices = list(indices)
+        partial.message = f"EE: {arm.ee_link_name}, DOFs: {len(indices)}/{num_dofs}"
         return partial
 
     # ------------------------------------------------------------------
@@ -887,6 +1119,7 @@ class RobotIKController:
 
         result = self.validate(side)
         if not result.valid:
+            carb.log_warn(f"[Teleop][IK] Cannot configure {side} arm: {result.message}")
             return False
 
         arm = self._arm(side)
@@ -903,7 +1136,7 @@ class RobotIKController:
         try:
             arm.ctrl = self._create_solver(arm)
         except (ImportError, RuntimeError) as exc:
-            print(f"[Teleop][IK] Solver creation failed ({arm.solver_type.value}): {exc}")
+            carb.log_warn(f"[Teleop][IK] Solver creation failed ({arm.solver_type.value}): {exc}")
             arm.robot = None
             arm.ee_link = None
             return False
@@ -959,6 +1192,8 @@ class RobotIKController:
         arm.ee_link = None
         arm.ee_link_index = -1
         arm.robot = None
+        arm.arm_dof_names = []
+        arm.arm_dof_indices = []
 
     def is_configured(self, side: Literal["left", "right"]) -> bool:
         """True if the solver has been created (via configure or auto-start).
@@ -1051,8 +1286,7 @@ class RobotIKController:
             return
 
         try:
-            dof_indices = list(range(arm.num_arm_dofs))
-            arm.robot.set_dof_position_targets(joint_positions, dof_indices=dof_indices)
+            arm.robot.set_dof_position_targets(joint_positions, dof_indices=arm.arm_dof_indices)
         except (AssertionError, RuntimeError):
             return
 

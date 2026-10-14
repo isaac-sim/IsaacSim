@@ -155,6 +155,11 @@ void SurfaceGripperComponent::tick()
 
 void SurfaceGripperComponent::onStop()
 {
+    // PhysX owns these objects; none of the pointers or queued actions survive stop.
+    m_physxActions.clear();
+    m_usdActions.clear();
+    m_attachmentJoints.clear();
+    m_actorCache.clear();
     m_grippedObjects.clear();
     m_inactiveAttachmentIndices.clear();
     for (size_t i = 0; i < m_attachmentPaths.size(); ++i)
@@ -267,6 +272,14 @@ void SurfaceGripperComponent::updateAttachmentPoints()
     auto prim = m_stage->GetPrimAtPath(m_primPath);
     m_attachmentPaths.clear();
     m_attachmentJoints.clear();
+    m_activeAttachmentIndices.clear();
+    m_inactiveAttachmentIndices.clear();
+    m_actorCache.clear();
+    m_body0PathForFilterPairs.clear();
+    if (!prim)
+    {
+        return;
+    }
 
     pxr::UsdRelationship attachmentPointsRel = prim.GetRelationship(
         isaacsim::robot::schema::relationNames.at(isaacsim::robot::schema::Relations::ATTACHMENT_POINTS));
@@ -528,27 +541,39 @@ void SurfaceGripperComponent::checkForceLimits()
     const bool checkShearForce = m_shearForceLimit > 0.0f;
     const bool checkCoaxialForce = m_coaxialForceLimit > 0.0f;
     const bool checkForces = m_status != GripperStatus::Open && (checkShearForce || checkCoaxialForce);
-    // Skip force checking if no limits are set
-    if (!checkForces)
-    {
-        return;
-    }
-
-
     for (auto it = m_activeAttachmentIndices.begin(); it != m_activeAttachmentIndices.end(); it++)
     {
         size_t attachmentIndex = *it;
 
 
+        if (attachmentIndex >= m_jointSettlingCounters.size())
+        {
+            m_apIndicesToDetach.push_back(attachmentIndex);
+            continue;
+        }
+        // Attachment lifetime is independent of force limits and the settling delay.
+        physx::PxJoint* pxJoint = _getCachedJoint(attachmentIndex);
+        if (!pxJoint || !pxJoint->getConstraint())
+        {
+            m_apIndicesToDetach.push_back(attachmentIndex);
+            continue;
+        }
+        physx::PxRigidActor *pxActor0 = nullptr, *pxActor1 = nullptr;
+        pxJoint->getActors(pxActor0, pxActor1);
+        if (!pxActor0)
+        {
+            m_apIndicesToDetach.push_back(attachmentIndex);
+            _queueDetachJoint(pxJoint);
+            continue;
+        }
+        if (!checkForces)
+        {
+            continue;
+        }
         size_t& settlingCounter = m_jointSettlingCounters[attachmentIndex];
         if (settlingCounter == 0)
         {
-            physx::PxJoint* pxJoint = _getCachedJoint(attachmentIndex);
-
-
             physx::PxVec3 force, torque;
-            physx::PxRigidActor *pxActor0 = nullptr, *pxActor1 = nullptr;
-            pxJoint->getActors(pxActor0, pxActor1);
             pxJoint->getConstraint()->getForce(force, torque);
 
             Axis axis = _getJointForwardAxis(attachmentIndex);
@@ -590,7 +615,10 @@ void SurfaceGripperComponent::checkForceLimits()
     {
         m_activeAttachmentIndices.erase(ap);
         m_inactiveAttachmentIndices.insert(ap);
-        m_jointSettlingCounters[ap] = m_settlingDelay;
+        if (ap < m_jointSettlingCounters.size())
+        {
+            m_jointSettlingCounters[ap] = m_settlingDelay;
+        }
     }
 }
 
@@ -638,6 +666,11 @@ void SurfaceGripperComponent::_processAttachmentForGrip(size_t attachmentIndex,
         return;
     }
 
+    if (attachmentIndex >= m_attachmentPaths.size() || attachmentIndex >= m_jointSettlingCounters.size() ||
+        attachmentIndex >= m_jointClearanceOffset.size())
+    {
+        return;
+    }
     if (m_jointSettlingCounters[attachmentIndex] > 0)
     {
         m_jointSettlingCounters[attachmentIndex]--;
@@ -646,7 +679,10 @@ void SurfaceGripperComponent::_processAttachmentForGrip(size_t attachmentIndex,
 
     const std::string& attachmentPath = m_attachmentPaths[attachmentIndex];
     physx::PxJoint* pxJoint = _getCachedJoint(attachmentIndex);
-
+    if (!pxJoint || !pxJoint->getConstraint())
+    {
+        return;
+    }
 
     physx::PxRigidActor *localActor0 = nullptr, *localActor1 = nullptr;
     pxJoint->getActors(localActor0, localActor1);
@@ -928,27 +964,21 @@ const std::vector<std::string>& SurfaceGripperComponent::getGrippedObjects() con
 
 physx::PxJoint* SurfaceGripperComponent::_getCachedJoint(size_t attachmentIndex) const
 {
-    if (attachmentIndex < m_attachmentJoints.size())
+    if (g_physx && attachmentIndex < m_attachmentPaths.size())
     {
-        return m_attachmentJoints[attachmentIndex];
+        // Resolve at use time: USD edits may have removed or recreated the joint
+        // since attachment discovery. Callers still require a stable physics step.
+        return static_cast<physx::PxJoint*>(
+            g_physx->getPhysXPtr(pxr::SdfPath(m_attachmentPaths[attachmentIndex]), omni::physx::PhysXType::ePTJoint));
     }
     return nullptr;
 }
 
 physx::PxRigidActor* SurfaceGripperComponent::_getOrCacheActor(const std::string& actorPath)
 {
-    auto it = m_actorCache.find(actorPath);
-    if (it != m_actorCache.end())
-    {
-        return it->second;
-    }
-    physx::PxRigidActor* actor = static_cast<physx::PxRigidActor*>(
+    // Actors can be removed or recreated between steps; do not retain their pointers.
+    return static_cast<physx::PxRigidActor*>(
         g_physx->getPhysXPtr(pxr::SdfPath(actorPath), omni::physx::PhysXType::ePTActor));
-    if (actor)
-    {
-        m_actorCache.emplace(actorPath, actor);
-    }
-    return actor;
 }
 
 } // namespace surface_gripper

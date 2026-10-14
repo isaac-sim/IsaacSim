@@ -1089,3 +1089,58 @@ class TestChartSeriesColors(omni.kit.test.AsyncTestCase):
     async def test_a_joint_with_one_swatch_reuses_it_for_every_group(self) -> None:
         """Fewer swatches than groups must not raise or drop a series."""
         self.assertEqual(UIBuilder.series_colors({4: (0x77,)}, [4], groups=2), [0x77, 0x77])
+
+
+class _BackendGateProbe(UIBuilder):
+    """UIBuilder stub that reports a fixed live backend label.
+
+    Args:
+        backend: What :meth:`UIBuilder._active_backend` should report.
+    """
+
+    def __init__(self, backend: str) -> None:
+        self._backend = backend
+        self.restore_calls = 0
+        self._gains_tuner = SimpleNamespace(
+            restore_self_collision_override=self._count_restore,
+        )
+
+    def _count_restore(self) -> None:
+        """Record that the UI delegated the restore to the core tuner."""
+        self.restore_calls += 1
+
+    def _active_backend(self) -> str:
+        """Return the backend label this probe was constructed with."""
+        return self._backend
+
+
+class TestSelfCollisionBackendGate(omni.kit.test.AsyncTestCase):
+    """Which engines the "disable self collisions" test option can be honoured on."""
+
+    async def test_physx_is_supported(self) -> None:
+        """PhysX reads the property, so nothing is reported."""
+        self.assertIsNone(_BackendGateProbe("PhysX")._self_collision_override_unsupported_reason())
+
+    async def test_newton_is_supported(self) -> None:
+        """Newton defines its own self-collision property, which is authored too."""
+        self.assertIsNone(_BackendGateProbe("NewtonAPI")._self_collision_override_unsupported_reason())
+
+    async def test_unreadable_backend_is_reported_as_unsupported(self) -> None:
+        """An engine that could not be read must not be assumed to honour the override.
+
+        Reporting nothing for the empty label authors properties with no evidence
+        anything consumes them and leaves the user to discover it from the results.
+        """
+        reason = _BackendGateProbe("")._self_collision_override_unsupported_reason()
+        self.assertIsNotNone(reason)
+        self.assertIn("could not be read", reason)
+
+    async def test_unknown_engine_is_reported_as_unsupported(self) -> None:
+        """A third-party engine defines neither property."""
+        self.assertIsNotNone(_BackendGateProbe("remotesim")._self_collision_override_unsupported_reason())
+
+    async def test_restore_is_delegated_to_the_core_tuner(self) -> None:
+        """The panel owns no override state; the core tuner does."""
+        probe = _BackendGateProbe("PhysX")
+        probe._restore_self_collision_override()
+        self.assertEqual(probe.restore_calls, 1)

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Runtime wrapper that drives an `Articulation` via explicit Newton actuators parsed from USD."""
+"""Runtime wrapper that drives an `Articulation` with USD-authored or Python-built Newton actuators."""
 
 from __future__ import annotations
 
@@ -29,11 +29,11 @@ from pxr import Usd
 _RUNTIME_LOADED = False
 
 if TYPE_CHECKING:
-    import newton.actuators as na
     import warp as wp
     from isaacsim.core.experimental.prims import Articulation
     from isaacsim.core.simulation_manager import IsaacEvents, SimulationEvent, SimulationManager
-    from newton.actuators import Actuator, ActuatorParsed, Clamping, Controller, Delay
+    from newton import Model, ModelBuilder
+    from newton.actuators import Actuator, ActuatorParsed, ClampingBase, Delay, DriveBase, parse_actuator_prim
 
     # When type checking is on, we have already imported everything.
     _RUNTIME_LOADED = True
@@ -42,17 +42,17 @@ if TYPE_CHECKING:
 def _ensure_runtime() -> None:
     """Import Newton, Warp, and Articulation dependencies on first use (cached)."""
     global _RUNTIME_LOADED
-    global wp, na, Actuator, ActuatorParsed, Clamping, Delay
+    global wp, Model, ModelBuilder, Actuator, ClampingBase, Delay, DriveBase, parse_actuator_prim
     global Articulation, IsaacEvents, SimulationEvent, SimulationManager
 
     if _RUNTIME_LOADED:
         return
 
-    import newton.actuators as na
     import warp as wp
     from isaacsim.core.experimental.prims import Articulation
     from isaacsim.core.simulation_manager import IsaacEvents, SimulationEvent, SimulationManager
-    from newton.actuators import Actuator, ActuatorParsed, Clamping, Delay
+    from newton import Model, ModelBuilder
+    from newton.actuators import Actuator, ClampingBase, Delay, DriveBase, parse_actuator_prim
 
     _RUNTIME_LOADED = True
 
@@ -73,32 +73,6 @@ class _SimControlAdapter:
     joint_target_qd: wp.array[float]
     joint_control_feedforward: wp.array[float]
     joint_f: wp.array[float]
-
-
-def _row_major_indices(n_rows: int, stride: int, column: int, device: wp.DeviceLike) -> wp.array:
-    """Build strided indices into a row-major ``(n_rows, stride)`` flat buffer.
-
-    The ``i``-th element of the returned array is ``i * stride + column`` — i.e.
-    the flat-buffer index of ``column`` in row ``i``.  Used to build per-actuator
-    gather/scatter indices for the articulation's full
-    ``(n_robots, n_all_dofs)`` state and the compact
-    ``(n_robots, n_actuated_dofs)`` effort buffer.
-
-    Args:
-        n_rows: Number of rows in the flat buffer (``n_robots``).
-        stride: Row stride (``n_all_dofs`` or ``n_actuated_dofs``).
-        column: Column to pick from each row (a DOF index or actuated-DOF slot).
-        device: Target ``warp`` device for the returned array.
-
-    Returns:
-        ``wp.array`` of shape ``(n_rows,)`` and dtype ``wp.uint32``.
-    """
-    _ensure_runtime()
-    return wp.array(
-        np.arange(n_rows, dtype=np.uint32) * stride + column,
-        dtype=wp.uint32,
-        device=device,
-    )
 
 
 def _gather_into(dst: wp.array, src: wp.array) -> wp.array:
@@ -125,20 +99,96 @@ def _gather_into(dst: wp.array, src: wp.array) -> wp.array:
     return dst
 
 
+def _row_col_to_flat_index(
+    n_rows: int,
+    n_cols: int,
+    columns: list[int],
+    device: wp.DeviceLike,
+) -> wp.array:
+    """Build flattened row-major indices for selected columns across all rows.
+
+    Args:
+        n_rows: Number of rows in the flattened matrix.
+        n_cols: Number of columns in each complete row.
+        columns: Column indices to select, in the order expected by the actuator components.
+        device: Target Warp device for the returned array.
+
+    Returns:
+        Robot-major indices with every selected column for row zero, then row one, and so on.
+    """
+    _ensure_runtime()
+    row_offsets = np.arange(n_rows, dtype=np.uint32)[:, np.newaxis] * n_cols
+    selected_columns = np.asarray(columns, dtype=np.uint32)[np.newaxis, :]
+    return wp.array((row_offsets + selected_columns).reshape(-1), dtype=wp.uint32, device=device)
+
+
+def _add_actuator_from_spec(builder: ModelBuilder, spec: ActuatorParsed, *, index: int) -> None:
+    """Add a parsed actuator without silently discarding component semantics.
+
+    Preserve clamping subclasses, their parameters, and their execution order.
+    Newton's builder accepts only the built-in delay through ``delay_steps``;
+    it cannot preserve a custom delay class or multiple delay stages.
+
+    Args:
+        builder: Newton builder that owns component grouping and construction.
+        spec: Specification returned by Newton's actuator parser.
+        index: Target DOF index in the articulation state layout.
+
+    Raises:
+        TypeError: If a component cannot be represented by Newton's builder API.
+        ValueError: If delay parameters are invalid or multiple delays are supplied.
+    """
+    from newton.actuators import ClampingBase, Delay
+
+    delay_steps = None
+    clamping = []
+    for component_class, parameters in spec.component_specs:
+        if issubclass(component_class, ClampingBase):
+            clamping.append((component_class, parameters))
+        elif component_class is Delay:
+            if delay_steps is not None:
+                raise ValueError(f"Actuator targeting '{spec.target_path}' has multiple delay stages.")
+            resolved = Delay.resolve_arguments(parameters)
+            unsupported = parameters.keys() - resolved.keys()
+            if unsupported:
+                raise ValueError(
+                    f"Actuator targeting '{spec.target_path}' has unsupported delay parameters: {sorted(unsupported)}."
+                )
+            delay_steps = resolved["delay_steps"]
+        else:
+            raise TypeError(
+                f"Actuator targeting '{spec.target_path}' uses {component_class.__name__}, "
+                "which Newton ModelBuilder.add_actuator cannot represent."
+            )
+
+    builder.add_actuator(
+        drive_class=spec.drive_class,
+        index=index,
+        clamping=clamping or None,
+        delay_steps=delay_steps,
+        **spec.drive_kwargs,
+    )
+
+
 @dataclass
 class ActuatorConfig:
     """Component bundle passed to `ArticulationActuators.from_actuators`.
 
-    Holds the Newton controller, optional clamping stages, and an optional delay.
-    The warp arrays inside each component must be sized for ``n_robots``, which
-    can be obtained from ``len(Articulation(paths))`` before constructing this
-    config.  The ``ArticulationActuators`` builds the ``Actuator`` wrapper
-    (including index arrays) internally.
+    Holds the Newton drive, optional clamping stages, and an optional delay.
+    The per-motor warp arrays inside each component must be sized for
+    ``n_robots * n_target_dofs``, where ``n_target_dofs`` is one for a scalar DOF
+    name or the length of the target DOF list. ``n_robots`` can be obtained from
+    ``len(Articulation(paths))`` before constructing the config. The
+    ``ArticulationActuators`` builds the ``Actuator`` wrapper, including index
+    arrays, internally.
 
     Args:
-        controller: Any Newton ``Controller`` subclass with pre-built warp arrays.
-        clamping: Ordered list of ``Clamping`` stages applied after the controller.
-        delay: Optional ``Delay`` applied to input targets before the controller.
+        controller: Any Newton ``DriveBase`` subclass with pre-built warp arrays.
+        clamping: Ordered list of ``ClampingBase`` stages applied after the drive.
+        delay: Optional ``Delay`` applied to input targets before the drive.
+
+    Raises:
+        TypeError: If a component does not have the required Newton actuator type.
 
     Example:
 
@@ -146,29 +196,47 @@ class ActuatorConfig:
 
         >>> import warp as wp
         >>> from isaacsim.core.experimental.actuators import ActuatorConfig
-        >>> from newton.actuators import ControllerPD
+        >>> from newton.actuators import DrivePD
 
         >>> cfg = ActuatorConfig(
-        ...     controller=ControllerPD(
+        ...     controller=DrivePD(
         ...         kp=wp.array([100.0], dtype=wp.float32),
         ...         kd=wp.array([10.0], dtype=wp.float32),
         ...     )
         ... )
     """
 
-    controller: Controller
-    clamping: list[Clamping] = field(default_factory=list)
+    controller: DriveBase
+    clamping: list[ClampingBase] = field(default_factory=list)
     delay: Delay | None = None
+
+    def __post_init__(self) -> None:
+        """Validate actuator component types."""
+        _ensure_runtime()
+        if not isinstance(self.controller, DriveBase):
+            controller_type_name = type(self.controller).__name__
+            raise TypeError(f"Actuator controller must be a Newton DriveBase, got {controller_type_name}.")
+        if not isinstance(self.clamping, list):
+            raise TypeError(f"Actuator clamping must be a list, got {type(self.clamping).__name__}.")
+        for clamp in self.clamping:
+            if not isinstance(clamp, ClampingBase):
+                raise TypeError(
+                    f"Actuator clamping entries must be Newton ClampingBase objects, got {type(clamp).__name__}."
+                )
+        if self.delay is not None and not isinstance(self.delay, Delay):
+            raise TypeError(f"Actuator delay must be a Newton Delay, got {type(self.delay).__name__}.")
 
 
 class ArticulationActuators:
     """Newton actuator manager for an `Articulation` that computes and applies joint efforts each step.
 
-    Parses `NewtonActuator` prims from the USD subtree under the first matched articulation
-    instance, constructs one `newton.actuators.Actuator` per prim (fanned out to all N robot
-    instances via `indices`), zeros `UsdPhysics.DriveAPI` gains on every actuated joint, and
-    on each physics pre-step reads articulation state + control targets, steps every actuator,
-    and writes the resulting efforts back to the articulation.
+    Parses the `NewtonActuator` prims of the first matched articulation, groups them
+    into Newton actuator batches replicated across all N robot instances, zeros
+    `UsdPhysics.DriveAPI` gains on every actuated joint, and on each physics pre-step
+    reads articulation state and control targets, steps every actuator, and writes the
+    resulting efforts back to the articulation. For Python-built actuators, meaning
+    those supplied through `ArticulationActuators.from_actuators`, each user-provided
+    ``(ActuatorConfig, dof_names)`` group becomes one Newton ``Actuator``.
 
     All N instances share identical actuator topology and parameters (the
     prototype-reference pattern). Per-instance USD overrides are not read.
@@ -198,8 +266,8 @@ class ArticulationActuators:
             actuators can be supplied directly from Python.
 
     Raises:
-        ValueError: If an `ActuatorParsed` target path is not a DOF of this articulation,
-            or if two actuators resolve to the same DOF index.
+        ValueError: If a USD actuator target is not a DOF of this articulation,
+            or if two USD actuators resolve to the same DOF index.
 
     Example:
 
@@ -215,7 +283,7 @@ class ArticulationActuators:
     def from_actuators(
         cls,
         paths: str | list[str],
-        actuators: list[tuple[ActuatorConfig, str]],
+        actuators: list[tuple[ActuatorConfig, str | list[str]]],
         *,
         device: wp.DeviceLike = None,
         auto_step_pre_physics: bool = True,
@@ -224,19 +292,25 @@ class ArticulationActuators:
 
         No USD scanning is performed.  This is the escape hatch for cases where USD
         authoring is unavailable or impractical — the caller supplies the complete set
-        of actuator configurations and their target DOF names.
+        of actuator configurations and their target DOF groups.
 
-        The warp arrays inside each ``ActuatorConfig``'s controller (e.g. ``kp``, ``kd``)
-        must be sized for ``n_robots = len(Articulation(paths))``.  The ``Actuator``
-        wrapper (including index arrays) is built internally by this method.
+        Each entry becomes exactly one Newton ``Actuator``. Every per-motor Warp
+        array inside its ``ActuatorConfig`` components must contain
+        ``n_robots * n_target_dofs`` values in robot-major order: all named DOFs
+        for robot zero, then all named DOFs for robot one, and so on. Component
+        parameters declared as shared apply to the whole group and are not repeated
+        per motor.
 
-        The order of entries in ``actuators`` does not affect the result — the set is
-        always stored sorted by DOF index.
+        `actuated_dof_indices` is always sorted by DOF index. `actuators` follows the
+        supplied group order and is not positionally aligned with that DOF list. Within
+        a multi-DOF group, name order determines the component-array value order.
 
         Args:
             paths: Single path or list of paths to articulation root prims.
-            actuators: List of ``(config, dof_name)`` pairs.  ``dof_name`` is the
-                last path segment of the target joint (e.g. ``"RevoluteJoint"``).
+            actuators: List of ``(config, dof_names)`` pairs, where ``dof_names`` is
+                either one DOF name or a list of DOF names. Each name must match an
+                entry in `Articulation.dof_names` (e.g. ``"shoulder_joint"``). One
+                pair produces one vectorized Newton ``Actuator`` for the entire group.
             device: Warp device on which to allocate per-actuator scratch buffers. When ``None``,
                 use Warp's default device.
             auto_step_pre_physics: Forwarded to the underlying ``__init__``.
@@ -245,8 +319,9 @@ class ArticulationActuators:
             A fully initialised ``ArticulationActuators`` driven by the provided configs.
 
         Raises:
-            ValueError: If a ``dof_name`` is not found or matches multiple DOFs.
-            ValueError: If the same DOF name appears more than once in ``actuators``.
+            TypeError: If a target is neither a string nor a ``list[str]``.
+            ValueError: If a target group is empty, a DOF name is not found, or a DOF
+                appears more than once in ``actuators``.
 
         Example:
 
@@ -257,18 +332,22 @@ class ArticulationActuators:
             ...     ActuatorConfig,
             ...     ArticulationActuators,
             ... )
-            >>> from newton.actuators import ControllerPD
+            >>> from newton.actuators import DrivePD
 
             >>> cfg = ActuatorConfig(
-            ...     controller=ControllerPD(
-            ...         kp=wp.array([100.0], dtype=wp.float32),
-            ...         kd=wp.array([10.0], dtype=wp.float32),
+            ...     controller=DrivePD(
+            ...         kp=wp.array([100.0, 200.0], dtype=wp.float32),
+            ...         kd=wp.array([10.0, 20.0], dtype=wp.float32),
             ...     )
             ... )
             >>> actuated = ArticulationActuators.from_actuators(  # doctest: +NO_CHECK
             ...     "/World/Robot",
-            ...     [(cfg, "RevoluteJoint")],
+            ...     [(cfg, ["shoulder_joint", "elbow_joint"])],
             ... )
+            >>> len(actuated.actuators)
+            1
+            >>> actuated.actuators[0].num_actuators
+            2
         """
         instance = cls(paths, auto_step_pre_physics=auto_step_pre_physics, device=device, _skip_discovery=True)
 
@@ -277,45 +356,57 @@ class ArticulationActuators:
 
         n_robots = len(instance._articulation)
         n_all_dofs = instance._articulation.num_dofs
-
-        pairs: list[tuple[int, ActuatorConfig]] = []
+        groups: list[tuple[ActuatorConfig, list[int]]] = []
         seen: set[int] = set()
-        for config, dof_name in actuators:
-            if dof_name not in instance._articulation.dof_names:
-                raise ValueError(
-                    f"DOF name {dof_name!r} not found in articulation "
-                    f"'{instance._articulation.paths[0]}'. "
-                    f"Available DOF names: {instance._articulation.dof_names}."
+        for config, dof_names in actuators:
+            if not isinstance(config, ActuatorConfig):
+                raise TypeError(f"Expected ActuatorConfig, got {type(config).__name__}.")
+            if isinstance(dof_names, str):
+                dof_names = [dof_names]
+            elif not isinstance(dof_names, list):
+                target_type_name = type(dof_names).__name__
+                raise TypeError(
+                    f"Actuator target names must be a string or list[str], got {target_type_name}.",
                 )
-            dof_index = int(instance._articulation.get_dof_indices(dof_name).numpy()[0])
-            if dof_index in seen:
-                raise ValueError(f"DOF {dof_name!r} (index {dof_index}) appears more than once in `actuators`.")
-            seen.add(dof_index)
-            pairs.append((dof_index, config))
+            if not all(isinstance(dof_name, str) for dof_name in dof_names):
+                raise TypeError("Actuator target names must all be strings.")
+            if not dof_names:
+                raise ValueError("Actuator target name groups must not be empty.")
 
-        sorted_pairs = sorted(pairs)
-        new_dof_indices = [dof_idx for dof_idx, _ in sorted_pairs]
-        n_actuated_dofs = len(new_dof_indices)
-        dof_index_to_actuated = {dof_idx: pos for pos, dof_idx in enumerate(new_dof_indices)}
+            group_dof_indices: list[int] = []
+            for dof_name in dof_names:
+                if dof_name not in instance._articulation.dof_names:
+                    raise ValueError(
+                        f"DOF name {dof_name!r} not found in articulation "
+                        f"'{instance._articulation.paths[0]}'. "
+                        f"Available DOF names: {instance._articulation.dof_names}."
+                    )
+                dof_index = int(instance._articulation.get_dof_indices(dof_name).numpy()[0])
+                if dof_index in seen:
+                    raise ValueError(
+                        f"DOF {dof_name!r} (index {dof_index}) appears more than once in `actuators`.",
+                    )
+                seen.add(dof_index)
+                group_dof_indices.append(dof_index)
+            groups.append((config, group_dof_indices))
 
-        instance._actuated_dof_indices = new_dof_indices
-        instance._effort_buffer = wp.zeros(n_robots * n_actuated_dofs, dtype=wp.float32, device=device)
-        instance._actuated_dof_indices_wp = wp.array(new_dof_indices, dtype=wp.int32, device=device)
+        n_actuated_dofs, dof_index_to_actuated = instance._setup_actuated_dof_buffers(sorted(seen), n_robots)
 
-        # Build each Actuator wrapper from the config's components with correct index arrays.
-        # controller.finalize(device, n_robots) is called inside Actuator.__init__, which is
-        # idempotent for stateless controllers and correctly re-sizes scratch buffers for
-        # stateful ones (e.g. PID integral).
-        for dof_index, cfg in sorted_pairs:
-            actuated_dof_index = dof_index_to_actuated[dof_index]
-            sim_state_indices = _row_major_indices(n_robots, n_all_dofs, dof_index, device)
-            effort_indices = _row_major_indices(n_robots, n_actuated_dofs, actuated_dof_index, device)
+        for config, group_dof_indices in groups:
+            sim_state_indices = _row_col_to_flat_index(n_robots, n_all_dofs, group_dof_indices, device)
+            effort_columns = [dof_index_to_actuated[dof_index] for dof_index in group_dof_indices]
+            effort_indices = _row_col_to_flat_index(n_robots, n_actuated_dofs, effort_columns, device)
+            # Assume Newton validates per-motor component array lengths during actuator construction.
             actuator = Actuator(
                 indices=sim_state_indices,
-                controller=cfg.controller,
-                delay=cfg.delay,
-                clamping=cfg.clamping or None,
+                pos_indices=sim_state_indices,
+                target_pos_indices=sim_state_indices,
+                drive=config.controller,
+                delay=config.delay,
+                clamping=config.clamping or None,
                 effort_indices=effort_indices,
+                control_target_pos_attr="joint_target_q",
+                control_target_vel_attr="joint_target_qd",
                 control_feedforward_attr="joint_control_feedforward",
             )
             instance._actuators.append(actuator)
@@ -366,7 +457,10 @@ class ArticulationActuators:
         self._joint_target_qd_buffer = wp.empty(flat_dof_size, dtype=wp.float32, device=self._device)
         self._joint_control_feedforward_buffer = wp.empty(flat_dof_size, dtype=wp.float32, device=self._device)
 
-        #: Newton `Actuator` objects owned by this wrapper, one per discovered prim.
+        #: Finalized Newton model that owns USD-built actuators. ``None`` for Python-built configs.
+        self._actuator_model: Model | None = None
+
+        #: Newton `Actuator` objects owned by this wrapper.
         self._actuators: list[Actuator] = []
 
         #: Sorted unique DOF indices covered by the owned actuators.
@@ -451,6 +545,9 @@ class ArticulationActuators:
     def actuators(self) -> list[Actuator]:
         """Get the Newton `Actuator` instances owned by this wrapper.
 
+        One actuator can control multiple DOFs, so this list is not positionally
+        aligned with `actuated_dof_indices`.
+
         Returns:
             A shallow copy of the owned `Actuator` list.
 
@@ -466,6 +563,8 @@ class ArticulationActuators:
     @property
     def actuated_dof_indices(self) -> list[int]:
         """Get the sorted unique DOF indices covered by the owned actuators.
+
+        This contains one entry per DOF, not one entry per `Actuator`.
 
         Returns:
             A copy of the actuated DOF index list, sorted ascending.
@@ -663,107 +762,101 @@ class ArticulationActuators:
     # Internals
     # ------------------------------------------------------------------
 
-    def _discover_and_build_actuators(self) -> None:
-        """Parse `NewtonActuator` prims under the prototype instance and instantiate them.
+    def _setup_actuated_dof_buffers(self, dof_indices: list[int], n_robots: int) -> tuple[int, dict[int, int]]:
+        """Store the actuated DOFs and allocate their compact effort buffer.
 
-        Runs a two-pass scan: the first pass parses prims and collects the sorted DOF
-        indices so each actuator's effort can be scattered into a compact ``(n_robots, A)``
-        buffer; the second pass constructs the `Actuator` objects with both full-stride
-        ``indices`` (into the articulation's ``(n_robots, n_all_dofs)`` state/control layout) and
-        compact ``effort_indices`` (into the effort buffer).
+        Args:
+            dof_indices: Articulation DOF indices controlled by this wrapper.
+            n_robots: Number of matched articulation instances.
+
+        Returns:
+            The number of actuated DOFs and a mapping from articulation DOF index to compact buffer column.
+        """
+        self._actuated_dof_indices = sorted(dof_indices)
+        n_actuated_dofs = len(self._actuated_dof_indices)
+        dof_index_to_actuated = {
+            dof_index: actuated_index for actuated_index, dof_index in enumerate(self._actuated_dof_indices)
+        }
+        self._effort_buffer = wp.zeros(n_robots * n_actuated_dofs, dtype=wp.float32, device=self._device)
+        self._actuated_dof_indices_wp = wp.array(self._actuated_dof_indices, dtype=wp.int32, device=self._device)
+        return n_actuated_dofs, dof_index_to_actuated
+
+    def _discover_and_build_actuators(self) -> None:
+        """Parse USD-authored actuators and group them through Newton's ``ModelBuilder``.
+
+        Only `NewtonActuator` prims under the first matched articulation are read, and
+        their targets are mapped directly to articulation DOF indices. The actuators are
+        added to a template builder that holds no bodies or joints, replicated once per
+        matched robot, and finalized so Newton groups compatible actuators into batches.
         """
         _ensure_runtime()
-        from .clamping_builders import build_clamping
-        from .controller_builders import build_controller
-        from .delay_builder import build_delay
 
         n_robots = len(self._articulation)
         n_all_dofs = self._articulation.num_dofs
 
         stage = stage_utils.get_current_stage(backend="usd")
-
-        # NOTE: here we have built in the assumption that ALL robots
-        # in a single Articulation are built from the same USD (which is true)
         root_path = self._articulation.paths[0]
         root_prim = stage.GetPrimAtPath(root_path)
         if not root_prim.IsValid():
             carb.log_warn(f"ArticulationActuators: root prim '{root_path}' is invalid; no actuators discovered")
             return
 
-        dof_paths_prototype = self._articulation.dof_paths[0] if self._articulation.dof_paths else []
-        dof_path_to_index = {p: i for i, p in enumerate(dof_paths_prototype)}
+        dof_paths = self._articulation.dof_paths[0] if self._articulation.dof_paths else []
+        dof_path_to_index = {dof_path: dof_index for dof_index, dof_path in enumerate(dof_paths)}
 
-        # Pass 1: parse every prim, validate DOF mapping, collect (prim_path, parsed, dof_index).
+        # Parse the first robot's actuator prims into a template of articulation DOF indices.
+        template_builder = ModelBuilder()
         dof_index_to_prim: dict[int, str] = {}
-        collected: list[tuple[str, ActuatorParsed, int]] = []
-
         for prim in Usd.PrimRange(root_prim):
-            # NOTE: parse_actuator_prim uses the usd function rel.GetTargets(), which always
-            # returns an absolute SDF path.
-            parsed: ActuatorParsed | None = na.parse_actuator_prim(prim)
+            parsed = parse_actuator_prim(prim)
             if parsed is None:
                 continue
+            target_path = parsed.target_path
 
-            if parsed.target_path not in dof_path_to_index:
+            prim_path = str(prim.GetPath())
+            dof_index = dof_path_to_index.get(target_path)
+            if dof_index is None:
                 raise ValueError(
-                    f"Actuator '{prim.GetPath()}' targets '{parsed.target_path}', which is not "
+                    f"Actuator '{prim_path}' targets '{target_path}', which is not "
                     f"a DOF of articulation '{root_path}'."
                 )
-            dof_index = dof_path_to_index[parsed.target_path]
-
             if dof_index in dof_index_to_prim:
                 raise ValueError(
-                    f"Actuator '{prim.GetPath()}' targets '{parsed.target_path}', which is already "
+                    f"Actuator '{prim_path}' targets '{target_path}', which is already "
                     f"targeted by '{dof_index_to_prim[dof_index]}'. Actuators support a 1-to-1 mapping "
                     "between actuators and joints."
                 )
-            dof_index_to_prim[dof_index] = str(prim.GetPath())
-            collected.append((str(prim.GetPath()), parsed, dof_index))
+            dof_index_to_prim[dof_index] = prim_path
 
-        if not collected:
+            _add_actuator_from_spec(template_builder, parsed, index=dof_index)
+
+        if not dof_index_to_prim:
             return
 
-        # Assign each owned DOF a slot in the compact effort buffer. Sort by DOF index
-        # for stable ordering — this same order is passed to `set_dof_efforts(dof_indices=...)`.
-        # `dof_index` is the index into the articulation's full DOF list; `actuated_dof_index`
-        # is the position of that DOF in the actuated-only subset (also the column index in
-        # the compact effort buffer).
-        self._actuated_dof_indices = sorted(dof_index_to_prim.keys())
-        dof_index_to_actuated_dof_index = {
-            dof_index: actuated_dof_index for actuated_dof_index, dof_index in enumerate(self._actuated_dof_indices)
-        }
-        n_actuated_dofs = len(self._actuated_dof_indices)
+        n_actuated_dofs, dof_index_to_actuated = self._setup_actuated_dof_buffers(list(dof_index_to_prim), n_robots)
 
-        # Flat buffer to work with newton-actuators library:
-        self._effort_buffer = wp.zeros(n_robots * n_actuated_dofs, dtype=wp.float32, device=self._device)
-        self._actuated_dof_indices_wp = wp.array(self._actuated_dof_indices, dtype=wp.int32, device=self._device)
+        # The template holds actuators only, so `replicate` would offset every robot by its
+        # zero joint count. Use the articulation DOF count as the per-robot stride instead,
+        # so robot r's actuator indices land at `r * n_all_dofs + dof_index`.
+        template_builder.joint_dof_count = n_all_dofs
+        template_builder.joint_coord_count = n_all_dofs
 
-        # Pass 2: build Actuator objects with full-stride `indices` for state reads and
-        # compact `effort_indices` for effort writes.
-        for _prim_path, parsed, dof_index in collected:
-            actuated_dof_index = dof_index_to_actuated_dof_index[dof_index]
-            sim_state_indices = _row_major_indices(n_robots, n_all_dofs, dof_index, self._device)
-            effort_indices = _row_major_indices(n_robots, n_actuated_dofs, actuated_dof_index, self._device)
+        # Replicate the template and let Newton finalize its optimized actuator batches.
+        builder = ModelBuilder()
+        builder.replicate(template_builder, n_robots)
+        self._actuator_model = builder.finalize(device=self._device)
+        self._actuators = self._actuator_model.actuators
 
-            controller = build_controller(parsed.controller_class, parsed.controller_kwargs, n_robots, self._device)
+        dof_to_actuated_lookup = np.array(
+            [dof_index_to_actuated.get(index, -1) for index in range(n_all_dofs)], dtype=np.int64
+        )
 
-            delay: Delay | None = None
-            clamping: list[Clamping] = []
-            for comp_class, comp_kwargs in parsed.component_specs:
-                if issubclass(comp_class, Delay):
-                    delay = build_delay(comp_kwargs, n_robots, self._device)
-                else:
-                    clamping.append(build_clamping(comp_class, comp_kwargs, n_robots, self._device))
-
-            actuator = Actuator(
-                indices=sim_state_indices,
-                controller=controller,
-                delay=delay,
-                clamping=clamping if clamping else None,
-                effort_indices=effort_indices,
-                control_feedforward_attr="joint_control_feedforward",
-            )
-            self._actuators.append(actuator)
+        # Indices are already in the flattened articulation layout; map them to effort-buffer slots.
+        for actuator in self._actuators:
+            robot_indices, dof_indices = np.divmod(actuator.indices.numpy(), n_all_dofs)
+            effort_indices = robot_indices * n_actuated_dofs + dof_to_actuated_lookup[dof_indices]
+            actuator.effort_indices = wp.array(effort_indices, dtype=wp.uint32, device=actuator.device)
+            actuator.control_feedforward_attr = "joint_control_feedforward"
 
             state = actuator.state()
             self._cur_states.append(state)

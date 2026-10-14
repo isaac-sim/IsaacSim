@@ -167,7 +167,7 @@ includedirs {
     extsbuild_dir .. "/omni.syntheticdata/include",
     extsbuild_dir .. "/usdrt.scenegraph/include",
     "%{root}/_build/target-deps/omni_client_library/include",
-    "%{root}/_cmake_build/module-carriers/%{config}/isaacsim.robot.schema/sdk/include",
+    "%{root}/_cmake_build/extension-wheel-stages/%{config}/isaacsim.robot.schema/sdk/include",
     "%{root}/_build/target-deps/nlohmann_json/include",
     "%{root}/source/extensions/isaacsim.core.nodes/include",
     "%{kit_sdk_bin_dir}/dev/fabric/include/",

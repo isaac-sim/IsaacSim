@@ -26,6 +26,8 @@ optimizer_backend:
   gd_num_restarts: 2
 simulation:
   engine: newton
+  physics_backend: newton
+  actuator_runtime: auto
   newton:
     solver: featherstone_diff
     featherstone_substeps: 4

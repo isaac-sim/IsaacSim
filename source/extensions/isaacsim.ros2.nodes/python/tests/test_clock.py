@@ -89,6 +89,7 @@ class TestRos2NodeCommands(ROS2TestCase):
         import rclpy
         from rosgraph_msgs.msg import Clock
 
+        topic_name = "clock_physics_step"
         keys = og.Controller.Keys
         graph, nodes, _, _ = og.Controller.edit(
             {
@@ -101,6 +102,7 @@ class TestRos2NodeCommands(ROS2TestCase):
                     ("IsaacClock", "isaacsim.core.nodes.IsaacReadSimulationTime"),
                     ("RosPublisher", "isaacsim.ros2.bridge.ROS2PublishClock"),
                 ],
+                keys.SET_VALUES: [("RosPublisher.inputs:topicName", topic_name)],
                 keys.CONNECT: [
                     ("OnPhysicsStep.outputs:step", "RosPublisher.inputs:execIn"),
                     ("IsaacClock.outputs:simulationTime", "RosPublisher.inputs:timeStamp"),
@@ -114,7 +116,7 @@ class TestRos2NodeCommands(ROS2TestCase):
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
         node = self.create_node("test_sim_clock_physics_step")
-        clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
+        clock_sub = self.create_subscription(node, Clock, topic_name, clock_callback, get_qos_profile())
 
         def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
@@ -131,18 +133,25 @@ class TestRos2NodeCommands(ROS2TestCase):
         import rclpy
         from rosgraph_msgs.msg import Clock
 
+        topic_name = "clock_manual"
         keys = og.Controller.Keys
         graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": "/controller_graph", "evaluator_name": "execution"},
             {
                 keys.CREATE_NODES: [
-                    ("Impulse", "omni.graph.action.OnImpulseEvent"),
+                    ("OnTick", "omni.graph.action.OnTick"),
+                    ("PublishGate", "omni.graph.action.Branch"),
                     ("IsaacClock", "isaacsim.core.nodes.IsaacReadSimulationTime"),
                     ("RosPublisher", "isaacsim.ros2.bridge.ROS2PublishClock"),
                 ],
-                keys.SET_VALUES: [("IsaacClock.inputs:resetOnStop", True)],
+                keys.SET_VALUES: [
+                    ("IsaacClock.inputs:resetOnStop", True),
+                    ("PublishGate.inputs:condition", False),
+                    ("RosPublisher.inputs:topicName", topic_name),
+                ],
                 keys.CONNECT: [
-                    ("Impulse.outputs:execOut", "RosPublisher.inputs:execIn"),
+                    ("OnTick.outputs:tick", "PublishGate.inputs:execIn"),
+                    ("PublishGate.outputs:execTrue", "RosPublisher.inputs:execIn"),
                     ("IsaacClock.outputs:simulationTime", "RosPublisher.inputs:timeStamp"),
                 ],
             },
@@ -153,29 +162,29 @@ class TestRos2NodeCommands(ROS2TestCase):
         def clock_callback(data: Any) -> None:
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
-        node = self.create_node("test_sim_clock")
-        clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
+        node = self.create_node("test_sim_clock_manual")
+        clock_sub = self.create_subscription(node, Clock, topic_name, clock_callback, get_qos_profile())
+        publish_condition = og.Controller.attribute("/controller_graph/PublishGate.inputs:condition")
 
         def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.01)
 
-        await self.simulate_until_condition(lambda: False, max_frames=10, per_frame_callback=spin)
+        await self.simulate_until_condition(lambda: False, max_frames=10)
         self._timeline.play()
 
         await omni.kit.app.get_app().next_update_async()
         self.assertEqual(self._time_sec, 0.0)
-        og.Controller.attribute("/controller_graph/Impulse.state:enableImpulse").set(True)
-        # after first step we need to wait for ros node to initialize
-        await self.simulate_until_condition(lambda: False, max_frames=10, per_frame_callback=spin)
-        await self.wait_for_publishers_on_topic(node, "clock", timeout_sec=10.0, per_frame_callback=spin)
-
-        og.Controller.attribute("/controller_graph/Impulse.state:enableImpulse").set(True)
-        # wait for message
-        await self.simulate_until_condition(lambda: self._time_sec > 0.0, max_frames=120, per_frame_callback=spin)
+        publish_condition.set(True)
+        await self.simulate_until_condition(
+            lambda: self._time_sec > 0.0,
+            max_frames=120,
+            per_frame_callback=spin,
+            failure_message="Timed out waiting for the manually triggered clock message",
+        )
+        publish_condition.set(False)
         self.assertGreater(self._time_sec, 0.0)
 
         self._timeline.stop()
-        spin()
 
     async def test_system_clock(self) -> None:
         """Test system clock."""
@@ -184,6 +193,7 @@ class TestRos2NodeCommands(ROS2TestCase):
         import rclpy
         from rosgraph_msgs.msg import Clock
 
+        topic_name = "clock_system"
         keys = og.Controller.Keys
         graph, nodes, _, _ = og.Controller.edit(
             {"graph_path": "/controller_graph", "evaluator_name": "execution"},
@@ -193,6 +203,7 @@ class TestRos2NodeCommands(ROS2TestCase):
                     ("IsaacClock", "isaacsim.core.nodes.IsaacReadSystemTime"),
                     ("RosPublisher", "isaacsim.ros2.bridge.ROS2PublishClock"),
                 ],
+                keys.SET_VALUES: [("RosPublisher.inputs:topicName", topic_name)],
                 keys.CONNECT: [
                     ("OnTick.outputs:tick", "RosPublisher.inputs:execIn"),
                     ("IsaacClock.outputs:systemTime", "RosPublisher.inputs:timeStamp"),
@@ -204,8 +215,8 @@ class TestRos2NodeCommands(ROS2TestCase):
         def clock_callback(data: Any) -> None:
             self._time_sec = data.clock.sec + data.clock.nanosec / 1.0e9
 
-        node = self.create_node("test_sim_clock")
-        clock_sub = self.create_subscription(node, Clock, "clock", clock_callback, get_qos_profile())
+        node = self.create_node("test_system_clock")
+        clock_sub = self.create_subscription(node, Clock, topic_name, clock_callback, get_qos_profile())
 
         def spin() -> None:
             rclpy.spin_once(node, timeout_sec=0.1)

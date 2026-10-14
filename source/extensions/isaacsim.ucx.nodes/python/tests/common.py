@@ -21,17 +21,11 @@ import sys
 
 import numpy as np
 
-try:
-    from isaacsim.test.utils import TimedAsyncTestCase
-except ImportError:
-    raise ImportError(
-        "isaacsim.test.utils is required to use UCXTestCase. " "This module should only be imported in test contexts."
-    )
-
 # UCX imports
 import omni
 import omni.timeline
 import ucxx._lib.libucxx as ucx_api
+from omni.kit.test import AsyncTestCase
 
 
 def _read_tensor_f32(tensor: object) -> list:
@@ -72,12 +66,12 @@ def find_available_port() -> int:
         return sock.getsockname()[1]
 
 
-class UCXTestCase(TimedAsyncTestCase):
+class UCXTestCase(AsyncTestCase):
     """Base class for UCX node tests."""
 
     async def setUp(self) -> None:
         """Set up UCX test environment and find an available port."""
-        await super().setUp()
+        super().setUp()
 
         # UCX transport selection for tests. `tcp` + `self` cover host-to-host TCP
         # and same-process loopback. `cuda_copy` enables UCX's CUDA memtype module
@@ -110,7 +104,9 @@ class UCXTestCase(TimedAsyncTestCase):
         timeline = omni.timeline.get_timeline_interface()
         timeline.stop()
 
-        await omni.kit.app.get_app().next_update_async()
+        # Writer nodes detach on the update after STOP; let it finish before the next test swaps stages.
+        for _ in range(2):
+            await omni.kit.app.get_app().next_update_async()
 
         # Clean up UCX client resources
         if self.client_worker:
@@ -125,7 +121,7 @@ class UCXTestCase(TimedAsyncTestCase):
         self.client_context = None
         self.client_worker = None
 
-        await super().tearDown()
+        super().tearDown()
 
     def create_ucx_client(self, port: int) -> tuple:
         """Create a UCX client connection to the specified port.
@@ -191,12 +187,12 @@ def unpack_image_message(buffer: object) -> tuple:
         can use :py:func:`get_image_pixel_data_size` to compute it and post a
         second ``tag_recv`` on the same tag for the raw pixel buffer.
     """
-    from isaacsim.ucx.nodes.messages.isaac import Image as ImageFb
+    from isaacsim.ucx.nodes.messages.holoscan.schema import Image as ImageFb
 
     buf = bytearray(buffer.tobytes())
     msg = ImageFb.Image.GetRootAs(buf, 0)
 
-    timestamp = msg.Header().Stamp().TimeNs() / 1e9
+    timestamp = msg.Header().CaptureTimestampNs() / 1e9
     height = msg.Height()
     width = msg.Width()
     encoding = _ENCODING_MAP.get(msg.Encoding(), "custom")
@@ -228,7 +224,7 @@ def get_image_pixel_data_size(buffer: object) -> int:
     used the two-message protocol and the raw pixel buffer is the next message
     on the same UCX tag.
     """
-    from isaacsim.ucx.nodes.messages.isaac import Image as ImageFb
+    from isaacsim.ucx.nodes.messages.holoscan.schema import Image as ImageFb
 
     buf = bytearray(buffer.tobytes())
     msg = ImageFb.Image.GetRootAs(buf, 0)
@@ -239,4 +235,4 @@ def get_image_pixel_data_size(buffer: object) -> int:
     total = 1
     for i in range(n):
         total *= int(tensor.Shape(i))
-    return total
+    return (total * tensor.Dtype().Bits() * tensor.Dtype().Lanes() + 7) // 8

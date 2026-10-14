@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.4.0] - 2026-10-01
+### Added
+- Add an "Add to Current Stage" option, enabled by default, so Generate no longer discards stage content.
+- Add "Create Ground Plane" and "Create Lighting" options for scenes that already have their own.
+- Add an "Overwrite Existing" option, disabled by default, so Generate no longer replaces stage content.
+- Add `configure_stage_metadata` and `overwrite_existing` arguments to `HeightmapImporter.create_heightmap()`.
+- Add a `terrain_path` property to `HeightmapImporter` reporting where the last successful run built.
+
+### Changed
+- Warn before Generate replaces the stage or overwrites existing content.
+- Generate now adds a terrain instead of replacing the one before it.
+- Build terrain at `occupancyMap_NN` when `/World/occupancyMap` is already taken.
+- Skip the ground plane and light, rather than duplicating them, when those paths are already taken.
+- Keep the current stage's meters-per-unit, up-axis, and default prim when adding to it.
+- Warn when the stage is not Z-up, because terrain is always generated in the XY plane.
+- Count anything the importer cannot inspect as your content rather than as its own output.
+- Refuse to overwrite a path the current layer cannot clear, such as a variant's or a muted layer's.
+- Refuse to generate when `/World` hides the generated paths, naming the prim to activate, load or select.
+- Step around a path a muted layer defines indirectly, through a sublayer, a reference, or a variant.
+- Count a variant carrying a reference or payload above the generated paths as content that may appear there.
+
+### Fixed
+- Honor cell size as meters on stages that are not authored in meters.
+- Resize the ground plane when regenerating terrain at a different cell size with "Overwrite Existing" enabled.
+- Replace existing content at the ground plane and light paths instead of reusing it.
+- Ignore Generate while a previous generation is still running.
+- Cancel a generation still in flight when the extension shuts down.
+- Remove terrain a failed run half-authored, rather than leaving it to be taken for your content.
+
 ## [2.3.5] - 2026-07-07
 ### Changed
 - Use supported package-root imports for cross-extension APIs.

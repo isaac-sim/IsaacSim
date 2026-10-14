@@ -1,5 +1,5 @@
 [package]
-version = "6.1.0"
+version = "6.2.1"
 category = "Simulation"
 title = "Isaac Sim Asset Transformer"
 description = "Python-only extension providing asset transformation utilities"
@@ -26,6 +26,9 @@ stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     ### test-suite specific args
     "*[isaacsim.asset.transformer.manager] Rule '*' failed*",
+    # test_run_still_returns_a_report_when_the_error_sweep_fails forces the
+    # composition-error sweep to raise so it can assert the run still reports.
+    '*[isaacsim.asset.transformer.manager] Composition error collection failed*',
 ]
 
 [documentation]

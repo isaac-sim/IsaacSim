@@ -15,22 +15,25 @@
 
 """Extension for generating heightmap terrain from heightmap and occupancy map images."""
 
+from __future__ import annotations
+
 import asyncio
 import gc
 import os
 import weakref
-from typing import Optional
 
 import carb
 import omni.ext
+import omni.kit.app
 import omni.kit.commands
 import omni.ui as ui
 import omni.usd
-from isaacsim.asset.importer.heightmap.importer import HeightmapImporter
-from isaacsim.gui.components import btn_builder, float_builder
+from isaacsim.asset.importer.heightmap.importer import HeightmapImporter, generated_paths, is_importer_generated
+from isaacsim.gui.components import btn_builder, cb_builder, float_builder
 from isaacsim.gui.components.menu import make_menu_item_description
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 from PIL import Image
+from pxr import Usd, UsdGeom
 
 __all__ = [
     "HeightmapImporter",
@@ -46,6 +49,19 @@ PREVIEW_WINDOW_HEIGHT = 300
 DEFAULT_CELL_SIZE = 0.05
 MIN_CELL_SIZE = 0.001
 MAX_CELL_SIZE = 10.0
+
+# Generating into the current stage is the default so that pressing Generate cannot
+# discard unsaved scene content the user has no reason to expect losing.
+DEFAULT_ADD_TO_CURRENT_STAGE = True
+
+# A terrain generated on its own needs a floor and a light to be visible at all, so both
+# stay on by default. Scenes that supply their own can switch them off.
+DEFAULT_CREATE_GROUND_PLANE = True
+DEFAULT_CREATE_LIGHTING = True
+
+# Off by default so that nothing already on the stage is replaced without being asked for,
+# terrain from a previous run included. Generating twice leaves two terrains, not one.
+DEFAULT_OVERWRITE_EXISTING = False
 
 # Image processing constants
 MAX_IMAGE_DIMENSION = 10000  # Prevent memory issues with very large images
@@ -76,10 +92,45 @@ class Extension(omni.ext.IExt):
         add_menu_items(self._menu_items, "Tools")
         self._filepicker = None
         self._visualize_window = None
+        self._generation_task = None
         with self._window.frame:
             with ui.HStack(spacing=10):
                 with ui.VStack(spacing=5, height=0):
                     self._cell_size = float_builder(label="Cell Size", default_val=DEFAULT_CELL_SIZE)
+                    self._add_to_current_stage = cb_builder(
+                        label="Add to Current Stage",
+                        default_val=DEFAULT_ADD_TO_CURRENT_STAGE,
+                        tooltip=(
+                            "Add the generated terrain to the current stage. "
+                            "When disabled, Generate replaces the stage and discards all existing content."
+                        ),
+                    )
+                    self._overwrite_existing = cb_builder(
+                        label="Overwrite Existing",
+                        default_val=DEFAULT_OVERWRITE_EXISTING,
+                        tooltip=(
+                            "Replace whatever is already at the generated paths. When disabled "
+                            "nothing on the stage is touched: each Generate builds a new terrain "
+                            "at the next free path, and the ground plane and light are skipped if "
+                            "theirs are taken."
+                        ),
+                    )
+                    self._create_ground_plane = cb_builder(
+                        label="Create Ground Plane",
+                        default_val=DEFAULT_CREATE_GROUND_PLANE,
+                        tooltip=(
+                            "Add a ground plane sized to the generated terrain. "
+                            "Disable it for a scene that already has a floor."
+                        ),
+                    )
+                    self._create_lighting = cb_builder(
+                        label="Create Lighting",
+                        default_val=DEFAULT_CREATE_LIGHTING,
+                        tooltip=(
+                            "Add a distant light for the generated terrain. "
+                            "Disable it to keep the lighting the scene already has."
+                        ),
+                    )
                     self._load_button = btn_builder(label="Image", text="Load", on_clicked_fn=self._load_image_dialog)
                     self._generate_button = btn_builder(
                         label="Heightmap", text="Generate", on_clicked_fn=self._generate
@@ -87,11 +138,11 @@ class Extension(omni.ext.IExt):
                     self._generate_button.enabled = False
 
         # Initialize image-related attributes
-        self._image: Optional[Image.Image] = None
+        self._image: Image.Image | None = None
         self._image_width: int = 0
         self._image_height: int = 0
-        self._rgb_byte_provider: Optional[ui.ByteImageProvider] = None
-        self._importer: Optional[HeightmapImporter] = None
+        self._rgb_byte_provider: ui.ByteImageProvider | None = None
+        self._importer: HeightmapImporter | None = None
 
     def _menu_callback(self) -> None:
         """Toggle the visibility of the extension window."""
@@ -99,6 +150,15 @@ class Extension(omni.ext.IExt):
 
     def on_shutdown(self) -> None:
         """Clean up resources when the extension is shut down."""
+        # Cancelled first, before anything it holds a reference to is torn down. Generation
+        # awaits a frame before it touches the stage, so a task still in flight would come
+        # back after the extension is gone and write terrain into the stage on its way out.
+        # Its inputs were all read up front, so nothing it needs is missing and nothing
+        # would stop it.
+        if self._generation_task is not None:
+            self._generation_task.cancel()
+            self._generation_task = None
+
         remove_menu_items(self._menu_items, "Tools")
 
         # Clean up image resources
@@ -134,6 +194,10 @@ class Extension(omni.ext.IExt):
         self._load_button = None
         self._generate_button = None
         self._cell_size = None
+        self._add_to_current_stage = None
+        self._overwrite_existing = None
+        self._create_ground_plane = None
+        self._create_lighting = None
         self._importer = None
 
         gc.collect()
@@ -263,6 +327,10 @@ class Extension(omni.ext.IExt):
 
         Validates that an image is loaded and cell size is valid before proceeding.
         """
+        if self._generation_task is not None and not self._generation_task.done():
+            carb.log_warn("Heightmap generation is already running. Wait for it to finish.")
+            return
+
         # Validate that an image is loaded
         if self._image is None:
             carb.log_error("No image loaded. Please load an image first.")
@@ -286,21 +354,111 @@ class Extension(omni.ext.IExt):
                 "This may result in sparse cell placement."
             )
 
-        asyncio.ensure_future(self._create_heightmap())
+        # Every input is read here, while the widgets are known to exist. Generation waits a
+        # frame before it touches the stage, and by then the panel may have been shut down.
+        self._generation_task = asyncio.ensure_future(
+            self._create_heightmap(
+                image=self._image,
+                cell_scale=cell_scale,
+                add_to_current_stage=self._add_to_current_stage.get_value_as_bool(),
+                overwrite_existing=self._overwrite_existing.get_value_as_bool(),
+                create_ground_plane=self._create_ground_plane.get_value_as_bool(),
+                create_lighting=self._create_lighting.get_value_as_bool(),
+            )
+        )
 
-    async def _create_heightmap(self) -> None:
-        """Create a 3D heightmap terrain from the loaded heightmap image.
+    def _warn_on_generated_path_collisions(
+        self, stage: Usd.Stage, create_ground_plane: bool, create_lighting: bool
+    ) -> None:
+        """Warn about existing prims that generation is about to replace.
 
-        This method creates a new USD stage and delegates heightmap generation
-        to the HeightmapImporter class.
+        `Add to Current Stage` keeps the stage, but the importer writes to its own fixed
+        paths and removes whatever already occupies them, subtrees included. Only the paths
+        this run will actually write to are reported, and only when they hold something other
+        than a previous run's output — otherwise every regenerate would warn about terrain the
+        importer authored itself.
+
+        Only called when `Overwrite Existing` is on, so this records a replacement the user
+        asked for rather than advising them to avoid one. Naming the option is what makes the
+        record useful: it is the thing to turn off to have the terrain step aside instead.
+
+        Args:
+            stage: USD stage the terrain will be generated into.
+            create_ground_plane: Whether this run will write the ground plane.
+            create_lighting: Whether this run will write the distant light.
         """
-        # Re-validate image still exists (async race condition protection)
-        if self._image is None:
-            carb.log_error("Image was unloaded before heightmap generation completed.")
+        paths = generated_paths(create_ground_plane, create_lighting)
+        collisions = [
+            path for path in paths if stage.GetPrimAtPath(path).IsValid() and not is_importer_generated(stage, path)
+        ]
+        if not collisions:
             return
 
-        # Wait for new stage before creating objects for heightmap
-        await omni.usd.get_context().new_stage_async()
+        # Stated as intent rather than as an accomplished fact. Generation can still refuse
+        # a path it cannot clear, and an empty occupancy map skips the ground plane, so the
+        # replacement announced here does not always happen.
+        carb.log_warn(
+            f"Generating terrain will replace existing content at {', '.join(collisions)}, "
+            "which cannot be undone. Turn off 'Overwrite Existing' to build a new terrain "
+            "alongside it instead of over it."
+        )
+
+    def _warn_on_stage_up_axis_mismatch(self, stage: Usd.Stage) -> None:
+        """Warn when terrain will not stand upright in the stage it is added to.
+
+        Cell Size is converted into the stage's units, so a non-metric stage needs no
+        caveat. Orientation is not converted: terrain is always built in the XY plane.
+
+        Args:
+            stage: USD stage the terrain will be generated into.
+        """
+        up_axis = UsdGeom.GetStageUpAxis(stage)
+        if up_axis == UsdGeom.Tokens.z:
+            return
+
+        carb.log_warn(
+            f"Stage is {up_axis}-up but terrain is generated in the XY plane, so it will lie "
+            f"against the wrong axis, and the generated ground plane will face {up_axis} and so "
+            "sit perpendicular to it. Rotate the generated terrain to suit."
+        )
+
+    async def _create_heightmap(
+        self,
+        image: Image.Image,
+        cell_scale: float,
+        add_to_current_stage: bool,
+        overwrite_existing: bool,
+        create_ground_plane: bool,
+        create_lighting: bool,
+    ) -> None:
+        """Create a 3D heightmap terrain from the loaded heightmap image.
+
+        Terrain is added to the current stage unless `Add to Current Stage` is
+        disabled, in which case the stage is replaced with a new one first. Adding to the
+        current stage leaves the stage's own metadata alone, and replaces what is at the
+        generated paths only when `Overwrite Existing` is on, which is what the warning
+        reports. Generation itself is delegated to the HeightmapImporter class.
+
+        Every option is taken as an argument rather than read from a widget, because this
+        awaits before it touches the stage and the panel can be shut down or retuned in the
+        meantime.
+
+        Args:
+            image: Heightmap image to generate terrain from.
+            cell_scale: Size of each cell in meters.
+            add_to_current_stage: Whether to keep the current stage instead of replacing it.
+            overwrite_existing: Whether to replace whatever is at the generated paths,
+                rather than leaving the stage untouched and generating alongside it.
+            create_ground_plane: Whether to add a ground plane under the terrain.
+            create_lighting: Whether to add a distant light for the terrain.
+        """
+        if not add_to_current_stage:
+            carb.log_warn(
+                "Replacing the current stage with a new one. All existing stage content will be "
+                "discarded, including unsaved changes. Enable 'Add to Current Stage' to generate "
+                "terrain alongside the existing content."
+            )
+            await omni.usd.get_context().new_stage_async()
         await omni.kit.app.get_app().next_update_async()
 
         # Get stage
@@ -309,13 +467,24 @@ class Extension(omni.ext.IExt):
             carb.log_error("Failed to get USD stage. Cannot create heightmap.")
             return
 
-        cell_scale = self._cell_size.get_value_as_float()
+        if add_to_current_stage:
+            # Only worth reporting when the run is actually allowed to replace that content.
+            # Otherwise the terrain is about to be built beside it, and announcing a
+            # replacement that is not going to happen would misdescribe the run.
+            if overwrite_existing:
+                self._warn_on_generated_path_collisions(stage, create_ground_plane, create_lighting)
+            self._warn_on_stage_up_axis_mismatch(stage)
 
         # Create importer and generate heightmap
         try:
             self._importer = HeightmapImporter(stage)
             num_cells = self._importer.create_heightmap(
-                self._image, cell_scale, create_ground_plane=True, create_lighting=True
+                image,
+                cell_scale,
+                create_ground_plane=create_ground_plane,
+                create_lighting=create_lighting,
+                configure_stage_metadata=not add_to_current_stage,
+                overwrite_existing=overwrite_existing,
             )
             carb.log_info(f"Successfully created heightmap with {num_cells} cells!")
         except ValueError as e:

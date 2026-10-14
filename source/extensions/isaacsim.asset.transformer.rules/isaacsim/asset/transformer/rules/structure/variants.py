@@ -227,8 +227,7 @@ class VariantRoutingRule(RuleInterface):
         try:
             layers, assets, unresolved = UsdUtils.ComputeAllDependencies(source_layer_path)
             self.log_operation(
-                f"ComputeAllDependencies found {len(layers)} layers, "
-                f"{len(assets)} assets, {len(unresolved)} unresolved"
+                f"ComputeAllDependencies found {len(layers)} layers, {len(assets)} assets, {len(unresolved)} unresolved"
             )
         except Exception as e:
             self.log_operation(f"Failed to compute dependencies for {source_layer_path}: {e}")
@@ -1060,9 +1059,25 @@ class VariantRoutingRule(RuleInterface):
             Path to the created variant layer file, or None if processing failed.
 
         """
-        # Check if this variant is excluded
+        # The interface rule adds an empty "none" option even when no such option
+        # existed in the source. On a second transform, do not turn that
+        # synthetic option into a new payload file. An authored None variant
+        # with properties, children, arcs, or metadata still follows the usual
+        # excluded-variant behavior and gets its empty placeholder file.
         variant_name_for_check = variant_name.lower() if case_insensitive else variant_name
         if excluded_variants and variant_name_for_check in excluded_variants:
+            variant_spec = variant_set_spec.variants.get(variant_name)
+            prim_spec = variant_spec.primSpec if variant_spec else None
+            if (
+                variant_name_for_check == "none"
+                and prim_spec
+                and prim_spec.specifier == Sdf.SpecifierOver
+                and set(prim_spec.ListInfoKeys()) == {"specifier"}
+                and not prim_spec.properties
+                and not prim_spec.nameChildren
+            ):
+                self.log_operation(f"Skipping synthetic empty variant '{variant_name}'")
+                return None
             self.log_operation(f"Variant '{variant_name}' is excluded, creating empty variant file")
             return self._create_empty_variant_file(
                 variant_name, variant_set_output_dir, default_prim_path, case_insensitive
@@ -1271,8 +1286,7 @@ class VariantRoutingRule(RuleInterface):
                 self.log_operation(f"  Remapped {file_remap_count[0]} paths in {filename}")
 
         self.log_operation(
-            f"Completed dependency remapping: {files_processed} files processed, "
-            f"{paths_remapped} total paths remapped"
+            f"Completed dependency remapping: {files_processed} files processed, {paths_remapped} total paths remapped"
         )
 
     def process_rule(self) -> str | None:

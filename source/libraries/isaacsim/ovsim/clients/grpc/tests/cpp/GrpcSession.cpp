@@ -1,13 +1,27 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <doctest/doctest.h>
 #include <grpcpp/grpcpp.h>
 #include <isaacsim/ovsim/clients/grpc/GrpcSession.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <future>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -17,9 +31,11 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <worldstate.grpc.pb.h>
 
 using isaacsim::ovsim::clients::grpc::GrpcSession;
 namespace controlplane = nvidia::omniverse::simulation::v1;
+namespace worldstate = nvidia::omniverse::simulation::worldstate::v1;
 
 namespace
 {
@@ -82,8 +98,9 @@ public:
 
     ::grpc::Status CreateSimulation(::grpc::ServerContext*,
                                     const controlplane::CreateSimulationRequest* request,
-                                    controlplane::CreateSimulationResponse*) override
+                                    controlplane::CreateSimulationResponse* response) override
     {
+        response->set_time_step(request->time_step());
         std::lock_guard<std::mutex> lock(m_mutex);
         m_simulationIds.push_back(request->simulation_id());
         m_activeSimulationId = request->simulation_id();
@@ -161,6 +178,75 @@ static_assert(std::is_nothrow_move_assignable_v<GrpcSession>);
 
 TEST_SUITE("GrpcSession::construction")
 {
+    TEST_CASE("negotiates a time step before creating a simulation")
+    {
+        LifecycleControlPlaneService service;
+        int port = 0;
+        auto server = startServer(service, &port);
+        REQUIRE(server);
+        GrpcSession session(Configuration{ { "endpoint", "127.0.0.1:" + std::to_string(port) } });
+        CHECK_EQ(std::get<double>(session.getSimulationParameter("physics", "time-step")), 1.0 / 60.0);
+        for (const double timeStep :
+             { 0.0, 0.25e-9, 1e10, std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN() })
+        {
+            CHECK_THROWS_AS(session.setSimulationParameter("physics", "time-step", timeStep), std::invalid_argument);
+        }
+        session.setSimulationParameter("physics", "time-step", 1e-9);
+        CHECK_EQ(std::get<double>(session.getSimulationParameter("physics", "time-step")), 1e-9);
+        session.setSimulationParameter("physics", "time-step", 0.005);
+        REQUIRE(session.importStageFromString("#usda 1.0"));
+        CHECK_EQ(std::get<double>(session.getSimulationParameter("physics", "time-step")), 0.005);
+        CHECK_THROWS_AS(session.setSimulationParameter("physics", "time-step", 0.01), std::logic_error);
+        CHECK(session.closeStage());
+        server->Shutdown();
+    }
+
+    TEST_CASE("rejects an overflowing next timestamp before sending it")
+    {
+        class WorldStateService final : public worldstate::WorldStateService::Service
+        {
+        public:
+            std::atomic<int> stepCalls{ 0 };
+
+            ::grpc::Status WriteWorldState(::grpc::ServerContext*,
+                                           const worldstate::WriteWorldStateRequest*,
+                                           worldstate::WriteWorldStateResponse*) override
+            {
+                ++stepCalls;
+                return ::grpc::Status::OK;
+            }
+        } worldState;
+        LifecycleControlPlaneService control;
+        ::grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", ::grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(&control);
+        builder.RegisterService(&worldState);
+        auto server = builder.BuildAndStart();
+        REQUIRE(server);
+        GrpcSession session(Configuration{ { "endpoint", "127.0.0.1:" + std::to_string(port) } });
+        session.setSimulationParameter("physics", "time-step", 5e9);
+        REQUIRE(session.importStageFromString("#usda 1.0"));
+        session.step();
+        CHECK_THROWS_AS(session.step(), std::overflow_error);
+        CHECK_EQ(worldState.stepCalls.load(), 1);
+        CHECK(session.closeStage());
+        server->Shutdown();
+    }
+
+    TEST_CASE("rejects a custom time step when the server does not acknowledge it")
+    {
+        BlockingControlPlaneService service;
+        int port = 0;
+        auto server = startServer(service, &port);
+        REQUIRE(server);
+        GrpcSession session(Configuration{ { "endpoint", "127.0.0.1:" + std::to_string(port) } });
+        session.setSimulationParameter("physics", "time-step", 0.005);
+        CHECK_FALSE(session.importStageFromString("#usda 1.0"));
+        CHECK(session.closeStage());
+        server->Shutdown();
+    }
+
     TEST_CASE("requires an explicit endpoint")
     {
         CHECK_THROWS_AS(GrpcSession{ std::nullopt }, std::invalid_argument);
@@ -265,7 +351,9 @@ TEST_SUITE("GrpcSession::local validation")
         GrpcSession session(Configuration{ { "endpoint", "127.0.0.1:" + std::to_string(port) } });
         REQUIRE(session.importStageFromString("#usda 1.0"));
         REQUIRE(session.closeStage());
+        REQUIRE_NOTHROW(session.setSimulationParameter("physics", "time-step", 0.005));
         REQUIRE(session.importStageFromString("#usda 1.0"));
+        CHECK_EQ(std::get<double>(session.getSimulationParameter("physics", "time-step")), 0.005);
 
         const auto simulationIds = service.getSimulationIds();
         REQUIRE_EQ(simulationIds.size(), 2);

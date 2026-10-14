@@ -74,6 +74,7 @@ from typing import Any, NamedTuple, Protocol
 
 import warp as wp
 from isaacsim.physics.registration.bindings._bindings import (
+    ArrayTensorSpec,
     DeviceKind,
     DofDriveType,
     DofMotion,
@@ -97,24 +98,23 @@ from . import frontends
 # ---------------------------------------------------------------------------
 # Warp dispatch layer
 #
-# The C++ binding's `get_data` hands back a DLPack-typed `nb::ndarray`
-# (works for CPU and CUDA buffers symmetrically). The wrapper below
-# converts that to a `wp.array` via `wp.from_dlpack`; that is the only
-# data plane we support. `set_data` accepts a `wp.array` (or anything
-# else DLPack-capable, e.g. numpy ndarrays) and forwards it through to
-# the C++ binding unchanged.
+# The C++ binding exchanges every tensor as a `wp.array` through the Array type
+# caster, so results from it need no conversion. A Python implementation invoked
+# directly (bypassing the binding) may still hand back a numpy array or any other
+# DLPack-capable value, so `_wrap_warp` normalizes those. `set_data` accepts a
+# `wp.array` (or anything else the caster imports, e.g. numpy ndarrays).
 # ---------------------------------------------------------------------------
 
 
 def _wrap_warp(
     result: object | list[object] | None,
 ) -> wp.array | list[wp.array | None] | None:
-    """Convert a binding result to Warp arrays.
+    """Normalize a binding or implementation result to Warp arrays.
 
-    The C++ ``get_data`` binding returns a DLPack-compatible nanobind array, or
-    a list of arrays for ``get_data_multi``. The frontend imports each value
-    with ``wp.from_dlpack``. ``None``, lists, and native Warp arrays
-    pass through with the right structure.
+    The binding already hands back ``wp.array`` values through the Array type
+    caster, so those pass through untouched. A Python implementation invoked
+    directly may return any DLPack-capable value, which is imported here.
+    ``None`` and lists keep their structure.
 
     Args:
         result: Single-buffer or multi-buffer result from a tensor binding.
@@ -128,10 +128,24 @@ def _wrap_warp(
         return result
     if isinstance(result, list):
         return [_wrap_warp(item) for item in result]
-    return frontends.wrap_tensor(result)
+    if isinstance(result, TensorDesc):
+        return _wrap_warp(result.to_array())
+    if isinstance(result, wp.array):
+        return result
+    # `wp.from_dlpack` is the one Warp entry point that asserts on an uninitialized
+    # runtime instead of initializing on demand, and nothing imports Warp eagerly on
+    # this path (the type casters deliberately do not, so that a binding module stays
+    # importable without a usable Warp runtime). Initialize here -- at call time, never
+    # at import time -- so the first wrap in a fresh process is still zero-copy rather
+    # than silently falling back to a copy. `wp.init()` is idempotent.
+    wp.init()
+    try:
+        return wp.from_dlpack(result)
+    except Exception:  # pragma: no cover - rare fallback
+        return wp.array(result, copy=True)
 
 
-def _alloc_gpu_out(view: EntityView, impl: str, device_ordinal: int) -> wp.array | None:
+def _alloc_gpu_out(view: EntityView, impl: str, device: str) -> wp.array | None:
     """Allocate a Warp GPU buffer matching the GET specification.
 
     The engine reads directly into the buffer so ``get_data`` can return data
@@ -142,7 +156,7 @@ def _alloc_gpu_out(view: EntityView, impl: str, device_ordinal: int) -> wp.array
     Args:
         view: Entity view that owns the registered implementation.
         impl: Registered getter implementation name.
-        device_ordinal: CUDA device on which to allocate the output.
+        device: Device string naming where to allocate the output.
 
     Returns:
         Device-resident output buffer, or ``None`` when no valid buffer can be
@@ -150,7 +164,7 @@ def _alloc_gpu_out(view: EntityView, impl: str, device_ordinal: int) -> wp.array
 
     """
     try:
-        spec = view.get_impl_spec(impl, ImplKind.Get)
+        spec = view.get_array_impl_spec(impl, ImplKind.Get)
         shape = [int(s) for s in (getattr(spec, "shape_hint", None) or [])]
         dtype = getattr(spec, "dtype", None)
         # Bail on an empty or zero/negative dim (e.g. a view that currently
@@ -159,12 +173,12 @@ def _alloc_gpu_out(view: EntityView, impl: str, device_ordinal: int) -> wp.array
         # with an empty result. Fall back to the default (CPU-staged) read.
         if not shape or dtype is None or any(d <= 0 for d in shape):
             return None
-        return frontends.create_tensor(shape, dtype, device_ordinal)
+        return wp.zeros(shape, dtype=dtype, device=device)
     except Exception:
         return None
 
 
-def _alloc_gpu_out_multi(view: EntityView, impl: str, device_ordinal: int) -> list[wp.array] | None:
+def _alloc_gpu_out_multi(view: EntityView, impl: str, device: str) -> list[wp.array] | None:
     """Allocate one Warp GPU buffer per output of a multi-get implementation.
 
     The buffers use the implementation's per-output specifications so a native
@@ -176,7 +190,7 @@ def _alloc_gpu_out_multi(view: EntityView, impl: str, device_ordinal: int) -> li
     Args:
         view: Entity view that owns the registered implementation.
         impl: Registered multi-get implementation name.
-        device_ordinal: CUDA device on which to allocate the outputs.
+        device: Device string naming where to allocate the outputs.
 
     Returns:
         Device-resident output buffers, or ``None`` when the implementation
@@ -184,7 +198,7 @@ def _alloc_gpu_out_multi(view: EntityView, impl: str, device_ordinal: int) -> li
 
     """
     try:
-        specs = view.get_impl_spec_multi(impl, ImplKind.Get)
+        specs = view.get_array_impl_spec_multi(impl, ImplKind.Get)
     except Exception:
         return None
     if not specs:
@@ -195,7 +209,7 @@ def _alloc_gpu_out_multi(view: EntityView, impl: str, device_ordinal: int) -> li
         dtype = getattr(s, "dtype", None)
         if not shape or dtype is None or any(d <= 0 for d in shape):
             return None
-        bufs.append(frontends.create_tensor(shape, dtype, device_ordinal))
+        bufs.append(wp.zeros(shape, dtype=dtype, device=device))
     return bufs
 
 
@@ -216,7 +230,7 @@ def _spec_requires_host(view: EntityView, impl: str, kind: ImplKind) -> bool:
 
     """
     try:
-        return bool(getattr(view.get_impl_spec(impl, kind), "requires_host_data", False))
+        return bool(getattr(view.get_array_impl_spec(impl, kind), "requires_host_data", False))
     except Exception:
         return False
 
@@ -305,7 +319,7 @@ def _gather_rows_kernel(
 def _gpu_gather_rows(
     full_gpu: wp.array,
     indices: wp.array,
-    device_ordinal: int,
+    device: str,
     out: wp.array | None = None,
 ) -> wp.array:
     """Gather selected rows from a full GPU read without a host transfer.
@@ -319,7 +333,7 @@ def _gpu_gather_rows(
     Args:
         full_gpu: Full device read, shape ``(N, ...)``.
         indices: Row indices to gather; GPU-resident int32 on the sim device.
-        device_ordinal: CUDA ordinal the result should live on.
+        device: Device string naming where the result should live.
         out: Optional contiguous caller buffer on the same device and with the
             same data type and element count as the gathered result. Its
             original shape is preserved. A fresh row-shaped buffer is
@@ -335,11 +349,11 @@ def _gpu_gather_rows(
             contiguous layout.
 
     """
-    device = frontends.parse_device(device_ordinal)
+    warp_device = wp.get_device(device)
 
     # Indices must be a warp int32 array on the sim device. Reject a device mismatch
     # loudly rather than silently staging -- the same stance as the C++ CPU gather.
-    if not (isinstance(indices, wp.array) and indices.device == device):
+    if not (isinstance(indices, wp.array) and indices.device == warp_device):
         raise ValueError("indexed get on a GPU simulation requires GPU indices")
     if indices.dtype != wp.int32:
         raise ValueError("indexed get: indices must be int32")
@@ -363,9 +377,9 @@ def _gpu_gather_rows(
     # constructed in the buffer's own Warp type.
     dropped = full_gpu.dtype(_invalid_fill_value(full_gpu.dtype).item())
     if out is None:
-        result = wp.empty((k,) + row_shape, dtype=full_gpu.dtype, device=device)
+        result = wp.empty((k,) + row_shape, dtype=full_gpu.dtype, device=warp_device)
     else:
-        if not (isinstance(out, wp.array) and out.device == device):
+        if not (isinstance(out, wp.array) and out.device == warp_device):
             raise ValueError("indexed get: out buffer must be on the sim device")
         if out.dtype != full_gpu.dtype or out.size != k * row_elems:
             raise ValueError("indexed get: out buffer must be index-size with the read's dtype")
@@ -385,7 +399,7 @@ def _gpu_gather_rows(
         dim=(k, row_elems),
         inputs=[full_gpu.reshape((n, row_elems)), indices, n, dropped],
         outputs=[result.reshape((k, row_elems))],
-        device=device,
+        device=warp_device,
     )
     return result
 
@@ -482,11 +496,38 @@ def _scatter_compact_to_full(data: object, indices: wp.array, n: int) -> wp.arra
     return full
 
 
+def _is_float_dtype(dtype: object | None) -> bool:
+    """Return whether a data type is floating point.
+
+    Used to tell a query payload from an entity selection: an operation that rides
+    float data through the ``indices`` slot (the SDF view's query points) is not
+    selecting entities. Accepts Warp and NumPy data types; anything else, including
+    ``None`` and an untyped input such as a list, is not floating point.
+
+    Args:
+        dtype: Data type to classify, or ``None``.
+
+    Returns:
+        ``True`` when ``dtype`` is a floating-point Warp or NumPy type.
+
+    """
+    if dtype is None:
+        return False
+    if dtype in (wp.float16, wp.float32, wp.float64):
+        return True
+    try:
+        import numpy as _np
+
+        return _np.dtype(dtype).kind == "f"
+    except Exception:
+        return False
+
+
 def _require_int32_indices(indices: object | None, op: str) -> None:
     """Enforce the ``int32`` index contract uniformly.
 
     Reject non-``int32`` integer arrays instead of silently coercing them,
-    matching the gather/scatter kernels and native descriptor validation.
+    matching the gather/scatter kernels and the native boundary guard.
     Accept Warp or NumPy ``int32`` arrays. Pass ``None`` and untyped inputs,
     such as lists, through for implementation-specific handling.
 
@@ -560,7 +601,7 @@ class _ArticulationMetatype(Protocol):
     joint_names: list[str]
 
 
-def _snapshot_python_dispatch_spec(spec: TensorSpec | None) -> _PythonDispatchSpec:
+def _snapshot_python_dispatch_spec(spec: TensorSpec | ArrayTensorSpec | None) -> _PythonDispatchSpec:
     """Capture the by-value C++ registration semantics for direct dispatch.
 
     Args:
@@ -645,7 +686,7 @@ def _install_register_impl_mirror() -> None:
         impl: str,
         kind: ImplKind,
         fn: Callable[..., object],
-        spec: TensorSpec | None = None,
+        spec: TensorSpec | ArrayTensorSpec | None = None,
     ) -> bool:
         _ensure_py_impl_mirror(self)
         snapshot = _snapshot_python_dispatch_spec(spec)
@@ -665,7 +706,7 @@ def _install_register_impl_mirror() -> None:
         impl: str,
         kind: ImplKind,
         fn: Callable[..., object],
-        spec: TensorSpec | None = None,
+        spec: TensorSpec | ArrayTensorSpec | None = None,
     ) -> bool:
         _ensure_py_impl_mirror(self)
         snapshot = _snapshot_python_dispatch_spec(spec)
@@ -703,7 +744,7 @@ def _attach_warp_dispatch(
 
     Single-buffer results are returned as ``wp.array``. Multi-buffer results
     retain their list structure and each element is returned as ``wp.array``.
-    Each native ``get_data`` call re-reads ``view.device_ordinal`` rather than
+    Each native ``get_data`` call re-reads ``view.device`` rather than
     caching it, which supports engines that select their device during stepping,
     after the entity view was created. Eligible native GPU reads receive device
     output buffers so returned arrays reside on the simulation device.
@@ -771,19 +812,47 @@ def _attach_warp_dispatch(
         # Read the view's device at CALL time: ovphysx resolves it on the first
         # simulate(), so it is only authoritative once stepping has begun.
         try:
-            _devord = int(_self.device_ordinal)
+            _device = str(_self.device)
         except Exception:
-            _devord = -1
-        # GPU sim: read into a device buffer so results land on the consumer's
-        # device. Host-only impls (USD walk) stay on CPU -- they fall through to the
-        # C++ host gather, whose indexed read requires CPU indices and returns a host
-        # result even on a GPU sim (see OvPhysxEntityViews). An indexed read does a
-        # full device read then gathers to index-size (into the caller's device
-        # `out` when given). A non-indexed read fills a fresh buffer only when no
-        # `out` is given; a non-indexed external `out` is read into directly by
-        # the C++ binding below (DirectGPU), so it skips this block.
-        if _devord >= 0 and not _spec_requires_host(_self, impl, ImplKind.Get) and (indices is not None or out is None):
-            gout = _alloc_gpu_out(_self, impl, _devord)
+            _device = "cpu"
+        # A host-native binding cannot accept a CUDA destination. Read it into its
+        # native host buffer, copy the full tensor to the simulation device, then
+        # perform any indexed gather there. This preserves the public invariant
+        # that GPU-simulation reads return GPU tensors even for configuration data
+        # that ovphysx 0.6 keeps on the host.
+        requires_host = _spec_requires_host(_self, impl, ImplKind.Get)
+        if _device != "cpu" and requires_host:
+            host_result = _wrap_warp(_raw(_self, impl, None, None))
+            if out is not None and indices is None and host_result is not None:
+                expected_device = wp.get_device(_device)
+                if not (isinstance(out, wp.array) and out.device == expected_device):
+                    raise ValueError("get: out buffer must be on the simulation device")
+                if out.dtype != host_result.dtype or out.size != host_result.size or not out.is_contiguous:
+                    raise ValueError("get: out buffer must match the implementation dtype, size, and layout")
+            gpu_result = out if indices is None and out is not None else _alloc_gpu_out(_self, impl, _device)
+            if host_result is not None and gpu_result is not None:
+                wp.copy(gpu_result, host_result)
+                if indices is None:
+                    return gpu_result
+                return _gpu_gather_rows(gpu_result, indices, _device, out=out)
+
+        # Device-native GPU sim: read into a device buffer so results land on the
+        # consumer's device. An indexed read does a full device read then gathers
+        # to index-size (into the caller's device `out` when given). A non-indexed
+        # read fills a fresh buffer only when no `out` is given; a non-indexed
+        # external `out` is read into directly by the C++ binding below.
+        # The whole block presumes `indices` selects entities, because it probes the impl with no
+        # selection and then gathers rows by index. An operation that uses the slot for a query payload
+        # instead -- the SDF view rides float32 query points through it -- must skip the probe: a
+        # selection-less read is meaningless to it, and the gather below rejects non-int32 anyway.
+        _selects_entities = not _is_float_dtype(getattr(indices, "dtype", None))
+        if (
+            _device != "cpu"
+            and not _spec_requires_host(_self, impl, ImplKind.Get)
+            and _selects_entities
+            and (indices is not None or out is None)
+        ):
+            gout = _alloc_gpu_out(_self, impl, _device)
             if gout is not None:
                 warr = _wrap_warp(_raw(_self, impl, None, gout))
                 # Only when the impl actually read into `gout` (result aliases it
@@ -797,7 +866,7 @@ def _attach_warp_dispatch(
                         return gout
                     # Gather the requested rows to index-size on-device, into the
                     # caller's device `out` when provided (else a fresh buffer).
-                    return _gpu_gather_rows(gout, indices, _devord, out=out)
+                    return _gpu_gather_rows(gout, indices, _device, out=out)
                 # The impl returned its OWN buffer instead of reading into `gout`.
                 if indices is None:
                     return warr
@@ -806,7 +875,7 @@ def _attach_warp_dispatch(
                 # CPU-resident warr falls through to the raw read rather than feed a
                 # device-mismatched gather.
                 if warr is not None and getattr(getattr(warr, "device", None), "is_cuda", False):
-                    return _gpu_gather_rows(warr, indices, _devord, out=out)
+                    return _gpu_gather_rows(warr, indices, _device, out=out)
         return _wrap_warp(_raw(_self, impl, indices, out))
 
     def set_data(
@@ -920,17 +989,90 @@ def _attach_warp_dispatch(
                 _validate_python_dispatch(_self, impl, ImplKind.Get, indices, "getDataMulti", True)
                 return _wrap_warp(py_fn(indices, list(out or [])))
             buffers = list(out or [])
+            # Six buffers are the private OVPhysX 0.6 native layout used by the
+            # adapter below, not part of the public seven-output manager API.
+            if impl == "raw-contact-data" and buffers and len(buffers) != 7:
+                raise ValueError(f"Expected 7 output buffers, got {len(buffers)}")
+            # ovphysx 0.6 combines count/start and sensor/other actor IDs into
+            # paired tensors. On DirectGPU, ask the native adapter for those six
+            # buffers and split the pairs with Warp so the public seven-output
+            # contract stays unchanged without host staging.
+            try:
+                _device = str(_self.device)
+            except Exception:
+                _device = "cpu"
+            specs = _self.get_array_impl_spec_multi(impl, ImplKind.Get) if impl == "raw-contact-data" else []
+            legacy_shapes = [[int(x) for x in s.shape_hint] for s in specs] if len(specs) == 7 else []
+            if len(buffers) == 7 and legacy_shapes:
+                expected_device = wp.get_device(_device)
+                if not isinstance(buffers[0], wp.array) or not buffers[0].shape:
+                    raise TypeError("raw-contact-data: output buffer 0 must be a non-scalar Warp array")
+                record_capacity = int(buffers[0].shape[0])
+                expected_shapes = (
+                    (record_capacity, 1),
+                    (record_capacity, 3),
+                    (record_capacity, 3),
+                    (record_capacity, 1),
+                    tuple(legacy_shapes[4]),
+                    tuple(legacy_shapes[5]),
+                    (record_capacity,),
+                )
+                for i, buffer in enumerate(buffers):
+                    if not isinstance(buffer, wp.array):
+                        raise TypeError(f"raw-contact-data: output buffer {i} must be a Warp array")
+                    if buffer.device != expected_device:
+                        raise ValueError(f"raw-contact-data: output buffer {i} is on the wrong device")
+                    expected_dtype = specs[i].dtype
+                    if buffer.dtype != expected_dtype:
+                        raise TypeError(
+                            f"raw-contact-data: output buffer {i} has dtype {buffer.dtype}, expected {expected_dtype}"
+                        )
+                    if tuple(buffer.shape) != expected_shapes[i] or not buffer.is_contiguous:
+                        raise ValueError(
+                            f"raw-contact-data: output buffer {i} has shape {tuple(buffer.shape)} or a "
+                            f"non-contiguous layout; expected contiguous {expected_shapes[i]}"
+                        )
+            if impl == "raw-contact-data" and _device != "cpu" and len(buffers) in (0, 7):
+                if len(specs) == 7:
+                    native_buffers = [
+                        (
+                            buffers[i]
+                            if len(buffers) == 7
+                            else wp.zeros(legacy_shapes[i], dtype=specs[i].dtype, device=_device)
+                        )
+                        for i in range(4)
+                    ]
+                    native_buffers.append(
+                        wp.zeros(
+                            [int(buffers[4].shape[0]) if len(buffers) == 7 else legacy_shapes[4][0], 2],
+                            dtype=specs[4].dtype,
+                            device=_device,
+                        )
+                    )
+                    native_buffers.append(
+                        wp.zeros(
+                            [int(buffers[6].shape[0]) if len(buffers) == 7 else legacy_shapes[6][0], 2],
+                            dtype=specs[6].dtype,
+                            device=_device,
+                        )
+                    )
+                    native_result = _wrap_warp(_raw(_self, impl, indices, native_buffers))
+                    counts = native_result[4][:, 0].contiguous()
+                    starts = native_result[4][:, 1].contiguous()
+                    other_actor_ids = native_result[5][:, 1].contiguous()
+                    if len(buffers) == 7:
+                        wp.copy(buffers[4], counts)
+                        wp.copy(buffers[5], starts)
+                        wp.copy(buffers[6], other_actor_ids)
+                        return buffers
+                    return [*native_result[:4], counts, starts, other_actor_ids]
             # On a GPU sim with no caller `out`, allocate a device buffer per output from the
             # multi-spec so ovphysx's DirectGPU device check passes (it requires a device-matching
             # dst on each output). Host-only impls (requires_host_data) stay CPU-staged, mirroring
             # get_data; impls that expose no per-output specs also fall back (the alloc returns None).
             if not buffers:
-                try:
-                    _devord = int(_self.device_ordinal)
-                except Exception:
-                    _devord = -1
-                if _devord >= 0 and not _spec_requires_host(_self, impl, ImplKind.Get):
-                    buffers = _alloc_gpu_out_multi(_self, impl, _devord) or []
+                if _device != "cpu" and not _spec_requires_host(_self, impl, ImplKind.Get):
+                    buffers = _alloc_gpu_out_multi(_self, impl, _device) or []
             result = _raw(_self, impl, indices, buffers)
             return _wrap_warp(result)
 
@@ -990,7 +1132,7 @@ def _attach_warp_dispatch(
 
         """
         if _v.has_impl(impl_name, ImplKind.Get):
-            spec = _v.get_impl_spec(impl_name, ImplKind.Get)
+            spec = _v.get_array_impl_spec(impl_name, ImplKind.Get)
             if spec is not None and len(spec.shape_hint) > dim_idx:
                 return spec.shape_hint[dim_idx]
         return 0
@@ -1408,6 +1550,8 @@ def create_entity(
     paths: str | Sequence[str],
     options: dict[str, object] | None = None,
     device_ordinal: int | None = None,
+    *,
+    device: str | None = None,
 ) -> EntityView | None:
     """Create a Warp-backed entity view from a registered engine factory.
 
@@ -1423,11 +1567,12 @@ def create_entity(
             express, such as a contact view's ``"filter-patterns"`` and
             ``"max-contact-data-count"`` or an SDF view's ``"num-points"``. An
             engine ignores the option names it does not read.
-        device_ordinal: Ordinal of the device holding the view's tensors, or
-            ``None`` to leave the engine's own value in place. Only engines
-            that cannot report their device need this; the value may also be
-            assigned later through the view's ``device_ordinal`` attribute,
-            since each read re-reads it.
+        device_ordinal: Legacy device ordinal; -1 selects CPU. Mutually exclusive with ``device``.
+        device: Device string such as ``"cpu"`` or ``"cuda:0"`` naming where
+            the view's tensors live, or ``None`` to leave the engine's own
+            value in place. Only engines that cannot report their device need
+            this; the value may also be assigned later through the view's
+            ``device`` attribute, since each read re-reads it.
 
     Returns:
         Entity view augmented with Warp dispatch, or ``None`` when the
@@ -1446,13 +1591,18 @@ def create_entity(
     # anything to resolve, and an empty pattern is the ambiguous match-nothing/match-all case in C++.
     if not path_list or any(not path for path in path_list):
         raise ValueError(f"create_entity: {entity_name!r} requires non-empty prim-path patterns")
+    if device_ordinal is not None and device is not None:
+        raise ValueError("create_entity: specify device_ordinal or device, not both")
     view = _create_entity_raw(engine, entity_name, path_list, options)
     if view is not None and device_ordinal is not None:
         view.device_ordinal = int(device_ordinal)
+    if view is not None and device is not None:
+        view.device = device
     return _attach_warp_dispatch(view, entity_name)
 
 
 __all__ = [
+    "ArrayTensorSpec",
     "DType",
     "DeviceKind",
     "DofDriveType",

@@ -45,6 +45,7 @@ from .obstacle_strategy import (
 )
 from .trackable_api import TrackableApi
 from .utils import collision_approximation, scene_validation
+from .utils.scene_validation.validate_ancestor_scaling import get_world_scale
 from .world_interface import WorldInterface
 
 _SUPPORTED_COLLISION_APIS = frozenset(
@@ -53,6 +54,11 @@ _SUPPORTED_COLLISION_APIS = frozenset(
         TrackableApi.MOTION_GENERATION_COLLISION,
     }
 )
+
+
+def _get_world_scales(prim_path: str) -> wp.array:
+    """Get one prim's world scale in the planning interface's batch format."""
+    return wp.array([get_world_scale(prim_path)], dtype=wp.float32)
 
 
 def _add_sphere_from_prim(
@@ -71,12 +77,12 @@ def _add_sphere_from_prim(
     """
     # Given that this object is being added directly as a sphere,
     # we can get its data from the core API:
-    isaac_core_object = Sphere(paths=prim_path)
+    isaac_core_object = Sphere(paths=prim_path, reset_xform_op_properties=False)
 
     world_interface.add_spheres(
         prim_paths=[prim_path],
         radii=isaac_core_object.get_radii(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -99,12 +105,12 @@ def _add_cube_from_prim(
     """
     # Given that this object is being added directly as a cube,
     # we can get its data from the core API:
-    isaac_core_object = Cube(paths=prim_path)
+    isaac_core_object = Cube(paths=prim_path, reset_xform_op_properties=False)
 
     world_interface.add_cubes(
         prim_paths=[prim_path],
         sizes=isaac_core_object.get_sizes(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -127,13 +133,13 @@ def _add_cone_from_prim(
     """
     # Given that this object is being added directly as a cone,
     # we can get its data from the core API:
-    isaac_core_object = Cone(paths=prim_path)
+    isaac_core_object = Cone(paths=prim_path, reset_xform_op_properties=False)
     world_interface.add_cones(
         prim_paths=[prim_path],
         axes=isaac_core_object.get_axes(),
         radii=isaac_core_object.get_radii(),
         lengths=isaac_core_object.get_heights(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -156,13 +162,13 @@ def _add_plane_from_prim(
     """
     # Given that this object is being added directly as a plane,
     # we can get its data from the core API:
-    isaac_core_object = Plane(paths=prim_path)
+    isaac_core_object = Plane(paths=prim_path, reset_xform_op_properties=False)
     world_interface.add_planes(
         prim_paths=[prim_path],
         axes=isaac_core_object.get_axes(),
         lengths=isaac_core_object.get_lengths(),
         widths=isaac_core_object.get_widths(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -185,13 +191,13 @@ def _add_capsule_from_prim(
     """
     # Given that this object is being added directly as a capsule,
     # we can get its data from the core API:
-    isaac_core_object = Capsule(paths=prim_path)
+    isaac_core_object = Capsule(paths=prim_path, reset_xform_op_properties=False)
     world_interface.add_capsules(
         prim_paths=[prim_path],
         axes=isaac_core_object.get_axes(),
         radii=isaac_core_object.get_radii(),
         lengths=isaac_core_object.get_heights(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -214,13 +220,13 @@ def _add_cylinder_from_prim(
     """
     # Given that this object is being added directly as a cylinder,
     # we can get its data from the core API:
-    isaac_core_object = Cylinder(paths=prim_path)
+    isaac_core_object = Cylinder(paths=prim_path, reset_xform_op_properties=False)
     world_interface.add_cylinders(
         prim_paths=[prim_path],
         axes=isaac_core_object.get_axes(),
         radii=isaac_core_object.get_radii(),
         lengths=isaac_core_object.get_heights(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -243,7 +249,7 @@ def _add_mesh_from_prim(
     """
     # Given that this object is being added directly as a mesh,
     # we can get its data from the core API:
-    isaac_core_object = Mesh(paths=prim_path)
+    isaac_core_object = Mesh(paths=prim_path, reset_xform_op_properties=False)
     face_indices, face_counts, _, _ = isaac_core_object.get_face_specs()
 
     world_interface.add_meshes(
@@ -252,7 +258,7 @@ def _add_mesh_from_prim(
         face_vertex_indices=face_indices,
         face_vertex_counts=face_counts,
         normals=isaac_core_object.get_normals(),
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -275,7 +281,7 @@ def _add_triangulated_mesh_from_prim(
     """
     # Given that this object is being added directly as a triangulated mesh,
     # we can get its data from the core API:
-    isaac_core_object = Mesh(paths=prim_path)
+    isaac_core_object = Mesh(paths=prim_path, reset_xform_op_properties=False)
 
     # triangulate the mesh:
     all_triangulated_mesh_indices = collision_approximation.triangulate_mesh(isaac_core_object)
@@ -294,7 +300,7 @@ def _add_triangulated_mesh_from_prim(
         prim_paths=[prim_path],
         points=isaac_core_object.get_points(),
         face_vertex_indices=[triangulated_mesh_indices],
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -336,7 +342,7 @@ def _add_oriented_bounding_box_from_prim(
         centers=centers,
         rotations=rotations,
         half_side_lengths=half_side_lengths,
-        scales=isaac_core_object.get_local_scales(),
+        scales=_get_world_scales(prim_path),
         safety_tolerances=wp.array([[obstacle_configuration.safety_tolerance]]),
         poses=isaac_core_object.get_world_poses(),
         enabled_array=_get_collision_enabled_values([prim_path], collision_api),
@@ -510,10 +516,9 @@ class WorldBinding(Generic[TWorldInterface]):
             )
 
         # We need to check that all ancestor prims have NO scaling about any axes.
-        # This guarantees that no shearing can occur and ensures local_scale == world_scale.
         invalid_ancestors = scene_validation.find_all_invalid_ancestors(prim_paths=self._tracked_prims)
         if len(invalid_ancestors) != 0:
-            raise AssertionError(f"The following ancestor prims have non-unity scaling.\n{invalid_ancestors}")
+            raise AssertionError(f"The following ancestor prims have non-uniform scaling.\n{invalid_ancestors}")
 
         # For motion planning API, validate that all prims have the enabled attribute.
         if self._tracked_collision_api == TrackableApi.MOTION_GENERATION_COLLISION:

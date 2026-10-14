@@ -198,6 +198,73 @@ class TestUIBuilderImport(omni.kit.test.AsyncTestCase):
         self.assertTrue(callable(UIBuilder))
 
 
+class _DeferredRetryProbe(UIBuilder):
+    """UIBuilder stub that counts deferred re-setups.
+
+    Stubs the stage and UI half of ``_on_articulation_selection`` and delegates the
+    re-arm decision to :meth:`_arm_deferred_joint_wait`.
+
+    Args:
+        joint_entries: What the stub tuner enumerates on every setup.
+        num_dofs: DOF count the stub articulation reports.
+    """
+
+    def __init__(self, joint_entries: list[object], num_dofs: int = 6) -> None:
+        self._awaiting_articulation_dofs = True
+        self._gains_tuner = SimpleNamespace(
+            _robot_prim_path="/World/Robot",
+            _articulation=SimpleNamespace(num_dofs=num_dofs),
+            get_joint_entries=lambda: joint_entries,
+        )
+        self.resetup_count = 0
+
+    def _on_articulation_selection(self, articulation_path: str, force: bool = False) -> None:
+        """Count the re-setup, then re-arm through the production decision."""
+        self.resetup_count += 1
+        self._arm_deferred_joint_wait()
+
+
+class _TimelineStopProbe(UIBuilder):
+    """UIBuilder stub that counts override restores driven by timeline events.
+
+    Args:
+        stopped: What the stub timeline reports for ``is_stopped``.
+    """
+
+    def __init__(self, stopped: bool) -> None:
+        self._timeline = SimpleNamespace(is_stopped=lambda: stopped)
+        self._restarting_for_override = False
+        self._articulation_menu_model = None
+        self.restore_count = 0
+
+    def _restore_self_collision_override(self) -> None:
+        """Count the restore call."""
+        self.restore_count += 1
+
+
+class TestTimelineStopRestoresOverride(omni.kit.test.AsyncTestCase):
+    """Stopping the timeline ends a test run outside cancel and completion."""
+
+    async def test_stop_drops_a_live_override(self) -> None:
+        """The toolbar stop is a test exit, so it has to restore the override."""
+        probe = _TimelineStopProbe(stopped=True)
+        probe.on_timeline_event(None)
+        self.assertEqual(probe.restore_count, 1)
+
+    async def test_play_leaves_the_override_alone(self) -> None:
+        """Starting the timeline is not a test exit."""
+        probe = _TimelineStopProbe(stopped=False)
+        probe.on_timeline_event(None)
+        self.assertEqual(probe.restore_count, 0)
+
+    async def test_the_overrides_own_recook_does_not_restore_itself(self) -> None:
+        """The recook stops the timeline; that stop must not undo the override."""
+        probe = _TimelineStopProbe(stopped=True)
+        probe._restarting_for_override = True
+        probe.on_timeline_event(None)
+        self.assertEqual(probe.restore_count, 0)
+
+
 class TestDeferredJointRepopulate(omni.kit.test.AsyncTestCase):
     """Deferred joint re-setup when the (Newton, lazy) articulation view cooks."""
 
@@ -216,6 +283,99 @@ class TestDeferredJointRepopulate(omni.kit.test.AsyncTestCase):
         self.assertFalse(UIBuilder._should_repopulate_deferred_joints(True, 0))
         # Awaiting and the view now reports DOFs: re-enumerate the joints.
         self.assertTrue(UIBuilder._should_repopulate_deferred_joints(True, 6))
+
+    async def test_arming_decision(self) -> None:
+        """The wait is armed by an uncooked DOF view, not by "have we retried yet".
+
+        A robot that already reports DOFs and still enumerates no joints cannot be
+        fixed by re-running the same enumeration, so it must not arm.
+        """
+        # No joints and no DOFs yet: the view has not cooked, so wait.
+        self.assertTrue(UIBuilder._should_await_articulation_dofs(0, False))
+        # No joints but DOFs exist: the schema does not list them, so do not wait.
+        self.assertFalse(UIBuilder._should_await_articulation_dofs(6, False))
+        # Joints enumerated: nothing to defer, whatever the DOF count says.
+        self.assertFalse(UIBuilder._should_await_articulation_dofs(0, True))
+        self.assertFalse(UIBuilder._should_await_articulation_dofs(6, True))
+
+    async def test_no_retry_loop_when_joints_never_enumerate(self) -> None:
+        """A robot that reports DOFs but no joints re-setups once, not every frame.
+
+        Each re-setup restarts the timeline from ``_setup_robot_links``, so an
+        unbounded retry shows up as the timeline flickering between play and stop.
+        """
+        probe = _DeferredRetryProbe(joint_entries=[])
+        for _ in range(10):  # ten render steps
+            probe._maybe_repopulate_deferred_joints()
+        self.assertEqual(probe.resetup_count, 1)
+        self.assertFalse(probe._awaiting_articulation_dofs)
+
+    async def test_retry_populates_joints_when_the_view_cooks(self) -> None:
+        """The deferred retry still repopulates a lazily-cooked (Newton) articulation."""
+        probe = _DeferredRetryProbe(joint_entries=["joint0"])
+        for _ in range(10):
+            probe._maybe_repopulate_deferred_joints()
+        self.assertEqual(probe.resetup_count, 1)
+        self.assertFalse(probe._awaiting_articulation_dofs)
+
+    async def test_wait_is_not_spent_while_the_view_has_no_dofs(self) -> None:
+        """The wait survives an arbitrary number of uncooked frames.
+
+        Bounding it at one attempt would trade the flicker for a joint table that
+        stays empty when the view takes several frames to cook.
+        """
+        probe = _DeferredRetryProbe(joint_entries=[], num_dofs=0)
+        for _ in range(10):
+            probe._maybe_repopulate_deferred_joints()
+        self.assertEqual(probe.resetup_count, 0)
+        self.assertTrue(probe._awaiting_articulation_dofs)
+
+        # The view cooks on a later frame: the deferred retry is still available.
+        probe._gains_tuner._articulation.num_dofs = 6
+        probe._gains_tuner.get_joint_entries = lambda: ["joint0"]
+        probe._maybe_repopulate_deferred_joints()
+        self.assertEqual(probe.resetup_count, 1)
+        self.assertFalse(probe._awaiting_articulation_dofs)
+
+    async def test_render_step_holds_the_retry_back_during_an_override_recook(self) -> None:
+        """The recook window must not re-run selection and drop the override.
+
+        The re-setup resets the tuner, which restores the override the recook is
+        installing, leaving the test to run with self-collisions still on.
+        """
+        probe = _DeferredRetryProbe(joint_entries=[])
+        probe._restarting_for_override = True
+        probe.sync_viewport_from_scroll_frame = lambda: None
+        probe._articulation_menu_model = SimpleNamespace(has_item=lambda: True)
+        probe._reset_ui_next_frame = False
+        # Only reached once the guard is lifted; the poll is held back with the
+        # re-setup because it re-runs selection the same way.
+        probe._sync_backend_if_engine_changed = lambda: None
+
+        for _ in range(10):
+            probe.on_render_step(None)
+
+        self.assertEqual(probe.resetup_count, 0)
+        self.assertTrue(probe._awaiting_articulation_dofs, "the wait is held, not spent")
+
+        # Once the recook lands, the deferred re-setup is free to run.
+        probe._restarting_for_override = False
+        probe.on_render_step(None)
+        self.assertEqual(probe.resetup_count, 1)
+
+    async def test_num_dofs_read_failure_counts_as_uncooked(self) -> None:
+        """An articulation whose DOF query raises is treated as not yet cooked."""
+
+        class _Raising:
+            @property
+            def num_dofs(self) -> int:
+                raise RuntimeError("physics view not ready")
+
+        probe = _DeferredRetryProbe(joint_entries=[])
+        probe._gains_tuner._articulation = _Raising()
+        self.assertEqual(probe._articulation_num_dofs(), 0)
+        probe._maybe_repopulate_deferred_joints()
+        self.assertEqual(probe.resetup_count, 0)
 
 
 class TestSourceBadge(omni.kit.test.AsyncTestCase):

@@ -26,7 +26,7 @@ File list validation through {func}`validate_file_list <isaacsim.test.utils.vali
 
 ### UI Testing Framework
 
-**Menu testing capabilities** address the timing challenges of UI automation. The {class}`MenuUITestCase <isaacsim.test.utils.MenuUITestCase>` provides base functionality for menu-driven tests, while {func}`menu_click_with_retry <isaacsim.test.utils.menu_click_with_retry>` handles unreliable menu interactions through intelligent retry mechanisms with exponential backoff.
+**Menu testing capabilities** address the timing challenges of UI automation. The {class}`MenuUITestCase <isaacsim.test.utils.MenuUITestCase>` provides base functionality for menu-driven tests, while {func}`menu_click_with_retry <isaacsim.test.utils.menu_click_with_retry>` handles unreliable visual menu interactions through intelligent retry mechanisms with exponential backoff. For headless tests that need to validate menu registration and action wiring without opening popup menus, {meth}`MenuUITestCase.trigger_menu_item <isaacsim.test.utils.MenuUITestCase.trigger_menu_item>` waits for the full menu path and invokes its registered action directly.
 
 {func}`list_menu_paths <isaacsim.test.utils.list_menu_paths>` discovers all clickable paths from the live menubar up to a configurable depth without opening any menus, returning slash-separated paths ready for use with `menu_click_with_retry`. {func}`perform_widget_action <isaacsim.test.utils.perform_widget_action>` combines widget discovery with action dispatch — supporting click, double-click, right-click, text input, and property read — in a single polling call.
 

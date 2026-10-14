@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from importlib import metadata
 
+import carb
 import numpy as np
 import torch
 
@@ -48,6 +48,7 @@ from .optimizer_config import (
     resolve_backend,
 )
 from .optimizer_factory import create_optimizer
+from .parameter_apply import ParameterApplyState
 from .parameter_space import ParameterSpace
 from .parameter_types import SysIdParameterType
 from .preflight import SysIdRunPreflight, preflight_sysid_run_spec
@@ -70,7 +71,6 @@ from .trajectory_segments import (
 
 OptimizerFactory = Callable[[OptimizerBackend], object]
 BridgeFactory = Callable[..., object]
-_LOGGER = logging.getLogger(__name__)
 _DEFAULT_PHYSICS_DT = 1.0 / 60.0
 _SOLVER_SPECIFIC_USD_PARAMETER_TYPES = {
     SysIdParameterType.JOINT_FRICTION,
@@ -104,6 +104,8 @@ class SysIdPreparedRun:
     physics_solver: str = ""
     newton_config: dict | None = None
     check_report: object | None = None
+    theta_authored_initial: torch.Tensor | None = None
+    telemetry_quality: TelemetryQualityReport | None = None
 
 
 class SysIdRunController:
@@ -181,6 +183,10 @@ class SysIdRunController:
             self.spec,
             allow_empty=allow_empty_parameters,
         )
+        # Preserve the launch values before analytical presolve can replace the
+        # solver seed.  Reports and untuned validation must never call a
+        # presolved seed "untuned".
+        theta_authored_initial = theta_initial.detach().cpu().clone()
         residual_cfg = self.spec.residuals.to_config()
         backend_cfg = self.spec.solver.to_backend_config()
         backend_cfg.differentiable_bridge = self._uses_differentiable_newton()
@@ -247,6 +253,7 @@ class SysIdRunController:
             backend_config=backend_cfg,
             training_segments=train_chunks,
             theta_fallback=theta_fallback,
+            theta_authored_initial=theta_authored_initial,
         )
 
         newton_config = None
@@ -273,11 +280,10 @@ class SysIdRunController:
                 validation_chunks=validation_chunks,
             )
             for line in check_report.summary_lines():
-                (
-                    _log_warn(f"SysId check: {line}")
-                    if "[warning]" in line or "[error]" in line
-                    else _log_info(f"SysId check: {line}")
-                )
+                if "[warning]" in line or "[error]" in line:
+                    carb.log_warn(f"SysId check: {line}")
+                else:
+                    carb.log_info(f"SysId check: {line}")
         except Exception as exc:
             cleanup = getattr(bridge, "cleanup", None)
             if callable(cleanup):
@@ -307,6 +313,8 @@ class SysIdRunController:
             physics_solver=compatibility.physics_solver,
             newton_config=newton_config,
             check_report=check_report,
+            telemetry_quality=check_report.telemetry_quality_report,
+            theta_authored_initial=theta_authored_initial,
         )
 
     def _uses_differentiable_newton(self) -> bool:
@@ -518,10 +526,9 @@ def _physics_dt(stage: object | None = None) -> float:
                     return 1.0 / value
         except Exception:
             pass
-    _LOGGER.warning(
-        "SysId: no physics timestep available from the runtime or the stage; assuming %.6g s (60 Hz). "
-        "Author physxScene:timeStepsPerSecond so resampling and actuator delay quantization match the scene.",
-        _DEFAULT_PHYSICS_DT,
+    carb.log_warn(
+        f"SysId: no physics timestep available from the runtime or the stage; assuming {_DEFAULT_PHYSICS_DT:.6g} s "
+        "(60 Hz). Author physxScene:timeStepsPerSecond so resampling and actuator delay quantization match the scene."
     )
     return _DEFAULT_PHYSICS_DT
 
@@ -541,11 +548,14 @@ def build_parameter_space(  # noqa: D103
             flags.include_command_delay,
         )
     )
+    physics_backend = resolve_simulation_compatibility(spec.simulation).physics_backend
     link_paths, joint_paths = collect_robot_link_and_joint_paths(stage, spec.simulation.robot_prim_path)
     joint_paths = order_joint_paths_for_trajectory(joint_paths, trajectory)
     if not advanced:
         space = ParameterSpace.for_robot(trajectory.num_joints)
-        space.read_usd_baselines(stage, link_paths, joint_paths[: trajectory.num_joints])
+        space.read_usd_baselines(
+            stage, link_paths, joint_paths[: trajectory.num_joints], physics_backend=physics_backend
+        )
         return space, link_paths, joint_paths
 
     space = ParameterSpace.for_robot_extended(
@@ -558,7 +568,7 @@ def build_parameter_space(  # noqa: D103
         include_per_link_mass=flags.include_per_link_mass,
         include_command_delay=flags.include_command_delay,
     )
-    space.read_usd_baselines(stage, link_paths, joint_paths[: trajectory.num_joints])
+    space.read_usd_baselines(stage, link_paths, joint_paths[: trajectory.num_joints], physics_backend=physics_backend)
     return space, link_paths, joint_paths
 
 
@@ -637,7 +647,7 @@ def _apply_analytical_presolve(
         parameter_space.baseline,
     )
     if dynamics_context is None:
-        _log_info("SysId analytical presolve: no fixed-base dynamics context; torque telemetry may still be used.")
+        carb.log_info("SysId analytical presolve: no fixed-base dynamics context; torque telemetry may still be used.")
 
     result = run_analytical_presolve(
         presolve_trajectory,
@@ -716,20 +726,12 @@ def _presolve_training_inputs(
 
 
 def _log_analytical_presolve(result: AnalyticalPresolveResult) -> None:
-    _log_info(
+    carb.log_info(
         "SysId analytical presolve: "
         f"seeded={result.seeded_count}, rank={result.rank}, condition={result.condition:.6g}"
     )
     for warning in result.warnings:
-        _log_warn(f"SysId analytical presolve: {warning}")
-
-
-def _log_info(message: str) -> None:
-    _LOGGER.info(message)
-
-
-def _log_warn(message: str) -> None:
-    _LOGGER.warning(message)
+        carb.log_warn(f"SysId analytical presolve: {warning}")
 
 
 def _apply_multichunk_jacobian_policy(backend_cfg: OptimizerBackendConfig, *, chunk_count: int) -> None:
@@ -740,7 +742,7 @@ def _apply_multichunk_jacobian_policy(backend_cfg: OptimizerBackendConfig, *, ch
         chunk_count: Number of training chunks in the prepared run.
     """
     if chunk_count > 1 and backend_cfg.use_analytical_jacobian:
-        _log_warn("SysId: analytical_jacobian disabled for multi-chunk training; falling back to numerical LM.")
+        carb.log_warn("SysId: analytical_jacobian disabled for multi-chunk training; falling back to numerical LM.")
         backend_cfg.use_analytical_jacobian = False
 
 
@@ -762,6 +764,7 @@ def write_optimized_parameters_to_usd(  # noqa: D103
         num_links = max(num_links, len(link_paths))
     theta_row = torch.tensor(theta, dtype=torch.float32)
     usd_written = False
+    apply_state = None
     claimed_types = set(getattr(bridge, "usd_parameter_types", set()) or set())
     claimed_dofs = dict(getattr(bridge, "usd_parameter_dof_claims", {}) or {})
     parameter_space_write_needed = _has_parameter_space_usd_writeback(
@@ -850,12 +853,98 @@ def write_optimized_parameters_to_usd(  # noqa: D103
                 edit_context = Usd.EditContext(stage, target_layer)
             with edit_context:
                 bridge_written = bool(bridge_write(stage, entries, values)) and bridge_written
+        if apply_state is not None:
+            _verify_effective_joint_gain_writeback(
+                stage,
+                space,
+                apply_state,
+                config.param_entries,
+                skipped_types=claimed_types,
+                skipped_joint_dofs=claimed_dofs,
+            )
         # A callable bridge can legitimately have nothing to persist for these
         # entries. Do not let that turn a missing parameter-space baseline into
         # a false successful write.
         parameter_space_satisfied = usd_written or not parameter_space_write_needed
         return parameter_space_satisfied and bridge_written
+    if apply_state is not None:
+        _verify_effective_joint_gain_writeback(
+            stage,
+            space,
+            apply_state,
+            config.param_entries,
+            skipped_types=claimed_types,
+            skipped_joint_dofs=claimed_dofs,
+        )
     return usd_written
+
+
+def _verify_effective_joint_gain_writeback(
+    stage: object,
+    space: ParameterSpace,
+    apply_state: ParameterApplyState,
+    param_entries: list,
+    *,
+    skipped_types: set[SysIdParameterType],
+    skipped_joint_dofs: dict[SysIdParameterType, set[int]],
+) -> None:
+    """Verify that authored joint gains win USD composition.
+
+    Args:
+        stage: Composed stage containing the selected robot.
+        space: Parameter space containing the writeback baselines.
+        apply_state: Decoded accepted parameter values.
+        param_entries: Selected parameter definitions.
+        skipped_types: Gain types owned by a runtime-specific writer.
+        skipped_joint_dofs: Gain DOFs owned by a runtime-specific writer.
+
+    Raises:
+        RuntimeError: If an authored gain is masked or cannot be composed.
+    """
+    from .usd_parameter_io import _drive_attr_to_effective
+
+    gain_types = (SysIdParameterType.JOINT_STIFFNESS, SysIdParameterType.JOINT_DAMPING)
+    selected_entries = {
+        param_type: [entry for entry in param_entries if entry.param_type == param_type]
+        for param_type in gain_types
+        if param_type not in skipped_types
+    }
+    mismatches: list[str] = []
+    for snapshot_index, baseline in enumerate(space.baseline.usd_joint_snapshots):
+        if baseline is None:
+            continue
+        dof_index = baseline.dof_index if baseline.dof_index >= 0 else snapshot_index
+        prim = stage.GetPrimAtPath(baseline.path)
+        if prim is None or not prim.IsValid():
+            mismatches.append(f"{baseline.path} is no longer present in the composed stage")
+            continue
+        drive_type = "angular" if baseline.is_angular else "linear"
+        for param_type, entries in selected_entries.items():
+            if dof_index in skipped_joint_dofs.get(param_type, set()):
+                continue
+            if not any(int(entry.dof_index) < 0 or int(entry.dof_index) == dof_index for entry in entries):
+                continue
+            if param_type == SysIdParameterType.JOINT_STIFFNESS:
+                expected = float(baseline.stiffness) * float(apply_state.stiffness_scale[dof_index])
+                attr = prim.GetAttribute(f"drive:{drive_type}:physics:stiffness")
+                label = "stiffness"
+            else:
+                expected = float(baseline.damping) * float(apply_state.damping_scale[dof_index])
+                attr = prim.GetAttribute(f"drive:{drive_type}:physics:damping")
+                label = "damping"
+            value = attr.Get() if attr is not None and attr.IsValid() else None
+            actual = float("nan") if value is None else _drive_attr_to_effective(float(value), drive_type)
+            tolerance = max(1e-6, abs(expected) * 1e-5)
+            if np.isfinite(actual) and abs(actual - expected) <= tolerance:
+                continue
+            instance_note = " The joint is an instance proxy and requires a derived asset or de-instancing."
+            is_instance_proxy = callable(getattr(prim, "IsInstanceProxy", None)) and prim.IsInstanceProxy()
+            mismatches.append(
+                f"{baseline.path} {label} expected {expected:.9g}, composed {actual:.9g}."
+                + (instance_note if is_instance_proxy else " A stronger USD opinion may be masking the write.")
+            )
+    if mismatches:
+        raise RuntimeError("USD joint-gain writeback was authored but is not effective: " + "; ".join(mismatches))
 
 
 def _has_parameter_space_usd_writeback(

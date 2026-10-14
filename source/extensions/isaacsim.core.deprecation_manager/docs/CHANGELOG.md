@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.5] - 2026-09-22
+### Fixed
+- Stop matching a node type against multiple deprecation entries, which could crash the OmniGraph migration on stage open.
+- Stop rewriting `omni.isaac.wheeled_robots.AckermannController` nodes to an incompatible type; report them for manual migration instead.
+
 ## [0.4.4] - 2026-08-17
 ### Fixed
 - Avoid accessing invalidated prims while migrating deprecated OmniGraph nodes.

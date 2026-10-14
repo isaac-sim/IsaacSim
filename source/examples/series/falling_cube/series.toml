@@ -3,7 +3,7 @@
 
 id = "falling_cube"
 title = "Falling Cube"
-summary = "Author a cube, simulate it falling, and visualize the result."
+summary = "Author a cube, simulate it falling, then visualize and render the result."
 kind = "sequence"
 
 [[step]]
@@ -17,3 +17,11 @@ level = "beginner"
 [[step]]
 example = "falling_cube.visualize_simulation"
 level = "beginner"
+
+[[step]]
+example = "falling_cube.render_cube.python"
+level = "intermediate"
+
+[[step]]
+example = "falling_cube.render_cube.cpp_python"
+level = "expert"

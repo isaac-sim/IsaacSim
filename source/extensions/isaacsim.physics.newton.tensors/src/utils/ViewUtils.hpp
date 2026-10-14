@@ -19,6 +19,8 @@
 // Provides index resolution for CPU (resolveViewIndices) and GPU (resolveGpuViewIndices)
 // paths, source data staging (ensureGpuSrc), and CUDA memory helpers.
 
+#include "gpu/CudaKernels.hpp"
+
 #include <carb/logging/Log.h>
 
 #include <omni/physics/tensors/TensorDesc.h>
@@ -27,6 +29,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cuda_runtime.h>
+#include <utility>
 #include <vector>
 
 namespace isaacsim
@@ -89,6 +92,107 @@ inline bool validateUint8Tensor(
         return false;
     }
     return true;
+}
+
+/// Validates a uint8/int8 tensor's dtype and size but allows the tensor to reside on any device.
+inline bool validateUint8TensorAnyDevice(const TensorDesc* tensor,
+                                         size_t expectedElements,
+                                         const char* tensorName,
+                                         const char* funcName)
+{
+    if (!tensor || !tensor->data)
+    {
+        CARB_LOG_ERROR("%s tensor is null or has no data in %s", tensorName, funcName);
+        return false;
+    }
+    if (!checkTensorSizeExact(*tensor, expectedElements, tensorName, funcName))
+    {
+        return false;
+    }
+    if (tensor->dtype != TensorDataType::eUint8 && tensor->dtype != TensorDataType::eInt8)
+    {
+        CARB_LOG_ERROR("Incompatible data type of %s tensor in function %s: expected 8-bit integer, received %s",
+                       tensorName, funcName, getTensorDtypeCstr(*tensor));
+        return false;
+    }
+    return true;
+}
+
+/// Converts a boolean mask to view indices and invokes an indexed setter.
+/// GPU masks are converted in place on the device to avoid host synchronization.
+template <typename Setter>
+bool applyMaskToSetter(const TensorDesc* maskTensor,
+                       uint32_t viewCount,
+                       std::vector<uint32_t>& scratchMaskIndices,
+                       int modelDeviceOrdinal,
+                       int* deviceIndexScratch,
+                       const char* funcName,
+                       Setter&& setter)
+{
+    if (!validateUint8TensorAnyDevice(maskTensor, viewCount, "mask", funcName))
+    {
+        return false;
+    }
+
+    if (maskTensor->device >= 0)
+    {
+        if (modelDeviceOrdinal < 0 || !deviceIndexScratch)
+        {
+            CARB_LOG_ERROR("GPU mask tensor is not supported by the CPU view in %s", funcName);
+            return false;
+        }
+        if (maskTensor->device != modelDeviceOrdinal)
+        {
+            CARB_LOG_ERROR("Incompatible device of mask tensor in function %s: expected %d, received %d", funcName,
+                           modelDeviceOrdinal, maskTensor->device);
+            return false;
+        }
+        if (!launchMaskToIndices(
+                static_cast<const uint8_t*>(maskTensor->data), deviceIndexScratch, static_cast<int>(viewCount)))
+        {
+            return false;
+        }
+
+        // Keep one slot per view row. Masked rows contain the -1 sentinel and are
+        // skipped by GPU scatter kernels, avoiding a device-to-host selected-count read.
+        TensorDesc indexTensor{};
+        indexTensor.device = modelDeviceOrdinal;
+        indexTensor.dtype = TensorDataType::eInt32;
+        indexTensor.numDims = 1;
+        indexTensor.dims[0] = static_cast<int>(viewCount);
+        indexTensor.data = deviceIndexScratch;
+        indexTensor.ownData = false;
+        return std::forward<Setter>(setter)(&indexTensor);
+    }
+
+    const auto* maskValues = static_cast<const uint8_t*>(maskTensor->data);
+    scratchMaskIndices.clear();
+    scratchMaskIndices.reserve(viewCount);
+    for (uint32_t i = 0; i < viewCount; ++i)
+    {
+        if (maskValues[i] != 0)
+        {
+            scratchMaskIndices.push_back(i);
+        }
+    }
+
+    if (scratchMaskIndices.empty())
+    {
+        return true;
+    }
+    if (scratchMaskIndices.size() == viewCount)
+    {
+        return std::forward<Setter>(setter)(nullptr);
+    }
+
+    TensorDesc indexTensor{};
+    indexTensor.device = -1;
+    indexTensor.dtype = TensorDataType::eInt32;
+    indexTensor.numDims = 1;
+    indexTensor.dims[0] = static_cast<int>(scratchMaskIndices.size());
+    indexTensor.data = scratchMaskIndices.data();
+    indexTensor.ownData = false;
+    return std::forward<Setter>(setter)(&indexTensor);
 }
 
 /// Validates an optional index tensor. If provided, it must reside on the expected device

@@ -22,6 +22,7 @@
 
 #include <isaacsim/common/logging/Logging.hpp>
 #include <ovphysx/ovphysx.h>
+#include <ovstage/ovstage_population.h>
 
 #include <atomic>
 #include <memory>
@@ -47,6 +48,26 @@ bool g_started = false;
 // thread drives the data plane.
 std::atomic<int> g_tensorDeviceOrdinal{ -1 };
 
+void registerPhysxSchemas()
+{
+    ovphysx_string_t schemaRoot{};
+    const ovphysx_result_t rootResult = ovphysx_get_codeless_schema_root(&schemaRoot);
+    if (rootResult.status != OVPHYSX_API_SUCCESS || !schemaRoot.ptr || schemaRoot.length == 0)
+    {
+        const ovphysx_string_t error = ovphysx_get_last_error();
+        throw std::runtime_error(std::string("Unable to locate the OVPhysX codeless schemas: ") +
+                                 std::string(error.ptr ? error.ptr : "", error.ptr ? error.length : 0));
+    }
+
+    const ovx_string_t path{ schemaRoot.ptr, schemaRoot.length };
+    if (ovstage_population_register_usd_schemas(&path, 1) != OVSTAGE_OK)
+    {
+        const ovx_string_t error = ovstage_population_get_last_error();
+        throw std::runtime_error(std::string("Unable to register the OVPhysX codeless schemas: ") +
+                                 std::string(error.ptr ? error.ptr : "", error.ptr ? error.length : 0));
+    }
+}
+
 } // namespace
 
 void setTensorDeviceOrdinal(int ordinal)
@@ -71,6 +92,7 @@ bool activate()
             return true;
         }
 
+        registerPhysxSchemas();
         OvPhysxAdapter::Configuration configuration;
         g_adapter = OvPhysxAdapter::create(configuration);
         size_t simulationId = g_adapter->registerWithManager("ovphysx");

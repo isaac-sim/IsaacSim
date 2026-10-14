@@ -69,6 +69,11 @@ skills:
     scope: external
     category: Repo-native, public
 
+  - path: skills/isaac-sim-web-viewer
+    audience: user
+    scope: external
+    category: Repo-native, public
+
   - path: skills/profile-isaac-sim
     audience: user
     scope: external
@@ -110,6 +115,11 @@ skills:
     category: Foundations and operating loop
 
   - path: skills/urdf-mjcf-to-usd-conversion
+    audience: user
+    scope: external
+    category: Robot asset pipeline
+
+  - path: skills/physx-to-newton-conversion
     audience: user
     scope: external
     category: Robot asset pipeline

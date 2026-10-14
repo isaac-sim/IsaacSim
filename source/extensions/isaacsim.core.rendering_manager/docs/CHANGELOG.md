@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3] - 2026-09-23
+### Fixed
+- `ViewportManager.set_camera_view`: preserve the camera-local center of interest while accepting world-space targets.
+
+## [0.5.2] - 2026-09-01
+### Fixed
+- `ViewportManager.set_camera_view`: place parented cameras at the requested world eye and keep world up in parent space.
+
 ## [0.5.1] - 2026-08-11
 ### Fixed
 - Declare the `isaacsim.core.simulation_manager` test dependency required by the rendering manager tests.

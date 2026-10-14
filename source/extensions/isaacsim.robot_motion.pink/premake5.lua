@@ -23,8 +23,8 @@ if platform_target == "linux-x86_64" then
         { "docs", ext.target_dir.."/docs" },
         { "python", ext.target_dir.."/isaacsim/robot_motion/pink" },
         { "$root/_build/target-deps/isaac_pink_prebundle", ext.target_dir.."/pip_prebundle" },
-        -- Reuse URDF files from the cumotion extension's robot_configurations.
-        { "$root/source/extensions/isaacsim.robot_motion.cumotion/robot_configurations", ext.target_dir.."/robot_configurations" },
+        -- Reuse URDF files from the robot-motion library's cuMotion configurations.
+        { "$root/source/libraries/isaacsim/robot_motion/cumotion/python/robot_configurations", ext.target_dir.."/robot_configurations" },
     }
 else
     print("SKIPPING isaacsim.robot_motion.pink - only supported on linux-x86_64")

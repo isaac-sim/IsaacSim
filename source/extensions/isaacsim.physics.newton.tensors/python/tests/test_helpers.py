@@ -256,6 +256,34 @@ class NewtonTensorTestBase(omni.kit.test.AsyncTestCase):
         """
         return wp.from_numpy(numpy_arr, dtype=dtype, device=self.DEVICE)
 
+    def call_masked_setter(
+        self,
+        view: tensors.ArticulationView | tensors.RigidBodyView,
+        method_name: str,
+        data: np.ndarray,
+        mask: np.ndarray,
+        mask_dtype: type = wp.uint8,
+    ) -> bool:
+        """Call a masked C++ ABI setter while retaining the source tensor lifetimes.
+
+        Args:
+            view: Tensor view whose backend setter should be invoked.
+            method_name: Name of the masked backend setter.
+            data: Full source buffer with one row per view element.
+            mask: Uint8 selection mask with one entry per view element.
+            mask_dtype: Warp dtype used for the mask tensor.
+
+        Returns:
+            Whether the backend setter succeeded.
+        """
+        data_tensor = self.to_warp(data)
+        mask_tensor = self.to_warp(mask, mask_dtype)
+        setter = getattr(view._backend, method_name)
+        return setter(
+            view._frontend.get_tensor_desc(data_tensor),
+            view._frontend.get_tensor_desc(mask_tensor),
+        )
+
     def check_articulation_view(
         self,
         view: tensors.ArticulationView,

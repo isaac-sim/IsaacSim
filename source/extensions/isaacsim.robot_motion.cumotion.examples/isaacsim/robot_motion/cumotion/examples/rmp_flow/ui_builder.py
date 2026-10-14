@@ -24,6 +24,7 @@ scenario.
 import asyncio
 from typing import Any
 
+import omni.kit.app
 import omni.timeline
 import omni.ui as ui
 from isaacsim.gui.components import Button, CollapsableFrame, StateButton
@@ -73,6 +74,7 @@ class UIBuilder:
         self.wrapped_ui_elements.clear()
         if self._scenario is not None:
             self._scenario.cleanup()
+            self._scenario = None
 
     def on_stage_changed(self, event: Any) -> None:
         """Reset widget state in response to a USD stage event.
@@ -157,15 +159,29 @@ class UIBuilder:
     def _on_reset_btn(self) -> None:
         """Handle RESET click - stop the timeline and re-prime the controller."""
         if self._reset_task is not None and not self._reset_task.done():
-            self._reset_task.cancel()
+            return
         self._reset_task = run_coroutine(self._reset_scene_async())
 
     async def _reset_scene_async(self) -> None:
         """Stop the timeline, reset the scenario, and re-enable the run button."""
-        self._timeline.stop()
-        self._scenario.reset()
-        self._scenario_state_btn.reset()
-        self._scenario_state_btn.enabled = True
+        scenario = self._scenario
+        if scenario is None:
+            return
+        self._scenario_state_btn.enabled = False
+        self._reset_btn.enabled = False
+        try:
+            self._timeline.stop()
+            # Drain STOP callbacks and physics teardown before rebuilding the controller.
+            await omni.kit.app.get_app().next_update_async()
+            # LOAD or an external stage change may replace the scene while awaiting STOP.
+            if self._scenario is not scenario:
+                return
+            scenario.reset()
+            self._scenario_state_btn.reset()
+            self._scenario_state_btn.enabled = True
+        finally:
+            if self._scenario is scenario:
+                self._reset_btn.enabled = True
 
     def _on_run_scenario_a_text(self) -> None:
         """Play the timeline when the Run Scenario StateButton is clicked with a_text "RUN"."""

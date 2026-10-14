@@ -12,4 +12,13 @@ Cursor and Claude Code load the same skills via their respective pointer mechani
 
 [`.cursor/rules/`](.cursor/rules/) holds the `*.mdc` style and policy rules (C++ codestyle, Python codestyle, docs style, extension structure, build instructions, pip packaging, ...). Load them on demand when editing code that falls under their domain.
 
+Choose the ownership model before selecting build, test, packaging, logging, or release instructions:
+
+- Kit-independent API or implementation: `source/libraries` and `library_module_structure.mdc`.
+- Kit lifecycle, UI, settings, OmniGraph, or application adapter: `source/extensions` and `extension_structure.mdc`.
+- Delivery of a library through Kit: stage its wheel in a thin extension; do not duplicate the library implementation.
+
+Use the owning build: the repository Repo/Premake flow for extensions and applications, and the standalone CMake/Pixi
+flow under `source/libraries` for library modules, wheels, SDKs, and `source/examples`.
+
 Skills are authored once under `skills/`. `.claude/skills/` contains symlinks into `skills/` so Claude Code's native skill discovery works without duplication. `.cursor/skills/` is retired.

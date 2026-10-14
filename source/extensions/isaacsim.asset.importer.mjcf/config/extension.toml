@@ -1,5 +1,5 @@
 [package]
-version = "3.12.1"
+version = "3.13.0"
 category = "Simulation"
 title = "MJCF Importer"
 description = "Core MJCF importer functionality - converts MuJoCo's MJCF (MuJoCo XML Format) robot description files into Omniverse USD scenes. UI provided by isaacsim.asset.importer.mjcf.ui."
@@ -16,6 +16,9 @@ writeTarget.kit = true
 "isaacsim.pip.newton" = {}
 "omni.usd.schema.mujoco" = {}
 "omni.usdex.libs" = {}
+
+[[python.module]]
+path = "pip_prebundle"
 
 [[python.module]]
 name = "isaacsim.asset.importer.mjcf"

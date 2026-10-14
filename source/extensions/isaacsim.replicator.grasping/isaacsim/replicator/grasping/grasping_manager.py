@@ -16,7 +16,7 @@
 """Manages grasp pose generation, simulation, and evaluation for robotic grasping workflows."""
 
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 import carb
 import isaacsim.replicator.grasping.grasping_utils as grasping_utils
@@ -41,6 +41,7 @@ DEFAULT_SAMPLER_CONFIG = {
     "random_seed": -1,
     "verbose": False,
 }
+CONFIG_COMPONENTS = frozenset({"gripper", "phases", "object", "pregrasp", "poses", "sampler"})
 
 
 @dataclass
@@ -447,9 +448,13 @@ class GraspingManager:
             overwrite: Whether to overwrite the file if it exists.
         """
         config = {}
-        # Defines valid short names for configuration components.
-        all_short_names = {"gripper", "phases", "object", "pregrasp", "poses", "sampler"}
-        components_to_save_short_names = set(components) if components is not None else all_short_names
+        components_to_save_short_names = set(components) if components is not None else set(CONFIG_COMPONENTS)
+        unknown_short_names = components_to_save_short_names - CONFIG_COMPONENTS
+        if unknown_short_names:
+            carb.log_warn(
+                f"Ignoring unknown config components: {', '.join(sorted(map(str, unknown_short_names)))}. "
+                f"Valid components: {', '.join(sorted(CONFIG_COMPONENTS))}."
+            )
 
         if "gripper" in components_to_save_short_names and self.gripper_path:
             config["gripper_path"] = self.gripper_path
@@ -503,22 +508,31 @@ class GraspingManager:
 
         Returns:
             A dictionary mapping each *requested short component name* to its loading status message.
+            Unknown component names and malformed entries are reported in the status messages instead of raising.
         """
-        config_data = grasping_utils.read_yaml_config(file_path)
+        requested_short_names = set(components) if components is not None else set(CONFIG_COMPONENTS)
+        unknown_short_names = requested_short_names - CONFIG_COMPONENTS
+        if unknown_short_names:
+            carb.log_warn(
+                f"Ignoring unknown config components: {', '.join(sorted(map(str, unknown_short_names)))}. "
+                f"Valid components: {', '.join(sorted(CONFIG_COMPONENTS))}."
+            )
+            requested_short_names -= unknown_short_names
+        unknown_status = dict.fromkeys(unknown_short_names, "Failed (Unknown component)")
 
-        # Defines valid short names for configuration components.
-        all_short_names = {"gripper", "phases", "object", "pregrasp", "poses", "sampler"}
-        requested_short_names = set(components) if components is not None else all_short_names
-
-        load_status = dict.fromkeys(all_short_names, "Not requested")
+        load_status = dict.fromkeys(CONFIG_COMPONENTS, "Not requested")
         for key in requested_short_names:
             load_status[key] = "Requested, pending"
 
+        config_data = grasping_utils.read_yaml_config(file_path)
         if config_data is None:
             carb.log_warn(f"Failed to read or parse configuration file: {file_path}")
             for key in requested_short_names:
                 load_status[key] = "Failed (Could not read/parse file)"
-            return {key: status for key, status in load_status.items() if key in requested_short_names}
+            return {
+                **{key: status for key, status in load_status.items() if key in requested_short_names},
+                **unknown_status,
+            }
 
         # Load gripper path
         if "gripper" in requested_short_names:
@@ -556,21 +570,54 @@ class GraspingManager:
                         carb.log_warn("Cannot validate phases: No valid gripper is currently set.")
                         load_status["phases"] = "Skipped (No valid gripper)"
                     else:  # Gripper is set, proceed with validation
-                        for phase_config in phase_configs:
+                        phase_field_names = {phase_field.name for phase_field in fields(GraspPhase)}
+                        malformed_phase_count = 0
+                        for phase_index, phase_config in enumerate(phase_configs):
                             if not isinstance(phase_config, dict):
-                                carb.log_warn("Invalid phase format in config, skipping phase.")
+                                carb.log_warn(f"Skipping grasp_phases[{phase_index}]: entry is not a dictionary.")
+                                malformed_phase_count += 1
+                                continue
+                            phase_name = phase_config.get("name")
+                            if not isinstance(phase_name, str) or not phase_name:
+                                carb.log_warn(
+                                    f"Skipping grasp_phases[{phase_index}]: missing or invalid required key 'name'."
+                                )
+                                malformed_phase_count += 1
+                                continue
+                            unknown_phase_keys = set(phase_config) - phase_field_names
+                            if unknown_phase_keys:
+                                carb.log_warn(
+                                    f"Ignoring unknown keys in grasp_phases[{phase_index}] ('{phase_name}'): "
+                                    f"{', '.join(sorted(map(str, unknown_phase_keys)))}."
+                                )
+                                phase_config = {
+                                    key: value for key, value in phase_config.items() if key in phase_field_names
+                                }
+                            joint_drive_targets = phase_config.get("joint_drive_targets") or {}
+                            if not isinstance(joint_drive_targets, dict):
+                                carb.log_warn(
+                                    f"Skipping grasp_phases[{phase_index}] ('{phase_name}'): "
+                                    "'joint_drive_targets' is not a dictionary."
+                                )
+                                malformed_phase_count += 1
                                 continue
                             valid_phase = True
-                            for joint_path_val in phase_config.get("joint_drive_targets", {}):
-                                stage = omni.usd.get_context().get_stage()
-                                joint_prim = stage.GetPrimAtPath(joint_path_val) if stage else None
+                            stage = omni.usd.get_context().get_stage()
+                            for joint_path_val in joint_drive_targets:
+                                joint_prim = (
+                                    stage.GetPrimAtPath(joint_path_val)
+                                    if stage
+                                    and isinstance(joint_path_val, str)
+                                    and Sdf.Path.IsValidPathString(joint_path_val)
+                                    else None
+                                )
                                 if (
                                     not joint_prim
                                     or not joint_prim.IsValid()
                                     or not joint_prim.IsA(UsdPhysics.Joint)
                                     or not joint_path_val.startswith(current_gripper_path)
                                 ):
-                                    invalid_joint_paths.add(joint_path_val)
+                                    invalid_joint_paths.add(str(joint_path_val))
                                     valid_phase = False
                                     break
                             if valid_phase:
@@ -596,6 +643,8 @@ class GraspingManager:
                                 self.create_and_add_grasp_phase(**phase_dict)
                             print(f"Loaded {len(self.grasp_phases)} grasp phases.")
                             load_status["phases"] = "Success"
+                            if malformed_phase_count:
+                                load_status["phases"] += " (some entries skipped due to errors)"
                         else:
                             self.grasp_phases = []
                             load_status["phases"] = "Failed (No valid phase data found in list)"
@@ -782,7 +831,7 @@ class GraspingManager:
 
         # Filter load_status to only include initially requested short names
         final_status = {key: status for key, status in load_status.items() if key in requested_short_names}
-        return final_status
+        return {**final_status, **unknown_status}
 
     def request_workflow_stop(self) -> None:
         """Request the current grasp evaluation workflow to stop gracefully."""

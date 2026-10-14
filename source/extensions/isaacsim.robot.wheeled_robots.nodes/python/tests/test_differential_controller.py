@@ -16,6 +16,7 @@
 """Unit tests for the DifferentialController OmniGraph node."""
 
 import carb
+import carb.logging
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.graph.core as og
@@ -113,6 +114,59 @@ class TestDifferentialControllerNode(ogts.OmniGraphTestCase):
 
         self.assertLess(og.Controller(og.Controller.attribute("outputs:velocityCommand", diff_node)).get()[0], 8.125)
         self.assertLess(og.Controller(og.Controller.attribute("outputs:velocityCommand", diff_node)).get()[1], 11.875)
+
+    async def test_differential_controller_zero_dt_warning(self) -> None:
+        """Warn once for repeated zero steps while preserving outputs and acceleration state."""
+        graph, [node], _, _ = og.Controller.edit(
+            {"graph_path": "/ActionGraph"},
+            {
+                og.Controller.Keys.CREATE_NODES: [
+                    ("DifferentialController", "isaacsim.robot.wheeled_robots.DifferentialController"),
+                ],
+                og.Controller.Keys.SET_VALUES: [
+                    ("DifferentialController.inputs:wheelRadius", 0.5),
+                    ("DifferentialController.inputs:wheelDistance", 1.0),
+                    ("DifferentialController.inputs:linearVelocity", 1.0),
+                    ("DifferentialController.inputs:angularVelocity", 1.0),
+                    ("DifferentialController.inputs:maxAcceleration", 1.0),
+                    ("DifferentialController.inputs:maxDeceleration", 1.0),
+                    ("DifferentialController.inputs:maxAngularAcceleration", 1.0),
+                ],
+            },
+        )
+        warnings: list[str] = []
+
+        def capture(source: str, level: int, filename: str, line_number: int, message: str) -> None:
+            if "Invalid deltaTime" in message:
+                warnings.append(message)
+
+        logging = carb.logging.acquire_logging()
+        handle = logging.add_logger(capture)
+        dt = og.Controller.attribute("inputs:dt", node)
+        output = og.Controller.attribute("outputs:velocityCommand", node)
+        try:
+            for _ in range(10):
+                await og.Controller.evaluate(graph)
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(list(og.Controller.get(output)), [0.0, 0.0])
+
+            og.Controller.set(dt, 0.1)
+            await og.Controller.evaluate(graph)
+            velocities = list(og.Controller.get(output))
+            self.assertAlmostEqual(velocities[0], 0.1)
+            self.assertAlmostEqual(velocities[1], 0.3)
+
+            og.Controller.set(dt, 0.0)
+            await og.Controller.evaluate(graph)
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(list(og.Controller.get(output)), velocities)
+
+            og.Controller.set(dt, -0.1)
+            await og.Controller.evaluate(graph)
+            self.assertEqual(len(warnings), 2)
+            self.assertEqual(list(og.Controller.get(output)), velocities)
+        finally:
+            logging.remove_logger(handle)
 
     async def test_differential_controller_node_reset(self) -> None:
         """Test differential controller node reset behavior when timeline is stopped and restarted."""

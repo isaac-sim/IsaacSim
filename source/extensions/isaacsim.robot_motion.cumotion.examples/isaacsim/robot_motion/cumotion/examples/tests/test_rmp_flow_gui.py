@@ -15,8 +15,11 @@
 
 """Tests for the RMPflow example GUI."""
 
-from unittest.mock import patch
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
+import carb.eventdispatcher
 import omni.kit.app
 import omni.kit.test
 from isaacsim.core.experimental.utils import stage as stage_utils
@@ -55,10 +58,17 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         )
         self.ui_builder = UIBuilder()
         self.ui_builder.build_ui()
+        # Match the browser subscription; without it STOP never exercises the reset race.
+        self._stop_observer = carb.eventdispatcher.get_eventdispatcher().observe_event(
+            event_name=omni.timeline.GLOBAL_EVENT_STOP,
+            on_event=self.ui_builder.on_timeline_event,
+            observer_name="TestRmpFlowGui.on_timeline_stop",
+        )
         await omni.kit.app.get_app().next_update_async()
 
     async def tearDown(self) -> None:
         """Clean up the UI builder after each test."""
+        self._stop_observer = None
         self.ui_builder.cleanup()
         await omni.kit.app.get_app().next_update_async()
         await omni.kit.app.get_app().next_update_async()
@@ -175,6 +185,10 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         for _ in range(20):
             await omni.kit.app.get_app().next_update_async()
 
+        self.assertTrue(self.ui_builder._reset_task.done())
+        self.ui_builder._reset_task.result()
+        self.assertTrue(self.ui_builder._scenario_state_btn.enabled)
+
         # The timeline should be paused:
         self.assertFalse(omni.timeline.get_timeline_interface().is_playing())
 
@@ -187,8 +201,10 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
         self.ui_builder._scenario_state_btn.trigger_click_if_a_state()  # FIRST CLICK
         await omni.kit.app.get_app().next_update_async()
 
-        # The timeline should be playing:
+        # The timeline and controller must both restart after a single reset.
         self.assertTrue(omni.timeline.get_timeline_interface().is_playing())
+        advanced = await wait_until(lambda: self.ui_builder._scenario._sim_time > 0.0, timeout_sec=30.0)
+        self.assertTrue(advanced, "Controller did not advance after the first reset")
 
         # The state button (run scenario button) should not be in state A anymore:
         self.assertFalse(self.ui_builder._scenario_state_btn.is_in_a_state())
@@ -201,3 +217,41 @@ class TestRmpFlowGui(omni.kit.test.AsyncTestCase):
 
         # The state button (run scenario button) should be in state A again:
         self.assertTrue(self.ui_builder._scenario_state_btn.is_in_a_state())
+
+
+class TestRmpFlowResetLifecycle(omni.kit.test.AsyncTestCase):
+    """Check control ownership when a reset is suspended at the update boundary."""
+
+    async def test_reset_does_not_restore_controls_for_replaced_scene(self) -> None:
+        """An obsolete reset must not reset a new scene or re-enable its controls."""
+        for replacement in (Mock(), None):
+            builder = object.__new__(UIBuilder)
+            original = Mock()
+            builder._scenario = original
+            builder._timeline = Mock()
+            builder._scenario_state_btn = SimpleNamespace(enabled=True, reset=Mock())
+            builder._reset_btn = SimpleNamespace(enabled=True)
+            entered = asyncio.Event()
+            resume = asyncio.Event()
+
+            async def next_update() -> None:
+                entered.set()
+                await resume.wait()
+
+            with patch("omni.kit.app.get_app", return_value=SimpleNamespace(next_update_async=next_update)):
+                task = asyncio.create_task(builder._reset_scene_async())
+                try:
+                    await entered.wait()
+                    self.assertFalse(builder._scenario_state_btn.enabled)
+                    self.assertFalse(builder._reset_btn.enabled)
+                    builder._scenario = replacement
+                    resume.set()
+                    await task
+                    original.reset.assert_not_called()
+                    if replacement is not None:
+                        replacement.reset.assert_not_called()
+                    self.assertFalse(builder._scenario_state_btn.enabled)
+                    self.assertFalse(builder._reset_btn.enabled)
+                finally:
+                    resume.set()
+                    await task

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0] - 2026-09-24
+### Added
+- Added UI widgets for Newton MPM and deformable schemas.
+
+### Changed
+- Updated Newton USD schema compatibility to 0.5.0.
+
 ## [1.6.1] - 2026-08-25
 ### Fixed
 - Match the registered Newton simulator name when testing simulation capabilities.

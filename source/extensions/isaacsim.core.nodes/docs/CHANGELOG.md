@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.10.15] - 2026-09-29
+### Fixed
+
+- Prefer robot-schema joint names, retaining legacy fallback with a deprecation warning and preserving link names.
+
+## [5.10.14] - 2026-09-23
+### Fixed
+- `OnPhysicsStep` keeps graph-level physics callbacks valid when one of multiple nodes is deleted.
+
 ## [5.10.13] - 2026-08-28
 ### Fixed
 - `IsaacArticulationController`: `jointIndices=[0]` no longer broadcasts the command to all DOFs instead of selecting DOF 0.

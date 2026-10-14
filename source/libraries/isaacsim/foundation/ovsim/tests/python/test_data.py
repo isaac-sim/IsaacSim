@@ -33,10 +33,10 @@ def test_read_write_float_attribute() -> None:
     data.write(path, "size", 5.0)
     assert data.read(path, "size").numpy().item() == 5.0
 
-    # TODO: Update when display color is supported
+    # display colors are authored as a one-element array of RGB triples, and are unauthored to begin with
     assert data.read(path, "color").list() == []
     data.write(path, "color", "red")
-    assert data.read(path, "color").list() == []
+    assert data.read(path, "color").list() == [1.0, 0.0, 0.0]
 
     assert authoring.close_stage()
 

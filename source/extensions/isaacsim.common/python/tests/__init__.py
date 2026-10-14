@@ -13,6 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the isaacsim.common Kit carrier."""
+"""Tests for the isaacsim.common Kit extension."""
 
 scan_for_test_modules = True

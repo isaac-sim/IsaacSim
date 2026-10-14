@@ -22,7 +22,9 @@ import omni.graph.core as og
 import warp as wp
 from isaacsim.core.experimental.utils.ops import place
 from isaacsim.core.experimental.utils.transform import euler_angles_to_quaternion
-from isaacsim.replicator.experimental.domain_randomization import RIGID_PRIM_ATTRIBUTES
+from isaacsim.replicator.experimental.domain_randomization import (
+    RIGID_PRIM_ATTRIBUTES,
+)
 from isaacsim.replicator.experimental.domain_randomization import physics_view as physics
 
 OPERATION_TYPES = ["direct", "additive", "scaling"]
@@ -130,8 +132,8 @@ def get_bucketed_values(
     new_samples = samples.copy()
 
     if distribution == "gaussian":
-        lo = dist_param_1 - 2 * np.sqrt(dist_param_2)
-        hi = dist_param_1 + 2 * np.sqrt(dist_param_2)
+        lo = dist_param_1 - 2 * dist_param_2
+        hi = dist_param_1 + 2 * dist_param_2
     elif distribution in ("uniform", "loguniform"):
         lo = dist_param_1
         hi = dist_param_2

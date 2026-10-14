@@ -1,5 +1,5 @@
 [package]
-version = "0.2.2"
+version = "0.2.3"
 category = "Simulation"
 title = "Robot Self Collision Detector"
 description = "UI panel for detecting and managing self-collision pairs between rigid body links of a robot articulation"
@@ -102,6 +102,9 @@ stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     ### test-suite specific args
     "*omni.syntheticdata.scripts.extension*stageFrameHistoryCount*",
+    ### expected: pool exhaustion is asserted in TestSelectionGroupAllocation
+    "*register_selection_group returned 0*",
+    "*unavailable: register_selection_group failed*",
 ]
 
 [[test]]
@@ -163,6 +166,9 @@ stdoutFailPatterns.exclude = [
     '*The NumPy module was reloaded*',
     ### test-suite specific args
     "*omni.syntheticdata.scripts.extension*stageFrameHistoryCount*",
+    ### expected: pool exhaustion is asserted in TestSelectionGroupAllocation
+    "*register_selection_group returned 0*",
+    "*unavailable: register_selection_group failed*",
 ]
 
 [documentation]

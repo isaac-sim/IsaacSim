@@ -77,17 +77,33 @@ if _HAS_UI_TEST:
 
         async def _open_poser_window(self) -> None:
             """Open the Robot Poser window via the menu."""
-            await self.menu_click_with_retry(MENU_PATH, window_name=WINDOW_TITLE)
-            await ui_test.human_delay()
-            for _ in range(5):
-                await omni.kit.app.get_app().next_update_async()
+            await self._close_poser_window()
+            await self.trigger_menu_item(MENU_PATH)
+            await self._wait_for_poser_visibility(True)
 
         async def _close_poser_window(self) -> None:
             """Close the Robot Poser window if it is visible."""
             window = ui_test.find(WINDOW_TITLE)
-            if window is not None:
-                await self.menu_click_with_retry(MENU_PATH)
-                await ui_test.human_delay()
+            if window is not None and window.widget.visible:
+                await self.trigger_menu_item(MENU_PATH)
+                await self._wait_for_poser_visibility(False)
+
+        async def _wait_for_poser_visibility(self, expected_visible: bool) -> None:
+            """Wait for the Robot Poser window to reach the expected visibility state.
+
+            Args:
+                expected_visible: Whether the window should become visible.
+            """
+            for _ in range(100):
+                window = ui_test.find(WINDOW_TITLE)
+                visible = window is not None and bool(window.widget.visible)
+                if visible == expected_visible:
+                    for _ in range(5):
+                        await omni.kit.app.get_app().next_update_async()
+                    return
+                await omni.kit.app.get_app().next_update_async()
+
+            self.fail(f"Robot Poser window did not become {'visible' if expected_visible else 'hidden'}")
 
         # --------------------------------------------------------------
         # Tests
@@ -97,7 +113,8 @@ if _HAS_UI_TEST:
             """Verify the Robot Poser window opens via the menu."""
             await self._open_poser_window()
             window = ui_test.find(WINDOW_TITLE)
-            self.assertIsNotNone(window, "Robot Poser window should be visible after menu click")
+            self.assertIsNotNone(window, "Robot Poser window should exist after its menu action")
+            self.assertTrue(window.widget.visible, "Robot Poser window should be visible after its menu action")
             await self._close_poser_window()
 
         async def test_named_poses_frame_exists(self) -> None:

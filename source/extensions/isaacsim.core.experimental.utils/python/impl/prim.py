@@ -261,6 +261,9 @@ def find_matching_prim_paths(path: str, *, traverse: bool = False) -> list[str]:
     Returns:
         List of matching prim paths.
 
+    Raises:
+        ValueError: If the path expression is empty or contains only whitespace.
+
     Example:
 
     .. code-block:: python
@@ -286,6 +289,8 @@ def find_matching_prim_paths(path: str, *, traverse: bool = False) -> list[str]:
         >>> prim_utils.find_matching_prim_paths(".*_[ab]", traverse=True)
         ['/World/prim_0/prim_a', '/World/prim_0/prim_b']
     """
+    if not path.strip():
+        raise ValueError("Path expression must not be empty")
     stage = stage_utils.get_current_stage()
     # check for a valid prim path first to avoid unnecessary regex search
     if Sdf.Path.IsValidPathString(path):

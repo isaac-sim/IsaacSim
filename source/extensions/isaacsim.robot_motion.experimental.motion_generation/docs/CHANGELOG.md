@@ -1,5 +1,16 @@
 # Changelog
 
+## [7.2.0] - 2026-09-22
+### Changed
+- Deliver the motion generation implementation from the Kit-independent `isaacsim-robot-motion` library wheel. The `isaacsim.robot_motion.experimental.motion_generation` import path and public API are unchanged; the extension stages the wheel in `pip_prebundle` and depends on the `isaacsim.common`, `isaacsim.core.experimental.objects`, `isaacsim.core.experimental.prims`, `isaacsim.core.experimental.utils`, and `isaacsim.robot_motion.schema` extensions.
+
+### Removed
+- Remove the in-extension Python implementation (now provided by the library wheel). Behavioral tests remain in the extension and run against the wheel-provided implementation.
+
+## [7.1.3] - 2026-09-04
+### Changed
+- Prevent transform reset during world binding
+
 ## [7.1.2] - 2026-08-26
 ### Changed
 - Replaced checking local scaling to checking global uniform scaling

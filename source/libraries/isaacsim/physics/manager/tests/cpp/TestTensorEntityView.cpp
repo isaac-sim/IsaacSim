@@ -15,10 +15,11 @@
 
 #include <doctest/doctest.h>
 #include <isaacsim/physics/manager/tensors/EntityView.hpp>
-#include <isaacsim/physics/registration/tensors/TensorDescription.hpp>
-#include <isaacsim/physics/registration/tensors/TensorSpecification.hpp>
+#include <isaacsim/physics/registration/tensors/ArrayTensorSpecification.hpp>
 
-#include <cstring>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -27,7 +28,7 @@ using namespace isaacsim::physics::tensors;
 namespace
 {
 
-// Concrete subclass for testing — exposes the protected `registerImplementation` /
+// Concrete subclass for testing — exposes the protected `registerArrayImplementation` /
 // `registerMetadata` calls and lets tests stage callbacks.
 class TestableEntityView : public EntityView
 {
@@ -36,32 +37,50 @@ public:
     {
     }
 
-    using EntityView::registerImplementation;
+    using EntityView::registerArrayImplementation;
     using EntityView::registerMetadata;
 };
 
-// Build a TensorDescription that points at a heap-owned float buffer.
+// Holds a float buffer and hands out arrays viewing it, standing in for a provider that reads into
+// storage it owns.
 class OwnedFloatTensor
 {
 public:
     std::vector<float> storage;
-    TensorDescription descriptor;
+    std::vector<int64_t> shape;
 
-    OwnedFloatTensor(std::vector<float> data, std::vector<int64_t> shape) : storage(std::move(data))
+    OwnedFloatTensor(std::vector<float> data, std::vector<int64_t> dimensions)
+        : storage(std::move(data)), shape(std::move(dimensions))
     {
-        descriptor.data = storage.data();
-        descriptor.dtype = DType::eFloat32;
-        descriptor.shape = std::move(shape);
-        descriptor.device = DeviceKind::eCpu;
-        descriptor.deviceOrdinal = -1;
+    }
+
+    array::Array array() const
+    {
+        return array::Array::fromBuffer(
+            std::shared_ptr<std::byte[]>(
+                std::shared_ptr<void>{}, reinterpret_cast<std::byte*>(const_cast<float*>(storage.data()))),
+            storage.size() * sizeof(float), array::Shape(shape), array::Dtype::Float32(), array::Device::Cpu());
     }
 };
 
-TensorSpecification makeFloat32Specification(bool indexedRead = false, bool indexedWrite = false, bool maskedWrite = false)
+// Stubs for registrations whose callback is never invoked: these cases only exercise discoverability
+// and the specification gates. A read must produce an array, so the read stubs throw rather than
+// fabricate one.
+const auto unusedGet = [](const std::optional<array::Array>&, const std::optional<array::Array>&) -> array::Array
+{ throw std::logic_error("unused get callback invoked"); };
+const auto unusedSet = [](const array::Array&, const std::optional<array::Array>&) {};
+const auto unusedMultiGet = [](const std::optional<array::Array>&,
+                               const std::optional<std::vector<array::Array>>&) -> std::vector<array::Array>
+{ throw std::logic_error("unused multi-get callback invoked"); };
+const auto unusedMultiSet = [](const std::vector<array::Array>&, const std::optional<array::Array>&) {};
+
+ArrayTensorSpecification makeFloat32Specification(bool indexedRead = false,
+                                                  bool indexedWrite = false,
+                                                  bool maskedWrite = false)
 {
-    TensorSpecification specification;
-    specification.dtype = DType::eFloat32;
-    specification.deviceKind = DeviceKind::eCpu;
+    ArrayTensorSpecification specification;
+    specification.dtype = array::Dtype::Float32();
+    specification.device = array::Device::Cpu();
     specification.supports = true;
     specification.supportsIndexedRead = indexedRead;
     specification.supportsIndexedWrite = indexedWrite;
@@ -102,7 +121,7 @@ TEST_CASE("EntityView: construction stores the path list and count")
 }
 
 //=============================================================================
-// TEST: registerImplementation + listImplementations + hasImplementation + getImplementationSpecification
+// TEST: registerArrayImplementation + listImplementations + hasImplementation + getArrayImplementationSpecification
 //=============================================================================
 TEST_CASE("EntityView: implementation registration discoverability")
 {
@@ -115,22 +134,19 @@ TEST_CASE("EntityView: implementation registration discoverability")
         REQUIRE_FALSE(view.hasImplementation("dof-position", ImplementationKind::eGet));
     }
 
-    SUBCASE("registerImplementation publishes the implementation name + specification")
+    SUBCASE("registerArrayImplementation publishes the implementation name + specification")
     {
-        TensorSpecification specification = makeFloat32Specification(/*indexedRead=*/true);
+        ArrayTensorSpecification specification = makeFloat32Specification(/*indexedRead=*/true);
         specification.shapeHint = { -1, 7 };
-        bool first = view.registerImplementation(
-            "dof-position", ImplementationKind::eGet,
-            GetImplementationFunction(
-                [](const TensorDescription& /*indices*/, const TensorDescription& /*output*/) -> TensorDescription
-                { return TensorDescription{}; }),
-            specification);
+        bool first = view.registerArrayImplementation(
+            "dof-position", ImplementationKind::eGet, GetArrayImplementationFunction(unusedGet), specification);
         REQUIRE(first == true);
         REQUIRE(view.hasImplementation("dof-position", ImplementationKind::eGet));
         REQUIRE_FALSE(view.hasImplementation("dof-position", ImplementationKind::eSet));
 
-        TensorSpecification retrieved = view.getImplementationSpecification("dof-position", ImplementationKind::eGet);
-        REQUIRE(retrieved.dtype == DType::eFloat32);
+        ArrayTensorSpecification retrieved =
+            view.getArrayImplementationSpecification("dof-position", ImplementationKind::eGet);
+        REQUIRE(retrieved.dtype == array::Dtype::Float32());
         REQUIRE(retrieved.supportsIndexedRead == true);
         REQUIRE(retrieved.shapeHint.size() == 2);
         REQUIRE(retrieved.shapeHint[0] == -1);
@@ -143,13 +159,11 @@ TEST_CASE("EntityView: implementation registration discoverability")
 
     SUBCASE("Get and Set kinds are tracked independently")
     {
-        view.registerImplementation("dof-position", ImplementationKind::eGet,
-                                    GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
-                                                              { return TensorDescription{}; }),
-                                    makeFloat32Specification());
-        view.registerImplementation("dof-position", ImplementationKind::eSet,
-                                    SetImplementationFunction([](const TensorDescription&, const TensorDescription&) {}),
-                                    makeFloat32Specification(/*indexedRead=*/false, /*indexedWrite=*/true));
+        view.registerArrayImplementation("dof-position", ImplementationKind::eGet,
+                                         GetArrayImplementationFunction(unusedGet), makeFloat32Specification());
+        view.registerArrayImplementation("dof-position", ImplementationKind::eSet,
+                                         SetArrayImplementationFunction(unusedSet),
+                                         makeFloat32Specification(/*indexedRead=*/false, /*indexedWrite=*/true));
 
         REQUIRE(view.hasImplementation("dof-position", ImplementationKind::eGet));
         REQUIRE(view.hasImplementation("dof-position", ImplementationKind::eSet));
@@ -158,165 +172,150 @@ TEST_CASE("EntityView: implementation registration discoverability")
         REQUIRE(view.listImplementations(ImplementationKind::eSet).size() == 1);
 
         // Get and Set specifications are stored separately.
-        auto getSpecification = view.getImplementationSpecification("dof-position", ImplementationKind::eGet);
-        auto setSpecification = view.getImplementationSpecification("dof-position", ImplementationKind::eSet);
+        auto getSpecification = view.getArrayImplementationSpecification("dof-position", ImplementationKind::eGet);
+        auto setSpecification = view.getArrayImplementationSpecification("dof-position", ImplementationKind::eSet);
         REQUIRE(getSpecification.supportsIndexedWrite == false);
         REQUIRE(setSpecification.supportsIndexedWrite == true);
     }
 
     SUBCASE("hasImplementation returns false for missing names regardless of kind")
     {
-        view.registerImplementation("dof-position", ImplementationKind::eGet,
-                                    GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
-                                                              { return TensorDescription{}; }),
-                                    makeFloat32Specification());
+        view.registerArrayImplementation("dof-position", ImplementationKind::eGet,
+                                         GetArrayImplementationFunction(unusedGet), makeFloat32Specification());
         REQUIRE_FALSE(view.hasImplementation("dof-velocity", ImplementationKind::eGet));
         REQUIRE_FALSE(view.hasImplementation("dof-velocity", ImplementationKind::eSet));
     }
 
-    SUBCASE("getImplementationSpecification for an unknown implementation throws std::out_of_range")
+    SUBCASE("getArrayImplementationSpecification for an unknown implementation throws std::out_of_range")
     {
-        // Callers must `hasImplementation(...)` first — `getImplementationSpecification` doesn't
+        // Callers must `hasImplementation(...)` first — `getArrayImplementationSpecification` doesn't
         // silently return a default; an unknown implementation is a bug worth
         // surfacing as an exception.
         REQUIRE_THROWS_AS(
-            view.getImplementationSpecification("nonexistent", ImplementationKind::eGet), std::out_of_range);
+            view.getArrayImplementationSpecification("nonexistent", ImplementationKind::eGet), std::out_of_range);
     }
 
     SUBCASE("single and multi GET callbacks cannot share one registration identity")
     {
-        view.registerImplementation("shared-name", ImplementationKind::eGet,
-                                    GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
-                                                              { return TensorDescription{}; }),
-                                    makeFloat32Specification());
-        REQUIRE_THROWS_AS(
-            view.registerImplementation(
-                "shared-name", ImplementationKind::eGet,
-                GetMultiImplementationFunction([](const TensorDescription&, const std::vector<TensorDescription>&)
-                                               { return std::vector<TensorDescription>{}; }),
-                makeFloat32Specification()),
-            std::invalid_argument);
+        view.registerArrayImplementation("shared-name", ImplementationKind::eGet,
+                                         GetArrayImplementationFunction(unusedGet), makeFloat32Specification());
+        REQUIRE_THROWS_AS(view.registerArrayImplementation("shared-name", ImplementationKind::eGet,
+                                                           GetArrayMultiImplementationFunction(unusedMultiGet),
+                                                           makeFloat32Specification()),
+                          std::invalid_argument);
 
         TestableEntityView reverseView({});
-        reverseView.registerImplementation(
-            "shared-name", ImplementationKind::eGet,
-            GetMultiImplementationFunction([](const TensorDescription&, const std::vector<TensorDescription>&)
-                                           { return std::vector<TensorDescription>{}; }),
-            makeFloat32Specification());
-        REQUIRE_THROWS_AS(reverseView.registerImplementation(
-                              "shared-name", ImplementationKind::eGet,
-                              GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
-                                                        { return TensorDescription{}; }),
-                              makeFloat32Specification()),
+        reverseView.registerArrayImplementation("shared-name", ImplementationKind::eGet,
+                                                GetArrayMultiImplementationFunction(unusedMultiGet),
+                                                makeFloat32Specification());
+        REQUIRE_THROWS_AS(reverseView.registerArrayImplementation("shared-name", ImplementationKind::eGet,
+                                                                  GetArrayImplementationFunction(unusedGet),
+                                                                  makeFloat32Specification()),
                           std::invalid_argument);
     }
 
     SUBCASE("single and multi SET callbacks cannot share one registration identity")
     {
-        view.registerImplementation(
-            "shared-name", ImplementationKind::eSet,
-            SetMultiImplementationFunction([](const std::vector<TensorDescription>&, const TensorDescription&) {}),
-            makeFloat32Specification());
-        REQUIRE_THROWS_AS(view.registerImplementation(
-                              "shared-name", ImplementationKind::eSet,
-                              SetImplementationFunction([](const TensorDescription&, const TensorDescription&) {}),
-                              makeFloat32Specification()),
-                          std::invalid_argument);
+        view.registerArrayImplementation("shared-name", ImplementationKind::eSet,
+                                         SetArrayMultiImplementationFunction(unusedMultiSet), makeFloat32Specification());
+        REQUIRE_THROWS_AS(
+            view.registerArrayImplementation("shared-name", ImplementationKind::eSet,
+                                             SetArrayImplementationFunction(unusedSet), makeFloat32Specification()),
+            std::invalid_argument);
 
         TestableEntityView reverseView({});
-        reverseView.registerImplementation(
-            "shared-name", ImplementationKind::eSet,
-            SetImplementationFunction([](const TensorDescription&, const TensorDescription&) {}),
-            makeFloat32Specification());
-        REQUIRE_THROWS_AS(
-            reverseView.registerImplementation(
-                "shared-name", ImplementationKind::eSet,
-                SetMultiImplementationFunction([](const std::vector<TensorDescription>&, const TensorDescription&) {}),
-                makeFloat32Specification()),
-            std::invalid_argument);
+        reverseView.registerArrayImplementation("shared-name", ImplementationKind::eSet,
+                                                SetArrayImplementationFunction(unusedSet), makeFloat32Specification());
+        REQUIRE_THROWS_AS(reverseView.registerArrayImplementation("shared-name", ImplementationKind::eSet,
+                                                                  SetArrayMultiImplementationFunction(unusedMultiSet),
+                                                                  makeFloat32Specification()),
+                          std::invalid_argument);
     }
 }
 
 //=============================================================================
-// TEST: getData / setData round-trip — the GetImplementationFunction / SetImplementationFunction callbacks
-// fire and receive the right TensorDescription arguments.
+// TEST: getArrayData / setArrayData round-trip — the GetArrayImplementationFunction / SetArrayImplementationFunction
+// callbacks fire and receive the right array arguments.
 //=============================================================================
-TEST_CASE("EntityView: getData / setData dispatch to registered callback")
+TEST_CASE("EntityView: getArrayData / setArrayData dispatch to registered callback")
 {
     TestableEntityView view({});
 
-    SUBCASE("getData invokes the registered callback and returns its TensorDescription")
+    SUBCASE("getArrayData invokes the registered callback and returns its array")
     {
         OwnedFloatTensor result({ 1.0f, 2.0f, 3.0f }, { 3 });
 
         bool called = false;
-        view.registerImplementation(
-            "dof-position", ImplementationKind::eGet,
-            GetImplementationFunction(
-                [&](const TensorDescription& /*indices*/, const TensorDescription& /*output*/) -> TensorDescription
-                {
-                    called = true;
-                    return result.descriptor;
-                }),
-            makeFloat32Specification());
+        view.registerArrayImplementation("dof-position", ImplementationKind::eGet,
+                                         GetArrayImplementationFunction(
+                                             [&](const std::optional<array::Array>& /*indices*/,
+                                                 const std::optional<array::Array>& /*output*/) -> array::Array
+                                             {
+                                                 called = true;
+                                                 return result.array();
+                                             }),
+                                         makeFloat32Specification());
 
-        TensorDescription indices{}; // empty → "no indices"
-        TensorDescription output{};
-        TensorDescription returned = view.getData("dof-position", indices, output);
+        const array::Array returned = view.getArrayData("dof-position");
         REQUIRE(called == true);
-        REQUIRE(returned.dtype == DType::eFloat32);
-        REQUIRE(returned.shape.size() == 1);
-        REQUIRE(returned.shape[0] == 3);
-        REQUIRE(returned.data == result.storage.data());
+        REQUIRE(returned.dtype() == array::Dtype::Float32());
+        REQUIRE(returned.ndim() == 1);
+        REQUIRE(returned.shape()[0] == 3);
+        REQUIRE(returned.data() == result.storage.data());
     }
 
-    SUBCASE("setData forwards data + indices to the callback verbatim")
+    SUBCASE("setArrayData forwards data + indices to the callback verbatim")
     {
-        std::vector<float> incoming{ 4.0f, 5.0f, 6.0f };
-        std::vector<int32_t> incomingIndices{ 7, 11 };
+        std::optional<array::Array> capturedData;
+        std::optional<array::Array> capturedIndices;
+        view.registerArrayImplementation("dof-position", ImplementationKind::eSet,
+                                         SetArrayImplementationFunction(
+                                             [&](const array::Array& data, const std::optional<array::Array>& indices)
+                                             {
+                                                 capturedData = data;
+                                                 capturedIndices = indices;
+                                             }),
+                                         makeFloat32Specification(/*indexedRead=*/false, /*indexedWrite=*/true));
 
-        TensorDescription capturedData{};
-        TensorDescription capturedIndices{};
-        view.registerImplementation(
-            "dof-position", ImplementationKind::eSet,
-            SetImplementationFunction(
-                [&](const TensorDescription& dataDescriptor, const TensorDescription& indicesDescriptor)
-                {
-                    capturedData = dataDescriptor;
-                    capturedIndices = indicesDescriptor;
-                }),
-            makeFloat32Specification(/*indexedRead=*/false, /*indexedWrite=*/true));
+        const array::Array data(std::vector<float>{ 4.0f, 5.0f, 6.0f });
+        const array::Array indices(std::vector<int32_t>{ 7, 11 });
 
-        TensorDescription data;
-        data.data = incoming.data();
-        data.dtype = DType::eFloat32;
-        data.shape = { 3 };
-
-        TensorDescription indices;
-        indices.data = incomingIndices.data();
-        indices.dtype = DType::eInt32;
-        indices.shape = { 2 };
-
-        view.setData("dof-position", data, indices);
-        REQUIRE(capturedData.data == incoming.data());
-        REQUIRE(capturedData.shape.size() == 1);
-        REQUIRE(capturedData.shape[0] == 3);
-        REQUIRE(capturedIndices.shape.size() == 1);
-        REQUIRE(capturedIndices.shape[0] == 2);
+        view.setArrayData("dof-position", data, indices);
+        REQUIRE(capturedData.has_value());
+        REQUIRE(capturedData->data() == data.data());
+        REQUIRE(capturedData->ndim() == 1);
+        REQUIRE(capturedData->shape()[0] == 3);
+        REQUIRE(capturedIndices.has_value());
+        REQUIRE(capturedIndices->ndim() == 1);
+        REQUIRE(capturedIndices->shape()[0] == 2);
     }
 
-    SUBCASE("getData on an unknown implementation throws std::out_of_range")
+    SUBCASE("an omitted selection reaches the callback as std::nullopt")
     {
-        TensorDescription indices{};
-        TensorDescription output{};
-        REQUIRE_THROWS_AS(view.getData("nonexistent", indices, output), std::out_of_range);
+        OwnedFloatTensor result({ 1.0f }, { 1 });
+        bool sawSelection = true;
+        view.registerArrayImplementation("dof-position", ImplementationKind::eGet,
+                                         GetArrayImplementationFunction(
+                                             [&](const std::optional<array::Array>& indices,
+                                                 const std::optional<array::Array>& /*output*/) -> array::Array
+                                             {
+                                                 sawSelection = indices.has_value();
+                                                 return result.array();
+                                             }),
+                                         makeFloat32Specification());
+
+        view.getArrayData("dof-position");
+        REQUIRE(sawSelection == false);
     }
 
-    SUBCASE("setData on an unknown implementation throws std::out_of_range")
+    SUBCASE("getArrayData on an unknown implementation throws std::out_of_range")
     {
-        TensorDescription data{};
-        TensorDescription indices{};
-        REQUIRE_THROWS_AS(view.setData("nonexistent", data, indices), std::out_of_range);
+        REQUIRE_THROWS_AS(view.getArrayData("nonexistent"), std::out_of_range);
+    }
+
+    SUBCASE("setArrayData on an unknown implementation throws std::out_of_range")
+    {
+        REQUIRE_THROWS_AS(view.setArrayData("nonexistent", array::Array(std::vector<float>{ 1.0f })), std::out_of_range);
     }
 }
 
@@ -365,64 +364,364 @@ TEST_CASE("EntityView: metadata registration")
 // to "not registered" for callers. `hasImplementation` returns false for them, so the
 // API surface stays uniform across engines without false omissions.
 //=============================================================================
-TEST_CASE("EntityView: TensorSpecification supports flag hides the implementation from hasImplementation")
+TEST_CASE("EntityView: ArrayTensorSpecification supports flag hides the implementation from hasImplementation")
 {
     TestableEntityView view({});
 
-    TensorSpecification unsupported = makeFloat32Specification();
+    ArrayTensorSpecification unsupported = makeFloat32Specification();
     unsupported.supports = false;
-    view.registerImplementation("spatial-tendon-stiffness", ImplementationKind::eGet,
-                                GetImplementationFunction([](const TensorDescription&, const TensorDescription&)
-                                                          { return TensorDescription{}; }),
-                                unsupported);
+    view.registerArrayImplementation(
+        "spatial-tendon-stiffness", ImplementationKind::eGet, GetArrayImplementationFunction(unusedGet), unsupported);
 
     // Callers see this implementation as unavailable — the contract is "registered
     // with supports=false" == "not registered" from the consumer side.
     REQUIRE_FALSE(view.hasImplementation("spatial-tendon-stiffness", ImplementationKind::eGet));
     // Calling get/set on a supports=false implementation raises so callers don't
     // silently get bad data.
-    REQUIRE_THROWS_AS(
-        view.getData("spatial-tendon-stiffness", TensorDescription{}, TensorDescription{}), std::runtime_error);
+    REQUIRE_THROWS_AS(view.getArrayData("spatial-tendon-stiffness"), std::runtime_error);
 }
 
 //=============================================================================
-// TEST: device ordinal
+// TEST: device
 //=============================================================================
-TEST_CASE("EntityView: device ordinal defaults to host and round-trips")
+TEST_CASE("EntityView: device defaults to host and round-trips")
 {
     EntityView view;
 
-    SUBCASE("an unset ordinal reports host memory")
+    SUBCASE("an unset device reports host memory")
     {
-        REQUIRE(view.getDeviceOrdinal() == -1);
+        REQUIRE(view.getDevice() == array::Device::Cpu());
     }
 
-    SUBCASE("a stored ordinal is reported back")
+    SUBCASE("a stored device is reported back")
     {
-        view.setDeviceOrdinal(3);
-        REQUIRE(view.getDeviceOrdinal() == 3);
-        view.setDeviceOrdinal(-1);
-        REQUIRE(view.getDeviceOrdinal() == -1);
+        view.setDevice(array::Device::Cuda(3));
+        REQUIRE(view.getDevice() == array::Device::Cuda(3));
+        view.setDevice(array::Device::Cpu());
+        REQUIRE(view.getDevice() == array::Device::Cpu());
     }
 
-    SUBCASE("an engine view may report an ordinal it resolves on each access")
+    SUBCASE("an engine view may report a device it resolves on each access")
     {
         // The accessor is virtual so an engine that only learns its device once stepping has begun is
         // still observed correctly through a base reference.
         class LateDeviceView : public EntityView
         {
         public:
-            int getDeviceOrdinal() const noexcept override
+            array::Device getDevice() const noexcept override
             {
                 return resolved;
             }
-            int resolved{ -1 };
+            array::Device resolved{ array::Device::Cpu() };
         };
 
         LateDeviceView engineView;
         const EntityView& asBase = engineView;
-        REQUIRE(asBase.getDeviceOrdinal() == -1);
-        engineView.resolved = 7;
-        REQUIRE(asBase.getDeviceOrdinal() == 7);
+        REQUIRE(asBase.getDevice() == array::Device::Cpu());
+        engineView.resolved = array::Device::Cuda(7);
+        REQUIRE(asBase.getDevice() == array::Device::Cuda(7));
     }
+}
+
+TEST_CASE("EntityView: descriptor callbacks preserve signed strides and output ownership")
+{
+    EntityView view;
+    auto owner = std::make_shared<std::vector<float>>(std::initializer_list<float>{ 1.f, 2.f, 3.f });
+    TensorDescription output;
+    output.data = owner->data() + 2;
+    output.dtype = DType::eFloat32;
+    output.shape = { 3 };
+    output.strides = { -1 };
+    output.keepAlive = owner;
+    TensorSpecification specification;
+    specification.dtype = DType::eUnknown;
+    specification.deviceKind = DeviceKind::eEngineDefault;
+    GetImplementationFunction callback = [](const TensorDescription& indices, const TensorDescription& destination)
+    {
+        CHECK(indices.isEmpty());
+        auto* values = static_cast<float*>(destination.data);
+        values[destination.strides[0]] = 7.f;
+        return destination;
+    };
+    CHECK(view.registerImplementation("legacy", ImplementationKind::eGet, callback, specification));
+    CHECK_FALSE(view.registerImplementation("legacy", ImplementationKind::eGet, callback, specification));
+    const auto result = view.getData("legacy", {}, output);
+    CHECK(result.data == output.data);
+    CHECK(result.strides == std::vector<int64_t>{ -1 });
+    CHECK((result.keepAlive == output.keepAlive));
+    CHECK((*owner)[1] == 7.f);
+    CHECK(view.getImplementationSpecification("legacy", ImplementationKind::eGet).dtype == DType::eUnknown);
+    CHECK(view.getImplementationSpecification("legacy", ImplementationKind::eGet).deviceKind ==
+          DeviceKind::eEngineDefault);
+}
+
+TEST_CASE("EntityView: legacy device overrides remain observable through Array device access")
+{
+    class LateDeviceView : public EntityView
+    {
+    public:
+        int getDeviceOrdinal() const noexcept override
+        {
+            return selected;
+        }
+        int selected{ -1 };
+    };
+    LateDeviceView view;
+    const EntityView& base = view;
+    CHECK(base.getDevice().isCpu());
+    view.selected = 2;
+    CHECK(base.getDeviceOrdinal() == 2);
+    CHECK(base.getDevice().ordinal() == 2);
+}
+
+TEST_CASE("EntityView: modern provider replacement removes the legacy raw route")
+{
+    EntityView view;
+    GetImplementationFunction legacy = [](const TensorDescription&, const TensorDescription& output) { return output; };
+    view.registerImplementation("read", ImplementationKind::eGet, legacy, TensorSpecification{});
+    GetArrayImplementationFunction current = [](const std::optional<array::Array>&, const std::optional<array::Array>&)
+    { return array::Array(std::vector<float>{ 4.f }); };
+    CHECK_FALSE(view.registerArrayImplementation("read", ImplementationKind::eGet, current, ArrayTensorSpecification{}));
+    const auto result = view.getData("read", {}, {});
+    REQUIRE(static_cast<bool>(result.keepAlive));
+    CHECK(result.shape == std::vector<int64_t>{ 1 });
+    CHECK(static_cast<float*>(result.data)[0] == 4.f);
+}
+
+TEST_CASE("EntityView: unknown descriptor metadata cannot masquerade as Array Float32")
+{
+    EntityView view;
+    TensorSpecification unknown;
+    unknown.dtype = DType::eUnknown;
+    GetImplementationFunction single = [](const TensorDescription&, const TensorDescription& output) { return output; };
+    view.registerImplementation("unknown", ImplementationKind::eGet, single, unknown);
+    CHECK(view.getImplementationSpecification("unknown", ImplementationKind::eGet).dtype == DType::eUnknown);
+    CHECK_THROWS_AS(view.getArrayImplementationSpecification("unknown", ImplementationKind::eGet), std::invalid_argument);
+    CHECK(view.getData("unknown", {}, {}).isEmpty());
+
+    GetMultiImplementationFunction multi = [](const TensorDescription&, const std::vector<TensorDescription>& output)
+    { return output; };
+    view.registerImplementation(
+        "multi", ImplementationKind::eGet, multi, std::vector<TensorSpecification>{ TensorSpecification{}, unknown });
+    CHECK(view.getMultiImplementationSpecifications("multi", ImplementationKind::eGet)[1].dtype == DType::eUnknown);
+    CHECK_THROWS_AS(
+        view.getArrayMultiImplementationSpecifications("multi", ImplementationKind::eGet), std::invalid_argument);
+    CHECK(view.getDataMulti("multi", {}, {}).empty());
+}
+
+TEST_CASE("EntityView: sparse legacy destinations retain ownership with modern providers")
+{
+    EntityView view;
+    view.registerArrayImplementation(
+        "multi", ImplementationKind::eGet,
+        GetArrayMultiImplementationFunction{
+            [](const std::optional<array::Array>&, const std::optional<std::vector<array::Array>>& output)
+            {
+                CHECK_FALSE(output.has_value());
+                return std::vector<array::Array>{ array::Array(std::vector<float>{ 1.f, 2.f }),
+                                                  array::Array(std::vector<float>{ 3.f }) };
+            } },
+        ArrayTensorSpecification{});
+    auto owner = std::make_shared<std::vector<float>>(2, 0.f);
+    TensorDescription output;
+    output.data = owner->data();
+    output.dtype = DType::eFloat32;
+    output.shape = { 2 };
+    output.keepAlive = owner;
+    const auto result = view.getDataMulti("multi", {}, { output, {} });
+    REQUIRE(result.size() == 2);
+    CHECK(result[0].data == output.data);
+    CHECK(result[0].keepAlive.get() == output.keepAlive.get());
+    CHECK((*owner)[1] == 2.f);
+    CHECK(static_cast<float*>(result[1].data)[0] == 3.f);
+    CHECK(static_cast<bool>(result[1].keepAlive));
+    CHECK_THROWS_AS(view.getDataMulti("multi", {}, { output, {}, {} }), std::invalid_argument);
+    const auto omittedTail = view.getDataMulti("multi", {}, { {} });
+    REQUIRE(omittedTail.size() == 2);
+    CHECK(static_cast<float*>(omittedTail[1].data)[0] == 3.f);
+}
+
+TEST_CASE("EntityView: descriptor bridges retain explicitly empty arrays")
+{
+    TestableEntityView view({});
+    TensorDescription emptySelection;
+    emptySelection.dtype = DType::eInt32;
+    emptySelection.shape = { 0 };
+    emptySelection.device = DeviceKind::eCpu;
+    TensorDescription zeroDofData;
+    zeroDofData.dtype = DType::eFloat32;
+    zeroDofData.shape = { 2, 0 };
+    zeroDofData.device = DeviceKind::eCpu;
+    CHECK_FALSE(toArray(TensorDescription{}).has_value());
+    TensorDescription invalid = zeroDofData;
+    invalid.shape = { 2, 1 };
+    CHECK_THROWS_AS(toArray(invalid), std::invalid_argument);
+    REQUIRE(toArray(emptySelection).has_value());
+    CHECK(toArray(emptySelection)->shape()[0] == 0);
+    REQUIRE(toArray(zeroDofData).has_value());
+    CHECK(toArray(zeroDofData)->shape().shape() == std::vector<int64_t>{ 2, 0 });
+
+    bool read = false;
+    view.registerArrayImplementation("empty", ImplementationKind::eGet,
+                                     GetArrayImplementationFunction(
+                                         [&](const auto& indices, const auto& output)
+                                         {
+                                             REQUIRE(indices.has_value());
+                                             CHECK(indices->shape()[0] == 0);
+                                             CHECK_FALSE(output.has_value());
+                                             read = true;
+                                             return toArray(zeroDofData).value();
+                                         }),
+                                     makeFloat32Specification(true, false));
+    CHECK(view.getData("empty", emptySelection, {}).shape == std::vector<int64_t>{ 2, 0 });
+    CHECK(read);
+
+    bool written = false;
+    view.registerArrayImplementation("empty", ImplementationKind::eSet,
+                                     SetArrayImplementationFunction(
+                                         [&](const auto& data, const auto& indices)
+                                         {
+                                             CHECK(data.shape().shape() == std::vector<int64_t>{ 2, 0 });
+                                             REQUIRE(indices.has_value());
+                                             CHECK(indices->shape()[0] == 0);
+                                             written = true;
+                                         }),
+                                     makeFloat32Specification(false, true));
+    view.setData("empty", zeroDofData, emptySelection);
+    CHECK(written);
+}
+
+TEST_CASE("EntityView: descriptor dispatch checks the operation before converting buffers")
+{
+    EntityView view;
+    TensorDescription reversed;
+    float values[2] = { 1.f, 2.f };
+    reversed.data = values + 1;
+    reversed.dtype = DType::eFloat32;
+    reversed.device = DeviceKind::eCpu;
+    reversed.shape = { 2 };
+    reversed.strides = { -1 };
+    CHECK_THROWS_AS(view.getData("missing", {}, reversed), std::out_of_range);
+    CHECK_THROWS_AS(view.getDataMulti("missing", {}, { reversed }), std::out_of_range);
+    CHECK_THROWS_AS(view.setData("missing", {}, {}), std::out_of_range);
+    CHECK_THROWS_AS(view.setDataMulti("missing", { {} }, {}), std::out_of_range);
+
+    ArrayTensorSpecification unsupported = makeFloat32Specification();
+    unsupported.supports = false;
+    view.registerArrayImplementation(
+        "unsupported", ImplementationKind::eGet, GetArrayImplementationFunction(unusedGet), unsupported);
+    CHECK_THROWS_AS(view.getData("unsupported", {}, reversed), std::runtime_error);
+    CHECK_THROWS_AS(toArray(reversed), std::invalid_argument);
+}
+
+TEST_CASE("EntityView: descriptor bridge accepts irrelevant negative strides")
+{
+    EntityView view;
+    auto owner = std::make_shared<std::vector<float>>(2, 0.f);
+    TensorDescription output;
+    output.data = owner->data();
+    output.dtype = DType::eFloat32;
+    output.device = DeviceKind::eCpu;
+    output.shape = { 2, 1 };
+    output.strides = { 1, -1 };
+    output.keepAlive = owner;
+    int32_t selected = 7;
+    TensorDescription indices;
+    indices.data = &selected;
+    indices.dtype = DType::eInt32;
+    indices.device = DeviceKind::eCpu;
+    indices.shape = { 1 };
+    indices.strides = { -1 };
+    view.registerArrayImplementation("read", ImplementationKind::eGet,
+                                     GetArrayImplementationFunction(
+                                         [](const auto& selection, const auto& destination)
+                                         {
+                                             REQUIRE(selection.has_value());
+                                             CHECK(static_cast<const int32_t*>(selection->data())[0] == 7);
+                                             REQUIRE(destination.has_value());
+                                             CHECK(destination->strides()[1] >= 0);
+                                             auto* data =
+                                                 const_cast<float*>(static_cast<const float*>(destination->data()));
+                                             data[0] = 3.f;
+                                             data[1] = 4.f;
+                                             return *destination;
+                                         }),
+                                     makeFloat32Specification(true));
+    const auto result = view.getData("read", indices, output);
+    CHECK((*owner)[0] == 3.f);
+    CHECK((*owner)[1] == 4.f);
+    CHECK(static_cast<bool>(result.keepAlive));
+
+    TensorDescription empty = output;
+    empty.data = nullptr;
+    empty.shape = { 0, 3 };
+    empty.strides = { -3, -1 };
+    bool sawEmpty = false;
+    view.registerArrayImplementation("empty-read", ImplementationKind::eGet,
+                                     GetArrayImplementationFunction(
+                                         [&](const auto&, const auto& destination)
+                                         {
+                                             REQUIRE(destination.has_value());
+                                             CHECK(destination->size() == 0);
+                                             sawEmpty = true;
+                                             return array::Array(std::vector<float>{ 1.f });
+                                         }),
+                                     makeFloat32Specification());
+    view.getData("empty-read", {}, empty);
+    CHECK(sawEmpty);
+}
+
+TEST_CASE("EntityView: omitted descriptor setter data keeps command slots")
+{
+    EntityView view;
+    int32_t selected = 5;
+    TensorDescription indices;
+    indices.data = &selected;
+    indices.dtype = DType::eInt32;
+    indices.device = DeviceKind::eCpu;
+    indices.shape = { 1 };
+    bool called = false;
+    view.registerArrayImplementation("sleep", ImplementationKind::eSet,
+                                     SetArrayImplementationFunction(
+                                         [&](const auto& data, const auto& selection)
+                                         {
+                                             CHECK(data.size() == 0);
+                                             REQUIRE(selection.has_value());
+                                             CHECK(static_cast<const int32_t*>(selection->data())[0] == 5);
+                                             called = true;
+                                         }),
+                                     makeFloat32Specification(false, true));
+    view.setData("sleep", {}, indices);
+    CHECK(called);
+
+    view.registerArrayImplementation("multi", ImplementationKind::eSet,
+                                     SetArrayMultiImplementationFunction(
+                                         [](const auto& data, const auto& selection)
+                                         {
+                                             CHECK_FALSE(selection.has_value());
+                                             REQUIRE(data.size() == 2);
+                                             CHECK(data[0].size() == 0);
+                                             CHECK(data[1].size() == 1);
+                                         }),
+                                     makeFloat32Specification());
+    float value = 9.f;
+    TensorDescription supplied;
+    supplied.data = &value;
+    supplied.dtype = DType::eFloat32;
+    supplied.device = DeviceKind::eCpu;
+    supplied.shape = { 1 };
+    view.setDataMulti("multi", { {}, supplied }, {});
+
+    bool mutated = false;
+    view.registerArrayImplementation("required", ImplementationKind::eSet,
+                                     SetArrayImplementationFunction(
+                                         [&](const auto& data, const auto&)
+                                         {
+                                             if (data.size() != 1)
+                                                 throw std::invalid_argument("required value missing");
+                                             mutated = true;
+                                         }),
+                                     makeFloat32Specification());
+    CHECK_THROWS_AS(view.setData("required", {}, {}), std::invalid_argument);
+    CHECK_FALSE(mutated);
 }

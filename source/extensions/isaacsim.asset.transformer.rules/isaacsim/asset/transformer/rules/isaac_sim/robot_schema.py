@@ -176,83 +176,89 @@ class RobotSchemaRule(RuleInterface):
                 f"RobotSchemaRule start prim={prim_path} destination=source add_sites={add_sites} sites_last={sites_last}"
             )
 
-        # Insert sublayer if provided (only modify root layer if we're editing it directly)
+        # Only the composition arcs introduced by this rule are temporary. Earlier
+        # routing rules can have unsaved edits in the same `root_layer`.
+        original_sublayers = list(root_layer.subLayerPaths)
+        original_offsets = list(root_layer.subLayerOffsets)
+        try:
+            # Insert sublayer if provided (only modify root layer if we're editing it directly)
 
-        if editing_separate_layer:
-            self._insert_sublayer(destination, root_layer)
+            if editing_separate_layer:
+                self._insert_sublayer(destination, root_layer)
 
-        if sublayer:
-            self._insert_sublayer(sublayer, root_layer)
+            if sublayer:
+                self._insert_sublayer(sublayer, root_layer)
 
-        # Add destination layer as sublayer only if it's different from root layer
-        if editing_separate_layer:
-            rel_path = utils.make_explicit_relative(
-                os.path.relpath(edit_layer.realPath, os.path.dirname(root_layer.realPath))
-            ).replace("\\", "/")
-            if rel_path not in root_layer.subLayerPaths and edit_layer.identifier not in root_layer.subLayerPaths:
-                root_layer.subLayerPaths.append(rel_path)
-                self.log_operation(f"Added robot schema layer as sublayer: {rel_path}")
+            # Add destination layer as sublayer only if it's different from root layer
+            if editing_separate_layer:
+                rel_path = utils.make_explicit_relative(
+                    os.path.relpath(edit_layer.realPath, os.path.dirname(root_layer.realPath))
+                ).replace("\\", "/")
+                if rel_path not in root_layer.subLayerPaths and edit_layer.identifier not in root_layer.subLayerPaths:
+                    root_layer.subLayerPaths.append(rel_path)
+                    self.log_operation(f"Added robot schema layer as sublayer: {rel_path}")
 
-        robot_prim = self.source_stage.GetPrimAtPath(prim_path)
-        if not robot_prim or not robot_prim.IsValid():
-            self.log_operation(f"RobotSchemaRule skipped: invalid prim path {prim_path}")
-            return None
+            robot_prim = self.source_stage.GetPrimAtPath(prim_path)
+            if not robot_prim or not robot_prim.IsValid():
+                self.log_operation(f"RobotSchemaRule skipped: invalid prim path {prim_path}")
+                return None
 
-        with Usd.EditContext(self.source_stage, edit_layer):
-            # Check for existing robot schema
-            has_existing_schema = robot_prim.HasAPI(rs.Classes.ROBOT_API.value)
+            with Usd.EditContext(self.source_stage, edit_layer):
+                # Check for existing robot schema
+                has_existing_schema = robot_prim.HasAPI(rs.Classes.ROBOT_API.value)
 
-            if has_existing_schema:
-                self.log_operation("RobotAPI already applied, recalculating schema while preserving order")
-                robot_schema_utils.UpdateDeprecatedSchemas(robot_prim)
-                self.log_operation("Updated deprecated schemas")
+                if has_existing_schema:
+                    self.log_operation("RobotAPI already applied, recalculating schema while preserving order")
+                    robot_schema_utils.UpdateDeprecatedSchemas(robot_prim)
+                    self.log_operation("Updated deprecated schemas")
 
-                # Recalculate schema - preserves existing order, removes invalid, appends new
-                root_link, root_joint = robot_schema_utils.RecalculateRobotSchema(
-                    self.source_stage,
-                    robot_prim,
-                    robot_prim,
-                    detect_sites=add_sites,
-                    sites_last=sites_last,
-                )
+                    # Recalculate schema - preserves existing order, removes invalid, appends new
+                    root_link, root_joint = robot_schema_utils.RecalculateRobotSchema(
+                        self.source_stage,
+                        robot_prim,
+                        robot_prim,
+                        detect_sites=add_sites,
+                        sites_last=sites_last,
+                    )
+                else:
+                    rs.ApplyRobotAPI(robot_prim)
+                    self.log_operation("Applied RobotAPI to target prim")
+
+                    # Populate robot schema from articulation (with site detection if enabled)
+                    root_link, root_joint = robot_schema_utils.PopulateRobotSchemaFromArticulation(
+                        self.source_stage,
+                        robot_prim,
+                        robot_prim,
+                        detect_sites=add_sites,
+                        sites_last=sites_last,
+                    )
+
+            if root_link:
+                self.log_operation(f"Detected root link: {root_link.GetPath()}")
             else:
-                rs.ApplyRobotAPI(robot_prim)
-                self.log_operation("Applied RobotAPI to target prim")
+                self.log_operation("No articulation root link detected")
 
-                # Populate robot schema from articulation (with site detection if enabled)
-                root_link, root_joint = robot_schema_utils.PopulateRobotSchemaFromArticulation(
-                    self.source_stage,
-                    robot_prim,
-                    robot_prim,
-                    detect_sites=add_sites,
-                    sites_last=sites_last,
-                )
+            if root_joint:
+                self.log_operation(f"Detected root joint: {root_joint.GetPath()}")
+            else:
+                self.log_operation("No articulation root joint detected")
 
-        if root_link:
-            self.log_operation(f"Detected root link: {root_link.GetPath()}")
-        else:
-            self.log_operation("No articulation root link detected")
+            # Ensure defaultPrim is set (may not have been set if earlier
+            # schema/property routing rules found no matching content).
+            if not edit_layer.defaultPrim:
+                default_prim = self.source_stage.GetDefaultPrim()
+                if default_prim and default_prim.IsValid():
+                    edit_layer.defaultPrim = default_prim.GetName()
 
-        if root_joint:
-            self.log_operation(f"Detected root joint: {root_joint.GetPath()}")
-        else:
-            self.log_operation("No articulation root joint detected")
+            # Save the edit layer
+            edit_layer.Save()
+            self.add_affected_stage(edit_layer.identifier)
 
-        # Ensure defaultPrim is set (may not have been set if earlier
-        # schema/property routing rules found no matching content).
-        if not edit_layer.defaultPrim:
-            default_prim = self.source_stage.GetDefaultPrim()
-            if default_prim and default_prim.IsValid():
-                edit_layer.defaultPrim = default_prim.GetName()
-
-        # Save the edit layer
-        edit_layer.Save()
-        self.add_affected_stage(edit_layer.identifier)
-
-        # Discard any changes to root layer if we were editing a separate layer
-        if editing_separate_layer:
-            root_layer.Reload()
-            self.log_operation("Discarded root layer changes (editing separate layer)")
+        finally:
+            if editing_separate_layer:
+                root_layer.subLayerPaths = original_sublayers
+                for index, offset in enumerate(original_offsets):
+                    root_layer.subLayerOffsets[index] = offset
 
         self.log_operation("RobotSchemaRule completed")
 

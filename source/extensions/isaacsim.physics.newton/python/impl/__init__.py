@@ -18,7 +18,7 @@
 from .collision_config import CollisionConfig, HydroelasticConfig
 from .fabric import FabricManager
 from .interface import NewtonPhysicsInterface
-from .newton_config import NewtonConfig
+from .newton_config import NewtonConfig, NewtonSolverOutputConfig
 from .newton_stage import NewtonStage
 from .property_query import (
     NewtonPropertyQueryArticulationLink,
@@ -38,6 +38,7 @@ __all__ = [
     "NewtonPhysicsInterface",
     "FabricManager",
     "NewtonConfig",
+    "NewtonSolverOutputConfig",
     "CollisionConfig",
     "HydroelasticConfig",
     "XPBDSolverConfig",

@@ -24,12 +24,31 @@
 #include <isaacsim/ucx/core/UcxListenerRegistry.hpp>
 #include <isaacsim/ucx/core/UcxUtils.hpp>
 
+#include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace isaacsim::ucx::nodes
 {
+
+/**
+ * @enum UcxWarningCategory
+ * @brief Categories of warning a UCX node latches independently.
+ * @details
+ * Each category is reported once, so a condition already being reported cannot hide an
+ * unrelated one that starts later.
+ */
+enum class UcxWarningCategory : size_t
+{
+    eUnboundedSendTimeout = 0, //!< An unbounded send timeout was clamped to a finite wait
+    ePostFailed, //!< A request could not be posted
+    eRequestFailed, //!< A posted request completed with an error
+    eDeadlineExpired, //!< A posted request was cancelled because its deadline passed
+    eCount //!< Number of categories; not a category itself
+};
 
 /**
  * @class UcxNode
@@ -69,6 +88,7 @@ public:
      */
     virtual void reset() override
     {
+        _clearWarningLatches();
         if (m_listener)
         {
             const uint16_t port = m_listener->getPort();
@@ -216,6 +236,47 @@ protected:
     }
 
     /**
+     * @brief Emits a warning the first time its category reports a problem.
+     * @details
+     * The category stays latched until _clearWarningLatch() or _clearWarningLatches() re-arms it.
+     *
+     * @tparam DatabaseT The database type for logging
+     * @tparam Args Format argument types
+     * @param[in,out] db Database accessor for logging
+     * @param[in] category Warning category to latch
+     * @param[in] format printf-style format string
+     * @param[in] args Format arguments
+     */
+    template <typename DatabaseT, typename... Args>
+    void _logWarningOnce(DatabaseT& db, UcxWarningCategory category, const char* format, Args&&... args)
+    {
+        bool& latched = m_warningLatched[static_cast<size_t>(category)];
+        if (latched)
+        {
+            return;
+        }
+
+        latched = true;
+        db.logWarning(format, std::forward<Args>(args)...);
+    }
+
+    /**
+     * @brief Re-arms a single warning category.
+     *
+     * @param[in] category Warning category to clear
+     */
+    void _clearWarningLatch(UcxWarningCategory category)
+    {
+        m_warningLatched[static_cast<size_t>(category)] = false;
+    }
+
+    /** @brief Re-arms every warning category. */
+    void _clearWarningLatches()
+    {
+        m_warningLatched.fill(false);
+    }
+
+    /**
      * @brief Publishes a message over UCX with validation and timeout.
      * @details
      * Validates that message data is not empty, then sends using UCX tagged send.
@@ -225,7 +286,8 @@ protected:
      * @param[in] db Database accessor for logging
      * @param[in] messageData Serialized message data to send
      * @param[in] tag UCX tag for message identification
-     * @param[in] timeoutMs Timeout in milliseconds for send request (0 = infinite)
+     * @param[in] timeoutMs Timeout in milliseconds for send request (0 is clamped to
+     *                      s_kDefaultSendTimeoutMs, see below)
      * @return bool True if send completed successfully, false on error or timeout
      */
     template <typename DatabaseT>
@@ -237,8 +299,21 @@ protected:
             return false;
         }
 
+        // compute() runs on the application update thread, so a send that never gives up freezes
+        // the application as soon as a peer stops draining its receive queue.
+        uint32_t effectiveTimeoutMs = timeoutMs;
+        if (effectiveTimeoutMs == 0)
+        {
+            effectiveTimeoutMs = s_kDefaultSendTimeoutMs;
+            _logWarningOnce(db, UcxWarningCategory::eUnboundedSendTimeout,
+                            "inputs:timeoutMs is 0, which would block the application update thread until the peer "
+                            "consumes the message. Waiting %u ms instead; set inputs:timeoutMs to a positive value to "
+                            "choose the bound explicitly.",
+                            effectiveTimeoutMs);
+        }
+
         std::string errorMessage;
-        auto result = m_listener->tagSend(messageData.data(), messageData.size(), tag, errorMessage, timeoutMs);
+        auto result = m_listener->tagSend(messageData.data(), messageData.size(), tag, errorMessage, effectiveTimeoutMs);
 
         switch (result)
         {
@@ -251,7 +326,7 @@ protected:
             db.logError("Failed to send message - tagSend returned null: %s", errorMessage.c_str());
             return false;
         case isaacsim::ucx::core::UcxSendResult::eTimedOut:
-            db.logError("Send request timed out after %u ms: %s", timeoutMs, errorMessage.c_str());
+            db.logError("Send request timed out after %u ms: %s", effectiveTimeoutMs, errorMessage.c_str());
             return false;
         case isaacsim::ucx::core::UcxSendResult::eFailed:
             db.logError("Send request failed with UCX error: %s", errorMessage.c_str());
@@ -265,7 +340,12 @@ protected:
         }
     }
 
+    /** @brief Send timeout substituted when a node is configured with an unbounded (0) timeout. */
+    static constexpr uint32_t s_kDefaultSendTimeoutMs = 100;
+
     std::shared_ptr<isaacsim::ucx::core::UCXListener> m_listener = nullptr; //!< UCX listener instance.
+    //! One latch per UcxWarningCategory; true once that category has been reported.
+    std::array<bool, static_cast<size_t>(UcxWarningCategory::eCount)> m_warningLatched{};
 };
 
 } // namespace isaacsim::ucx::nodes

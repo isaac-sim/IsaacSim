@@ -266,7 +266,7 @@ def convert_physx_asset_to_mjc(
             continue
         if "MjcJointAPI" not in prim.GetAppliedSchemas():
             prim.ApplyAPI("MjcJointAPI")
-        convert_physx_to_mjc(prim)
+        convert_physx_to_mjc(prim, author_reference=False)
         create_mjc_actuator_from_physics(prim, work_stage, scope_path)
 
     # Pass 3: mimic joints.

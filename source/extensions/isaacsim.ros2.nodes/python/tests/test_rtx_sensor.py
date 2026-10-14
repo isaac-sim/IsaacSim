@@ -759,8 +759,9 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
 
         A ``_GmoCollectorWriter`` captures every GMO from the SD pipeline and the
         list-appending ROS callback captures every published message. The writer is
-        attached only after the publisher discovers our subscriber so both streams
-        start at the same frame. ``SICK_nanoScan3`` is a non-rotational scanner over
+        attached before discovery so renderer and sensor initialization finish
+        before the DDS timeout starts. Both buffers are cleared after discovery.
+        ``SICK_nanoScan3`` is a non-rotational scanner over
         a static scene, so the tail (snapshot, message) pair compared by
         :meth:`_test_message_data` is representative.
 
@@ -775,20 +776,24 @@ class TestROS2LaserScanRTX(TestROS2SensorMsgRTX):
         await self._create_sensor(sensor_type, aux_output_level=aux_output_level, accumulate_outputs=True, **kwargs)
         await self._create_omnigraph(enable_full_scan=True, use_system_time=use_system_time, metadata=metadata)
 
-        app_utils.play()
-        await app_utils.update_app_async()
-
-        # Publisher returns early when subscription_count == 0; wait for handshake
-        # then drop any pre-discovery messages so both streams start at the same frame.
-        await self.wait_for_publishers_on_topic(self._ros_node, self._ros_topic, count=1, timeout_sec=5.0)
-        self._ros_messages.clear()
-
         # WriterRegistry.get() only runs __new__ on Writer subclasses, so initialize()
         # must be called explicitly to populate __init__ state. Stash on self so
         # tearDown detaches unconditionally and assertions below can bubble up.
         self._gmo_writer = rep.WriterRegistry.get("_GmoCollectorWriter")
         self._gmo_writer.initialize()
         self._gmo_writer.attach([self._render_product_path])
+
+        app_utils.play()
+        # Cold renderer initialization can take longer than the DDS discovery timeout.
+        # Wait for sensor output before starting that wall-clock deadline.
+        await self.simulate_until_condition(
+            condition_func=lambda: len(self._gmo_writer.snapshots) > 0,
+            max_frames=120,
+            failure_message="RTX lidar produced no GMO scans during initialization",
+        )
+        await self.wait_for_publishers_on_topic(self._ros_node, self._ros_topic, count=1)
+        self._gmo_writer.snapshots.clear()
+        self._ros_messages.clear()
 
         await self.simulate_until_condition(
             condition_func=lambda: (len(self._gmo_writer.snapshots) >= 1 and len(self._ros_messages) >= 1),

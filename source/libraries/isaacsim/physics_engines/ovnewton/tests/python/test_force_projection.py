@@ -13,20 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Validate joint-force projection with the Newton engine.
-
-Single-link cases that read projected joint forces are skipped because Newton
-does not provide joint-force reporting. The two-link, torsional, and
-spherical-labeled scenarios run on each available device.
-"""
+"""Validate joint-force projection with the Newton engine."""
 
 from __future__ import annotations
 
 import os
 import sys
+from typing import Any
 
 import _physics_setup  # noqa: F401
-import pytest
+import warp_utils as wp_utils
+from isaacsim.physics_engines.ovnewton import SolverType
 
 _TENSORS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _TENSORS_DIR not in sys.path:
@@ -53,19 +50,50 @@ from common.force_projection import (  # noqa: E402
     JFP_Z_ZeroDofCommon,
 )
 
-_GAP_JOINT_FORCE_REPORTING = (
-    "Newton joint-force reporting (link-incoming-joint-force / "
-    "dof-projected-joint-forces) is deferred pending a design decision: computing them "
-    "requires requesting State.body_parent_f at model-build time, an always-on per-step "
-    "cost on every solver (a full RNE post-constraint pass under MuJoCo) whether or not "
-    "the tensor is read. Unconditional vs. opt-in gating is undecided; the ops stay "
-    "unregistered until then."
-)
+
+class _NewtonProjectedJointForceMixin:
+    """Request Newton joint wrench output before state creation."""
+
+    def configure_newton(self, config: Any) -> None:
+        """Enable joint wrench output and use inverse-dynamics force reporting."""
+        config.solver_outputs.link_incoming_joint_force = True
+        config.solver.solver_type = SolverType.FEATHERSTONE
+
+    def on_physics_step(self, sim: Any, stepno: int, dt: float) -> None:
+        """Compare projected forces directly with the applied generalized forces."""
+        if stepno == 1:
+            dof_forces = (
+                self.pendulums.get_data("dof-projected-joint-forces")
+                .numpy()
+                .reshape(self.num_envs, self.pendulums.get_metadata("num-dofs"))
+            )
+            assert wp_utils.wp_allclose(
+                dof_forces, self.applied_dof_forces.numpy(), rtol=0.05, atol=0.5
+            ), "projected DOF forces match applied actuation forces"
+            self.finish()
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
+def _with_newton_projected_joint_force(scenario_type: type[Any]) -> type[Any]:
+    """Add the Newton projected-force configuration to a common scenario."""
+    return type(scenario_type.__name__, (_NewtonProjectedJointForceMixin, scenario_type), {})
+
+
+JFP_Y_ZeroContactCommon = _with_newton_projected_joint_force(JFP_Y_ZeroContactCommon)
+JFP_X_ZeroContactCommon = _with_newton_projected_joint_force(JFP_X_ZeroContactCommon)
+JFP_Z_ZeroContactCommon = _with_newton_projected_joint_force(JFP_Z_ZeroContactCommon)
+JFP_Y_ZeroDofCommon = _with_newton_projected_joint_force(JFP_Y_ZeroDofCommon)
+JFP_X_ZeroDofCommon = _with_newton_projected_joint_force(JFP_X_ZeroDofCommon)
+JFP_Z_ZeroDofCommon = _with_newton_projected_joint_force(JFP_Z_ZeroDofCommon)
+JFP_Y_DofContactCommon = _with_newton_projected_joint_force(JFP_Y_DofContactCommon)
+JFP_TwoLinks_Y_ZeroContactCommon = _with_newton_projected_joint_force(JFP_TwoLinks_Y_ZeroContactCommon)
+JFP_TwoLinks_Y_ZeroDofCommon = _with_newton_projected_joint_force(JFP_TwoLinks_Y_ZeroDofCommon)
+JFP_TwoLinks_Y_DofContactCommon = _with_newton_projected_joint_force(JFP_TwoLinks_Y_DofContactCommon)
+JFP_Torsional_Y_Common = _with_newton_projected_joint_force(JFP_Torsional_Y_Common)
+JFP_Spherical_Y_Common = _with_newton_projected_joint_force(JFP_Spherical_Y_Common)
+
+
 class TestForceProjectionSingleLinkYZeroContact:
-    """Skip the Y-axis zero-contact case because Newton does not report joint forces."""
+    """Validate the Y-axis zero-contact case."""
 
     def test_force_projection_single_link_y_zero_contact_newton_cc(self) -> None:
         """Verify zero-contact force projection for a single Y-axis link on the Newton CPU pipeline."""
@@ -77,9 +105,8 @@ class TestForceProjectionSingleLinkYZeroContact:
         run_scenario(self, JFP_Y_ZeroContactCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceProjectionSingleLinkXZeroContact:
-    """Skip the X-axis zero-contact case because Newton does not report joint forces."""
+    """Validate the X-axis zero-contact case."""
 
     def test_force_projection_single_link_x_zero_contact_newton_cc(self) -> None:
         """Verify zero-contact force projection for a single X-axis link on the Newton CPU pipeline."""
@@ -91,9 +118,8 @@ class TestForceProjectionSingleLinkXZeroContact:
         run_scenario(self, JFP_X_ZeroContactCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceProjectionSingleLinkZZeroContact:
-    """Skip the Z-axis zero-contact case because Newton does not report joint forces."""
+    """Validate the Z-axis zero-contact case."""
 
     def test_force_projection_single_link_z_zero_contact_newton_cc(self) -> None:
         """Verify zero-contact force projection for a single Z-axis link on the Newton CPU pipeline."""
@@ -105,9 +131,8 @@ class TestForceProjectionSingleLinkZZeroContact:
         run_scenario(self, JFP_Z_ZeroContactCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceProjectionSingleLinkYZeroDof:
-    """Skip the Y-axis zero-motor case because Newton does not report joint forces."""
+    """Validate the Y-axis zero-motor case."""
 
     def test_force_projection_single_link_y_zero_dof_newton_cc(self) -> None:
         """Verify zero-motor force projection for a single Y-axis link on the Newton CPU pipeline."""
@@ -119,9 +144,8 @@ class TestForceProjectionSingleLinkYZeroDof:
         run_scenario(self, JFP_Y_ZeroDofCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceProjectionSingleLinkXZeroDof:
-    """Skip the X-axis zero-motor case because Newton does not report joint forces."""
+    """Validate the X-axis zero-motor case."""
 
     def test_force_projection_single_link_x_zero_dof_newton_cc(self) -> None:
         """Verify zero-motor force projection for a single X-axis link on the Newton CPU pipeline."""
@@ -133,9 +157,8 @@ class TestForceProjectionSingleLinkXZeroDof:
         run_scenario(self, JFP_X_ZeroDofCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceProjectionSingleLinkZZeroDof:
-    """Skip the Z-axis zero-motor case because Newton does not report joint forces."""
+    """Validate the Z-axis zero-motor case."""
 
     def test_force_projection_single_link_z_zero_dof_newton_cc(self) -> None:
         """Verify zero-motor force projection for a single Z-axis link on the Newton CPU pipeline."""
@@ -147,9 +170,8 @@ class TestForceProjectionSingleLinkZZeroDof:
         run_scenario(self, JFP_Z_ZeroDofCommon, "newton", gpu_device())
 
 
-@pytest.mark.skip(reason=_GAP_JOINT_FORCE_REPORTING)
 class TestForceProjectionSingleLinkYDofContact:
-    """Skip the Y-axis DOF-contact case because Newton does not report joint forces."""
+    """Validate the Y-axis DOF-contact case."""
 
     def test_force_projection_single_link_y_dof_contact_newton_cc(self) -> None:
         """Verify contact-force projection for a single Y-axis DOF on the Newton CPU pipeline."""

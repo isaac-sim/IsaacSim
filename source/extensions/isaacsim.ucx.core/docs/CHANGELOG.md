@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0] - 2026-09-14
+### Added
+- `UCXListener::tagReceiveWithRequest`: posts a tagged receive without waiting, returning its handle.
+
+### Changed
+- `waitForRequestWithTimeout`: `timeoutMs = 0` now polls once; `g_kUcxInfiniteTimeout` is the only unbounded value.
+
 ## [1.4.6] - 2026-07-20
 ### Changed
 - Renamed C++ headers from `.h` to `.hpp`; update downstream include directives.

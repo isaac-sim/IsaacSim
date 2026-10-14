@@ -27,7 +27,6 @@ import isaacsim.core.experimental.utils.ops as ops_utils
 import isaacsim.core.experimental.utils.prim as prim_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
-import omni.usd
 import warp as wp
 from isaacsim.core.experimental.prims import Prim
 from isaacsim.core.experimental.prims.impl.prim import _MSG_PRIM_NOT_VALID
@@ -114,8 +113,10 @@ class NonVisualMaterial(Prim):
 
     .. hint::
 
+        A non-visual material carries only the SimReady semantic attributes and defines no surface shader.
         Non-visual materials can be applied to visual materials to create a single material with both visual and
-        non-visual properties. In this case, the visual material must be defined before the non-visual material.
+        non-visual properties. In this case, the visual material (``PreviewSurface``, ``OmniPBR``, or ``OmniGlass``)
+        must be defined before the non-visual material.
 
     Args:
         paths: Single path or list of paths to USD prims. Can include regular expressions for matching multiple prims.
@@ -155,7 +156,7 @@ class NonVisualMaterial(Prim):
         if existent_paths:
             paths = existent_paths
             for path in existent_paths:
-                material, _ = self._get_material_and_shader(stage, path)
+                material = self._get_material(stage, path)
                 assert material is not None, f"The wrapped prim at path {path} is not a USD Material"
                 self._materials.append(material)
         # - create prims
@@ -163,15 +164,13 @@ class NonVisualMaterial(Prim):
             paths = nonexistent_paths
             for path in nonexistent_paths:
                 UsdShade.Material.Define(stage, path)
-                material, _ = self._get_material_and_shader(stage, path)
+                material = self._get_material(stage, path)
                 assert material is not None, f"Unable to create non-visual material at path {path}"
                 self._materials.append(material)
         # initialize base class
         super().__init__(paths, resolve_paths=False)
         # apply non-visual material API (create attributes if they don't exist)
         self._apply_non_visual_material_api()
-        # ensure each material has a surface shader (required for the IDs to survive a cold load)
-        self._ensure_surface_shader(stage)
         # initialize instance from arguments
         NonVisualMaterial._parse_specifications()
         if bases is not None:
@@ -556,66 +555,25 @@ class NonVisualMaterial(Prim):
             if not prim.HasAttribute(ATTRIBUTE_ATTR):
                 prim.CreateAttribute(ATTRIBUTE_ATTR, Sdf.ValueTypeNames.TokenArray, custom=True).Set(["none"])
 
-    def _ensure_surface_shader(self, stage: Usd.Stage) -> None:
-        """Ensure each wrapped material has a surface shader connected to its ``outputs:surface``.
-
-        The RTX material database only propagates the non-visual attributes for materials that have
-        a surface shader connected. A shader-less material resolves correctly when authored live (the
-        runtime ``material:binding`` change resyncs the material database), but its non-visual ID
-        collapses to ``0`` ("none") when the stage is exported and cold-loaded. Authoring a minimal
-        ``UsdPreviewSurface`` when no shader exists makes the IDs survive a cold load.
-
-        Materials that already own a shader (for example, a visual material the non-visual material is
-        applied on top of) are left untouched.
-
-        Args:
-            stage: USD stage containing the wrapped materials.
-        """
-        for material in self._materials:
-            material_path = str(material.GetPath())
-            _, shader = self._get_material_and_shader(stage, material_path)
-            # _get_material_and_shader wraps the (possibly missing) shader in a UsdShade.Shader, so
-            # it is never Python None for a valid material; check the underlying prim validity instead.
-            if shader is not None and shader.GetPrim().IsValid():
-                continue
-            shader = UsdShade.Shader.Define(stage, f"{material_path}/Shader")
-            shader.CreateIdAttr("UsdPreviewSurface")
-            shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
-            material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-
     """
     Internal static methods.
     """
 
     @staticmethod
-    def _get_material_and_shader(
-        stage: Usd.Stage, path: str
-    ) -> tuple[UsdShade.Material | None, UsdShade.Shader | None]:
-        """Get the material and shader for a given material path.
+    def _get_material(stage: Usd.Stage, path: str) -> UsdShade.Material | None:
+        """Get the material for a given material path.
 
         Args:
             stage: USD stage containing the material.
             path: Path to the material prim.
 
         Returns:
-            Two-elements tuple. 1) USD Material, if found. 2) USD Shader, if found.
+            USD Material, if found, None otherwise.
         """
-        material = None
-        shader = None
-        # material
         prim = stage.GetPrimAtPath(path)
         if prim.IsValid() and prim.IsA(UsdShade.Material):
-            material = UsdShade.Material(prim)
-        # shader
-        if material is not None:
-            shader = UsdShade.Shader(omni.usd.get_shader_from_material(prim, get_prim=True))
-        if shader is None:
-            for name in ["Shader", "shader"]:
-                prim = stage.GetPrimAtPath(f"{path}/{name}")
-                if prim.IsValid() and prim.IsA(UsdShade.Shader):
-                    shader = UsdShade.Shader(prim)
-                    break
-        return material, shader
+            return UsdShade.Material(prim)
+        return None
 
     @staticmethod
     def _parse_specifications() -> None:

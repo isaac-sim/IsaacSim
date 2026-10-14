@@ -109,6 +109,7 @@ local function get_simulation_app_tests()
         {
             "tests-nativepython-testing-isaacsim.simulation_app.test_frame_delay_basic",
             "standalone_examples/testing/isaacsim.simulation_app/test_frame_delay.py",
+            "--/renderer/asyncInit=0 --multitick off",
         },
         {
             "tests-nativepython-testing-isaacsim.simulation_app.test_fabric_frame_delay",
@@ -266,11 +267,6 @@ local function get_core_tests()
         {
             "tests-nativepython-testing-omni.syntheticdata.test_basic",
             "standalone_examples/testing/omni.syntheticdata/test_basic.py",
-        },
-        -- Cortex
-        {
-            "tests-nativepython-testing-isaacsim.cortex.framework.bringup",
-            "standalone_examples/testing/isaacsim.cortex.framework/cortex_bringup_test.py",
         },
     }
 end
@@ -566,7 +562,8 @@ local function get_robot_tests()
             "tests-nativepython-isaacsim.robot_motion.examples.manipulation.franka.pick_place",
             "standalone_examples/api/isaacsim.robot_motion.examples/manipulation/pick_place.py",
             "--robot franka " ..
-                "--robot-config-dir $SAMPLE_DIR/exts/isaacsim.robot_motion.cumotion/robot_configurations/franka " ..
+                "--robot-config-dir $SAMPLE_DIR/exts/isaacsim.robot_motion.cumotion/pip_prebundle/" ..
+                "isaacsim/robot_motion/cumotion/robot_configurations/franka " ..
                 "--urdf robot.urdf --xrdf robot.xrdf --test --headless",
         },
         {
@@ -578,7 +575,8 @@ local function get_robot_tests()
             "tests-nativepython-isaacsim.robot_motion.examples.manipulation.ur10.stacking",
             "standalone_examples/api/isaacsim.robot_motion.examples/manipulation/stacking.py",
             "--robot ur10 " ..
-                "--robot-config-dir $SAMPLE_DIR/exts/isaacsim.robot_motion.cumotion/robot_configurations/ur10 " ..
+                "--robot-config-dir $SAMPLE_DIR/exts/isaacsim.robot_motion.cumotion/pip_prebundle/" ..
+                "isaacsim/robot_motion/cumotion/robot_configurations/ur10 " ..
                 "--test --headless",
         },
         {
@@ -785,32 +783,6 @@ local function get_robot_tests()
             "standalone_examples/deprecated/api/isaacsim.robot.manipulators/rmpflow_supported_robots/supported_robot_follow_target_example.py",
             "--test",
         },
-        -- Deprecated Cortex Framework
-        {
-            "tests-nativepython-deprecated-isaacsim.cortex.framework.demo_ur10_conveyor",
-            "standalone_examples/deprecated/api/isaacsim.cortex.framework/demo_ur10_conveyor_main.py",
-            "--test",
-        },
-        {
-            "tests-nativepython-deprecated-isaacsim.cortex.framework.example_command_api",
-            "standalone_examples/deprecated/api/isaacsim.cortex.framework/example_command_api_main.py",
-            "--test",
-        },
-        {
-            "tests-nativepython-deprecated-isaacsim.cortex.framework.follow_example",
-            "standalone_examples/deprecated/api/isaacsim.cortex.framework/follow_example_main.py",
-            "--test",
-        },
-        {
-            "tests-nativepython-deprecated-isaacsim.cortex.framework.follow_example_modified",
-            "standalone_examples/deprecated/api/isaacsim.cortex.framework/follow_example_modified_main.py",
-            "--test",
-        },
-        {
-            "tests-nativepython-deprecated-isaacsim.cortex.framework.franka_examples",
-            "standalone_examples/deprecated/api/isaacsim.cortex.framework/franka_examples_main.py",
-            "--test",
-        },
         -- Motion Generation (Experimental)
         {
             "tests-nativepython-isaacsim.robot_motion.experimental.motion_generation.mobile_robot_control",
@@ -952,12 +924,12 @@ local function get_replicator_tests()
         {
             "tests-nativepython-replicator.infinigen_sdg_default",
             "standalone_examples/replicator/infinigen/infinigen_sdg.py",
-            "--close-on-completion",
+            "--close-on-completion --headless",
         },
         {
             "tests-nativepython-replicator.infinigen_sdg_config",
             "standalone_examples/replicator/infinigen/infinigen_sdg.py",
-            [[--close-on-completion --config "$SAMPLE_DIR/standalone_examples/replicator/infinigen/config/infinigen_multi_writers_pt.yaml"]],
+            [[--close-on-completion --headless --config "$SAMPLE_DIR/standalone_examples/replicator/infinigen/config/infinigen_multi_writers_pt.yaml"]],
         },
         {
             "tests-nativepython-replicator.scene_based_sdg",
@@ -972,12 +944,12 @@ local function get_replicator_tests()
         {
             "tests-nativepython-replicator.scene_based_sdg_default_writer",
             "standalone_examples/replicator/scene_based_sdg/scene_based_sdg.py",
-            [[--test --config "$SAMPLE_DIR/standalone_examples/replicator/scene_based_sdg/config/config_default_writer.json"]],
+            [[--test --headless --config "$SAMPLE_DIR/standalone_examples/replicator/scene_based_sdg/config/config_default_writer.json"]],
         },
         {
             "tests-nativepython-replicator.scene_based_sdg_kitti_writer",
             "standalone_examples/replicator/scene_based_sdg/scene_based_sdg.py",
-            [[--test --config "$SAMPLE_DIR/standalone_examples/replicator/scene_based_sdg/config/config_kitti_writer.yaml"]],
+            [[--test --headless --config "$SAMPLE_DIR/standalone_examples/replicator/scene_based_sdg/config/config_kitti_writer.yaml"]],
         },
         {
             "tests-nativepython-replicator.scene_based_sdg_coco_writer",
@@ -1350,12 +1322,6 @@ local function get_doc_snippets_tests()
             "../../../docs/isaacsim/snippets/core_api_tutorials/tutorial_core_adding_manipulator/using_the_pickandplace_controller.py",
             "--test",
         },
-        -- cortex_tutorials
-        {
-            "doc_snippets/tests-nativepython-testing-doc_snippets.cortex_tutorials.tutorial_cortex_2_decider_networks.decision_framework_tooling",
-            "../../../docs/isaacsim/snippets/cortex_tutorials/tutorial_cortex_2_decider_networks/decision_framework_tooling.py",
-            "--test",
-        },
         -- development_tools
         {
             "doc_snippets/tests-nativepython-testing-doc_snippets.development_tools.jupyter_notebook.configuration_files_2",
@@ -1570,12 +1536,15 @@ local function get_doc_snippets_tests()
             "doc_snippets/tests-nativepython-testing-doc_snippets.test_snippets_async",
             "standalone_examples/testing/doc_snippets/test_snippets_async.py",
             "--expected-failures-csv expected_failures.csv --experience-csv experiences.csv --excluded-snippets-csv excluded_snippets.csv --platform-constraints-csv platform_constraints.csv --snippet-timeout 300 --cleanup-timeout 180",
+            {},
+            -- Some upstream extensions read UTF-8 docs without specifying an encoding.
+            { PYTHONUTF8 = "1" },
         },
     }
 end
 
 local function get_testing_misc_tests()
-    return {
+    local tests = {
         -- Core API Testing Samples
         {
             "tests-nativepython-testing-isaacsim.core.api.test_hello_world",
@@ -1648,12 +1617,16 @@ local function get_testing_misc_tests()
             "standalone_examples/tutorials/manipulation/tutorial_9_pick_place_cumotion.py",
             "--test",
         },
-        {
+    }
+    -- Pink and its prebundled dependencies are only built for Linux x86_64.
+    if os.target() == "linux" and platform_target == "linux-x86_64" then
+        table.insert(tests, {
             "tests-nativepython-testing-tutorials.manipulation.tutorial_9_pick_place_pink",
             "standalone_examples/tutorials/manipulation/tutorial_9_pick_place_pink.py",
             "--test",
-        },
-    }
+        })
+    end
+    return tests
 end
 
 local function get_benchmark_tests()
@@ -1778,6 +1751,12 @@ end
 function create_tests()
     -- Startup test group
     define_test_group("startup_tests", get_startup_tests())
+
+    -- Use the app's own search paths so missing dependency folders fail this test.
+    define_test_experience("tests-startup.newton.streaming", {
+        config_path = "../apps/isaacsim.exp.full.newton.streaming.kit",
+        extra_args = "--no-window --/app/quitAfter=1000 --/app/file/ignoreUnsavedStage=1",
+    })
 
     -- Python samples
     group("python_samples")

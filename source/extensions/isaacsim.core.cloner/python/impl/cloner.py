@@ -30,6 +30,22 @@ from omni.physx import get_physx_replicator_interface
 from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdUtils, Vt
 
 
+def _cast_quat(quat, type_name: Sdf.ValueTypeName):
+    """Cast a quaternion to the concrete Gf class of a ``quath``/``quatf``/``quatd`` value type.
+
+    USD registers no narrowing cast between quaternion types, so a value must match the
+    authored precision of its destination exactly or the write raises.
+
+    Args:
+        quat: Quaternion to cast.
+        type_name: Value type of the destination attribute or attribute spec.
+
+    Returns:
+        The quaternion as an instance of the class backing ``type_name``.
+    """
+    return type_name.type.pythonClass(quat)
+
+
 class Cloner:
     """This class provides a set of simple APIs to make duplication of objects simple.
 
@@ -442,10 +458,8 @@ class Cloner:
                 xform_op_rot = xformable.AddXformOp(UsdGeom.XformOp.TypeOrient, UsdGeom.XformOp.PrecisionDouble, "")
             else:
                 xform_op_rot = UsdGeom.XformOp(source_prim.GetAttribute("xformOp:orient"))
-            if xform_op_rot.GetPrecision() == UsdGeom.XformOp.PrecisionFloat:
-                current_orientation = Gf.Quatf(current_orientation)
-            else:
-                current_orientation = Gf.Quatd(current_orientation)
+            orient_type_name = xform_op_rot.GetAttr().GetTypeName()
+            current_orientation = _cast_quat(current_orientation, orient_type_name)
             xform_op_rot.Set(current_orientation)
 
             if "xformOp:scale" not in properties:
@@ -467,13 +481,13 @@ class Cloner:
                     translation = current_translation
 
                 if orientations is not None:
-                    orientation = orientations[idx]
+                    orientation = _cast_quat(orientations[idx], orient_type_name)
                 else:
                     orientation = current_orientation
 
                 # overwrite translation and orientation to values specified
                 prim.GetPrim().GetAttribute("xformOp:translate").Set(translation)
-                prim.GetPrim().GetAttribute("xformOp:orient").Set(orientation)
+                xform_op_rot.Set(orientation)
 
             has_clones = False
 
@@ -567,10 +581,8 @@ class Cloner:
                                         env_spec, "xformOp:orient", Sdf.ValueTypeNames.Quatd
                                     )
                                     orient_spec.default = Gf.Quatd(orientation)
-                            elif orient_spec.default is not None and type(orient_spec.default) == Gf.Quatf:
-                                orient_spec.default = Gf.Quatf(orientation)
                             else:
-                                orient_spec.default = Gf.Quatd(orientation)
+                                orient_spec.default = _cast_quat(orientation, orient_spec.typeName)
 
                             scale_spec = env_spec.GetAttributeAtPath(prim_path + ".xformOp:scale")
                             if scale_spec is None:

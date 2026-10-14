@@ -2,11 +2,10 @@
 [[dependency]]
 python = "../_build/target-deps/python"
 packages = [
-    "aioboto3==15.5.0",             # SWIPAT filed under: https://nvbugs/4895046 # Used by: (none found)
-    "boto3==1.40.61",               # SWIPAT filed under: https://nvbugs/3697913 # Used by: (none found)
-    "botocore==1.40.61",            # SWIPAT filed under: https://nvbugs/5303107 # Used by: (dependency of aiobotocore, boto3, s3transfer)
+    "boto3==1.41.5",                # SWIPAT filed under: https://nvbugs/3697913 # Used by: (none found)
+    "botocore==1.41.5",             # SWIPAT filed under: https://nvbugs/5303107 # Used by: (dependency of aiobotocore, boto3, s3transfer)
     "awscrt==0.23.8",               # SWIPAT filed under: https://nvbugs/4603906 # Used by: (none found)
-    "s3transfer==0.14.0",           # SWIPAT filed under: https://nvbugs/3738087 # Used by: (dependency of boto3)
+    "s3transfer==0.15.0",           # SWIPAT filed under: https://nvbugs/3738087 # Used by: (dependency of boto3)
     "azure-storage-blob==12.17.0",  # SWIPAT filed under: https://nvbugs/4221315 # Used by: (none found)
     "azure-identity==1.13.0",       # SWIPAT filed under: https://nvbugs/4221323 # Used by: (none found)
     "requests==2.32.3",             # SWIPAT filed under: https://nvbugs/3430668 # Used by: isaacsim.gui.menu, omni.cuopt.examples

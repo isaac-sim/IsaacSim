@@ -107,7 +107,8 @@ protected:
         flatbuffers::FlatBufferBuilder builder;
 
         // Names (optional; JointStateData has no names)
-        flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> names_fb = 0;
+        std::vector<flatbuffers::Offset<flatbuffers::String>> names;
+        auto names_fb = builder.CreateVector(names);
 
         auto makeTensorF32Vec = [&](const std::vector<double>& values)
         {
@@ -115,12 +116,12 @@ protected:
             auto data_fb = builder.CreateVector(reinterpret_cast<const uint8_t*>(f32.data()), sizeof(float) * f32.size());
             std::vector<int64_t> shape_vec = { static_cast<int64_t>(f32.size()) };
             auto shape_fb = builder.CreateVector(shape_vec);
-            isaac::DLDataType dtype(isaac::DLDataTypeCode_kDLFloat, 32, 1);
-            isaac::DLDevice device(isaac::DLDeviceType_kDLCPU, 0);
+            holoscan::schema::DLDataType dtype(holoscan::schema::DLDataTypeCode_kDLFloat, 32, 1);
+            holoscan::schema::DLDevice device(holoscan::schema::DLDeviceType_kDLCPU, 0);
             uint32_t ndim = 1;
             std::vector<int64_t> strides_vec = { 1 };
             auto strides_fb = builder.CreateVector(strides_vec);
-            return isaac::CreateTensor(builder, data_fb, shape_fb, &dtype, &device, ndim, strides_fb);
+            return holoscan::schema::CreateTensor(builder, data_fb, shape_fb, &dtype, &device, ndim, strides_fb);
         };
 
         auto position_fb = makeTensorF32Vec(data.positions);
@@ -129,8 +130,7 @@ protected:
 
         // Header (stamp is Time with time_ns)
         const int64_t time_ns = static_cast<int64_t>(data.timestamp * 1e9);
-        auto stamp_fb = isaac::CreateTime(builder, time_ns, 0);
-        auto header_fb = isaac::CreateHeader(builder, stamp_fb, builder.CreateString(""));
+        auto header_fb = holoscan::schema::CreateHeader(builder, 0, builder.CreateString(""), time_ns);
 
         // Pack JointState
         auto joint_state_fb = isaac::CreateJointState(builder, header_fb, names_fb, position_fb, velocity_fb,
@@ -141,7 +141,7 @@ protected:
                                                       // empty_tensor_fb      // temperature
         );
 
-        builder.Finish(joint_state_fb);
+        isaac::FinishJointStateBuffer(builder, joint_state_fb);
 
         uint8_t const* bufPtr = builder.GetBufferPointer();
         size_t bufSize = builder.GetSize();

@@ -40,6 +40,14 @@ from .actuator_compatibility import (
     resolve_simulation_compatibility,
 )
 from .articulation_utils import find_articulation_root
+from .backend_capabilities import (
+    RESIDUAL_CONTACT_FORCE,
+    RESIDUAL_END_EFFECTOR_POSE,
+    RESIDUAL_POSITION,
+    RESIDUAL_TORQUE,
+    RESIDUAL_VELOCITY,
+    resolve_backend_capabilities,
+)
 from .errors import SysIdRuntimeUnavailableError
 from .ingest.config_types import (
     TrajectoryIngestError,
@@ -49,6 +57,8 @@ from .ingest.config_types import (
 from .optimizer_config import OptimizerBackend
 from .parameter_types import SysIdParameterType
 from .run_spec import (
+    NEWTON_SOLVER_FEATHERSTONE_DIFF,
+    NEWTON_SOLVER_MUJOCO,
     SIMULATION_ENGINE_ISAAC_SIM,
     SIMULATION_ENGINE_NEWTON,
     SysIdRunSpec,
@@ -411,6 +421,7 @@ def _check_parameters(spec: SysIdRunSpec, result: SysIdRunPreflight, *, allow_em
         result.add_error("parameters_selected", "Select at least one parameter to optimize.")
         return
     compatibility = resolve_simulation_compatibility(spec.simulation)
+    capabilities = resolve_backend_capabilities(spec.simulation)
     for item in selected:
         label = item.param_type
         try:
@@ -419,6 +430,19 @@ def _check_parameters(spec: SysIdRunSpec, result: SysIdRunPreflight, *, allow_em
             result.add_error("parameter_type", f"Unsupported parameter type: {label}")
             continue
         explicit_actuators = compatibility.uses_explicit_actuators
+        if capabilities is not None and ptype not in capabilities.parameter_types:
+            if capabilities.key == "isaac_sim_newton" and ptype == SysIdParameterType.JOINT_FRICTION:
+                result.add_error(
+                    "isaac_sim_newton_joint_friction",
+                    "Isaac-hosted Newton does not expose joint-friction properties through its tensor API. "
+                    "Use the standalone Newton engine for friction identification, or select the PhysX backend.",
+                )
+            else:
+                supported = ", ".join(sorted(value.value for value in capabilities.parameter_types))
+                result.add_error(
+                    "parameter_backend_unsupported",
+                    f"{capabilities.label} does not support parameter '{ptype.value}'. Supported parameters: {supported}.",
+                )
         if is_actuator_delay_parameter(ptype) and not compatibility.supports_delay:
             result.add_error(
                 "command_delay_engine",
@@ -493,17 +517,27 @@ def _check_residuals(
 ) -> None:
     residuals = spec.residuals
     channel_weights = {
-        "position": residuals.position_weight,
-        "velocity": residuals.velocity_weight,
-        "torque": residuals.torque_weight,
-        "end-effector pose": residuals.end_effector_pose_weight,
-        "contact force": residuals.contact_force_weight,
+        RESIDUAL_POSITION: ("position", residuals.position_weight),
+        RESIDUAL_VELOCITY: ("velocity", residuals.velocity_weight),
+        RESIDUAL_TORQUE: ("torque", residuals.torque_weight),
+        RESIDUAL_END_EFFECTOR_POSE: ("end-effector pose", residuals.end_effector_pose_weight),
+        RESIDUAL_CONTACT_FORCE: ("contact force", residuals.contact_force_weight),
     }
-    for name, value in channel_weights.items():
+    for name, value in channel_weights.values():
         if not _is_finite_number(value) or value < 0:
             result.add_error("residual_weight", f"Residual weight for {name} must be finite and non-negative.")
-    if not any(_is_finite_number(value) and value > 0 for value in channel_weights.values()):
+    if not any(_is_finite_number(value) and value > 0 for _name, value in channel_weights.values()):
         result.add_error("residual_weight", "At least one residual channel weight must be positive.")
+    capabilities = resolve_backend_capabilities(spec.simulation)
+    if capabilities is not None:
+        for channel, (name, value) in channel_weights.items():
+            if _is_finite_number(value) and value > 0 and not capabilities.supports_residual(channel):
+                supported = ", ".join(sorted(capabilities.residual_channels))
+                result.add_error(
+                    f"residual_backend_{channel}",
+                    f"{capabilities.label} does not produce the simulated {name} channel required by this residual. "
+                    f"Supported residual channels: {supported}.",
+                )
     if trajectory is not None:
         if residuals.torque_weight > 0 and trajectory.torques is None:
             result.add_error("residual_torque", "Torque residual is enabled, but telemetry has no torque channel.")
@@ -555,6 +589,15 @@ def _check_simulation(spec: SysIdRunSpec, result: SysIdRunPreflight, *, stage) -
             f"Unsupported simulation.explicit_actuator_policy: {sim.explicit_actuator_policy}",
         )
         return
+    capabilities = resolve_backend_capabilities(sim)
+    if capabilities is None:
+        supported_solvers = ", ".join((NEWTON_SOLVER_MUJOCO, NEWTON_SOLVER_FEATHERSTONE_DIFF))
+        result.add_error(
+            "backend_capabilities",
+            "No System Identification backend supports the requested simulation combination. "
+            f"For standalone Newton, simulation.newton.solver must be one of: {supported_solvers}.",
+        )
+        return
     compatibility = resolve_simulation_compatibility(sim)
     if sim.engine == SIMULATION_ENGINE_NEWTON:
         if compatibility.physics_backend != PHYSICS_BACKEND_NEWTON:
@@ -563,7 +606,7 @@ def _check_simulation(spec: SysIdRunSpec, result: SysIdRunPreflight, *, stage) -
                 "Standalone simulation.engine='newton' requires physics_backend='newton' or 'auto'.",
             )
         if (
-            str(sim.newton.solver) == "featherstone_diff"
+            str(sim.newton.solver) == NEWTON_SOLVER_FEATHERSTONE_DIFF
             and compatibility.actuator_runtime != ACTUATOR_RUNTIME_EXPLICIT
         ):
             result.add_error(
@@ -642,7 +685,7 @@ def _check_newton_simulation(spec: SysIdRunSpec, result: SysIdRunPreflight, *, s
         )
     if cfg.actuator_dt_mode != "physics_dt":
         result.add_error("newton_actuator_dt_mode", "Newton v1 SysID supports only actuator_dt_mode = 'physics_dt'.")
-    if str(cfg.solver) == "featherstone_diff":
+    if str(cfg.solver) == NEWTON_SOLVER_FEATHERSTONE_DIFF:
         if cfg.actuator_source != "drive_defaults":
             result.add_error(
                 "newton_diff_actuator_source",
@@ -668,7 +711,9 @@ def _check_newton_simulation(spec: SysIdRunSpec, result: SysIdRunPreflight, *, s
         )
 
         availability_check = (
-            newton_core_modules_available if str(cfg.solver) == "featherstone_diff" else newton_modules_available
+            newton_core_modules_available
+            if str(cfg.solver) == NEWTON_SOLVER_FEATHERSTONE_DIFF
+            else newton_modules_available
         )
         available, reason = availability_check()
     except Exception as exc:
@@ -790,6 +835,13 @@ def _resolve_newton_model_asset_path(prim, model_path: str, resolved_model_path:
 
 def _check_outputs(spec: SysIdRunSpec, result: SysIdRunPreflight) -> None:
     outputs = spec.outputs
+    thresholds = {
+        "validation_relative_change_threshold": outputs.validation_relative_change_threshold,
+        "validation_absolute_change_threshold": outputs.validation_absolute_change_threshold,
+    }
+    for name, value in thresholds.items():
+        if not _is_finite_number(value) or value < 0.0:
+            result.add_error(name, f"{name} must be finite and non-negative.")
     if outputs.export_provenance_sidecar and outputs.provenance_path:
         _check_parent_writable(outputs.provenance_path, result, "provenance_path", "Provenance sidecar")
     if outputs.render_validation_animation:

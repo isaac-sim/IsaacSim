@@ -114,12 +114,16 @@ class ConveyorBuilderPreferences(PreferenceBuilder):
         self._settings.set(CONFIG_LOCATION, str(cfg))
 
     def reset_assets_default(self) -> None:
-        """Resets the conveyor assets location to the default Isaac conveyor assets directory."""
-        timeout = carb.settings.get_settings().get("/persistent/isaac/asset_root/timeout")
-        carb.settings.get_settings().set("/persistent/isaac/asset_root/timeout", 1.0)
-        path = nucleus.get_assets_root_path()
-        if timeout:
-            carb.settings.get_settings().set("/persistent/isaac/asset_root/timeout", timeout)
+        """Reset the assets directory from the configured root without checking server availability.
+
+        Example:
+
+            .. code-block:: python
+
+                >>> preferences = ConveyorBuilderPreferences()
+                >>> preferences.reset_assets_default()
+        """
+        path = nucleus.get_assets_root_path(skip_check=True)
         self._settings.set(ASSETS_LOCATION, f"{path}/Isaac/Props/Conveyors/")
 
     def cleanup_slashes(self, path: str, is_directory: bool = False) -> str:

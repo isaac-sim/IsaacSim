@@ -310,11 +310,14 @@ def create_mjc_actuator_from_physics(joint: Usd.Prim, stage: Usd.Stage, path: Sd
     return mjc_actuator
 
 
-def convert_physx_to_mjc(joint: Usd.Prim) -> None:
+def convert_physx_to_mjc(joint: Usd.Prim, *, author_reference: bool = True) -> None:
     """Convert a PhysX joint to an MJCF joint.
 
     Args:
         joint: PhysX joint prim.
+        author_reference: When True, copy the drive ``targetPosition`` to ``mjc:ref`` unchanged. ``mjc:ref`` is the
+            joint zero point (radians or meters), not a drive target, and an angular ``targetPosition`` is in
+            degrees, so the copy is only correct when the target is zero. Pass False to leave ``mjc:ref`` unset.
 
     Raises:
         ValueError: If the input joint prim is invalid.
@@ -335,7 +338,7 @@ def convert_physx_to_mjc(joint: Usd.Prim) -> None:
         target_position = (
             drive_api.GetTargetPositionAttr().Get() if drive_api.GetTargetPositionAttr().IsValid() else None
         )
-        if target_position:
+        if author_reference and target_position:
             joint.CreateAttribute("mjc:ref", Sdf.ValueTypeNames.Float).Set(target_position)
 
     if joint.HasAPI(PhysxSchema.JOINT_API):

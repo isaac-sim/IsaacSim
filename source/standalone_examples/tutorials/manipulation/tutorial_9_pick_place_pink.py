@@ -23,7 +23,7 @@ import argparse
 from isaacsim import SimulationApp
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--test", action="store_true")
+parser.add_argument("--test", action="store_true", help="Verify the cube finishes within 5 cm of the placement goal")
 parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
 parser.add_argument("--headless", action="store_true")
 parser.add_argument("--urdf", type=str, default=None, help="Path to a custom URDF; omit to use the built-in ur10 model")
@@ -31,7 +31,7 @@ args, _ = parser.parse_known_args()
 
 simulation_app = SimulationApp({"headless": args.headless, "hide_ui": False})
 
-if args.headless:
+if args.headless and not args.test:
     from isaacsim.core.experimental.utils.app import enable_extension
 
     simulation_app.set_setting("/app/window/drawMouse", True)
@@ -136,6 +136,7 @@ class UR10ePickPlace:
         self._warmup_remaining: int = self._WARMUP_FRAMES
 
         self._articulation: Articulation | None = None
+        self._cube: RigidPrim | None = None
         self._ee_prim: GeomPrim | None = None
         self._finger_idx: int | None = None
         self._pink_robot: PinkRobot | None = None
@@ -157,7 +158,7 @@ class UR10ePickPlace:
         cube_obj = Cube(
             paths=self._CUBE_PRIM_PATH, positions=[self.cube_position], sizes=1.0, scales=[0.05, 0.05, 0.05]
         )
-        RigidPrim(paths=cube_obj.paths)
+        self._cube = RigidPrim(paths=cube_obj.paths)
         GeomPrim(paths=cube_obj.paths, apply_collision_apis=True)
 
         await omni.kit.app.get_app().next_update_async()
@@ -339,8 +340,9 @@ class UR10ePickPlace:
 
         self._t += self._PHYSICS_DT
         self._step += 1
-        if self._phase_converged() or self._step >= self.events_dt[self._event]:
-            if self._step >= self.events_dt[self._event]:
+        converged = self._phase_converged()
+        if converged or self._step >= self.events_dt[self._event]:
+            if not converged:
                 print(f"  Phase {self._event} timed out after {self.events_dt[self._event]} frames")
             self._event += 1
             self._step = 0
@@ -354,6 +356,19 @@ class UR10ePickPlace:
             True once the controller has advanced beyond every configured phase, otherwise False.
         """
         return self._event >= len(self.events_dt)
+
+    def validate_result(self) -> None:
+        """Verify the completed sequence leaves the cube within 5 cm of the placement goal.
+
+        Raises:
+            RuntimeError: If the sequence is incomplete or the cube is outside the goal tolerance.
+        """
+        if not self.is_done():
+            raise RuntimeError("Pick-and-place sequence did not complete")
+        cube_position = self._cube.get_world_poses()[0].numpy()[0]
+        distance = np.linalg.norm(cube_position - self.target_position)
+        if not np.isfinite(distance) or distance > 0.05:
+            raise RuntimeError(f"Cube placement failed: expected near {self.target_position}, got {cube_position}")
 
     def reset(self) -> None:
         """Reset the pick-and-place phase state."""
@@ -373,7 +388,7 @@ def main(args: argparse.Namespace, app: SimulationApp) -> None:
     """Run the PINK pick-and-place tutorial.
 
     Args:
-        args: Parsed options controlling device, custom URDF, headless mode, and test length.
+        args: Parsed options controlling device, custom URDF, headless mode, and functional test mode.
         app: Running simulation application used for asynchronous setup and frame updates.
     """
     SimulationManager.setup_simulation(dt=1.0 / 60.0, device=args.device)
@@ -382,7 +397,7 @@ def main(args: argparse.Namespace, app: SimulationApp) -> None:
     app.run_coroutine(scenario.setup_scene())
     app.update()
 
-    if args.headless:
+    if args.headless and not args.test:
         print("Headless mode: simulation is paused. Press Play in the livestream UI to begin.")
     else:
         app_utils.play()
@@ -390,8 +405,8 @@ def main(args: argparse.Namespace, app: SimulationApp) -> None:
         scenario.initialize_after_play()
 
     needs_reset = True
-    initialized = not args.headless
-    frame_count = 0
+    initialized = not args.headless or args.test
+    settling_frames = 0
     while app.is_running():
         app.update()
         if app_utils.is_playing() and SimulationManager.is_simulating():
@@ -400,23 +415,35 @@ def main(args: argparse.Namespace, app: SimulationApp) -> None:
                 initialized = True
             if needs_reset:
                 scenario.reset()
+                settling_frames = 0
                 needs_reset = False
-            scenario.forward()
-            frame_count += 1
-            if args.test and frame_count >= 100:
-                break
+            if args.test and scenario.is_done():
+                settling_frames += 1
+                if settling_frames >= 60:
+                    scenario.validate_result()
+                    print("Pick-and-place functional test passed")
+                    return
+            else:
+                scenario.forward()
         elif not app_utils.is_playing():
             needs_reset = True
 
+    if args.test:
+        raise RuntimeError("Application closed before the functional test completed")
+
 
 if __name__ == "__main__":
+    exit_code = 0
     try:
         main(args, simulation_app)
     except Exception:
+        exit_code = 1 if args.test else 0
         import traceback
 
         traceback.print_exc()
     except KeyboardInterrupt:
+        exit_code = 130 if args.test else 0
         print("\nExiting...")
     finally:
-        simulation_app.close()
+        simulation_app.close(exit_code=exit_code)
+    raise SystemExit(exit_code)

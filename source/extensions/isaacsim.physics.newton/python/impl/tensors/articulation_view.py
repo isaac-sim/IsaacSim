@@ -27,6 +27,7 @@ from .kernels import *
 from .kernels import (
     apply_link_forces_at_position,
     build_ctrl_direct_dof_mapping,
+    build_dof_target_q_mapping,
     cache_link_com,
     get_link_com_position_only,
     sync_ctrl_direct_gains,
@@ -66,6 +67,7 @@ class NewtonArticulationView:
         self._sim_timestamp = 0
         self.ik_timestamp = 0
         self._ctrl_direct_dof_map: wp.array | None = None
+        self._ctrl_direct_target_q_map: wp.array | None = None
         self._ctrl_direct_map_initialized = False
         self._ctrl_direct_biastype_set = False
 
@@ -123,9 +125,11 @@ class NewtonArticulationView:
             self._ctrl_direct_map_initialized = True
             try:
                 self._ctrl_direct_dof_map = build_ctrl_direct_dof_mapping(self._model)
+                self._ctrl_direct_target_q_map = build_dof_target_q_mapping(self._model)
             except Exception as e:
                 carb.log_warn(f"Failed to build CTRL_DIRECT DOF mapping: {e}")
                 self._ctrl_direct_dof_map = None
+                self._ctrl_direct_target_q_map = None
         return self._ctrl_direct_dof_map
 
     def _set_ctrl_direct_biastype_affine(self) -> None:
@@ -202,13 +206,17 @@ class NewtonArticulationView:
         mujoco_ctrl = getattr(getattr(control, "mujoco", None), "ctrl", None)
         if mujoco_ctrl is None:
             return
+        dof_to_target_q = self._ctrl_direct_target_q_map
+        if dof_to_target_q is None:
+            return
         nworlds = model.world_count if hasattr(model, "world_count") else 1
         dofs_per_world = model.joint_dof_count // max(nworlds, 1)
+        targets_per_world = control.joint_target_q.shape[0] // max(nworlds, 1)
         ctrls_per_world = mujoco_ctrl.shape[0] // max(nworlds, 1)
         wp.launch(
             sync_ctrl_direct_targets,
             dim=(nworlds, dofs_per_world),
-            inputs=[dof_map, control.joint_target_q, dofs_per_world, ctrls_per_world],
+            inputs=[dof_map, dof_to_target_q, control.joint_target_q, targets_per_world, ctrls_per_world],
             outputs=[mujoco_ctrl],
             device=model.device,
         )
@@ -893,13 +901,13 @@ class NewtonArticulationView:
             wp.launch(
                 get_dof_attributes,
                 dim=(self.count, self.max_dofs),
-                inputs=[control.joint_target_q, self._backend.dof_axis_indices, self.max_dofs],
+                inputs=[control.joint_target_q, self._backend.dof_position_indices, self.max_dofs],
                 outputs=[self._convert_to_warp(self._dof_position_targets)],
                 device=str(self._frontend.device),
             )
             return self._dof_position_targets
         else:
-            return wp.indexedarray(control.joint_target_q, self._backend.dof_axis_indices)
+            return wp.indexedarray(control.joint_target_q, self._backend.dof_position_indices)
 
     def get_dof_velocity_targets(self, copy: bool = copy_data) -> Any:
         """Get joint velocity targets (for velocity control).
@@ -1250,7 +1258,7 @@ class NewtonArticulationView:
                 self._wrap_input_tensor(data),
                 self._wrap_input_tensor(indices),
                 indices_mask if indices_mask is None else self._wrap_input_tensor(indices_mask),
-                self._backend.dof_axis_indices,
+                self._backend.dof_position_indices,
                 self.max_dofs,
             ],
             outputs=[control.joint_target_q],

@@ -150,15 +150,12 @@ def compute_relative_pose(left_camera_prim: Usd.Prim, right_camera_prim: Usd.Pri
         A tuple containing the translation vector and orientation (rotation matrix) from the left camera to the right
         camera.
     """
-    import cv2
-
     # Compute relative transform -> translation, orientation
     relative_transform = xform_utils.get_relative_transform(source_prim=left_camera_prim, target_prim=right_camera_prim)
     mat = Gf.Transform()
     mat.SetMatrix(Gf.Matrix4d(np.transpose(relative_transform)))
-    rotation_vec = mat.GetRotation().Decompose(Gf.Vec3d.XAxis(), Gf.Vec3d.YAxis(), Gf.Vec3d.ZAxis())
     translation = np.array(mat.GetTranslation())
-    orientation = np.ndarray(shape=[3, 3], dtype=float)
-    cv2.Rodrigues(src=np.asarray([rotation_vec[0], rotation_vec[1], rotation_vec[2]]), dst=orientation)
+    # `Gf` matrices use the row-vector convention, so transpose to the column-vector convention OpenCV expects.
+    orientation = np.transpose(np.array(Gf.Matrix3d(mat.GetRotation()), dtype=float))
 
     return (translation, orientation)

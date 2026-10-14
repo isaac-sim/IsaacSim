@@ -270,6 +270,7 @@ public:
      */
     py::object& getModel()
     {
+        _refreshModel();
         return m_model;
     }
 
@@ -317,9 +318,16 @@ protected:
      */
     void _findMatchingChildren(const pxr::UsdPrim& prim, const std::string& pattern, std::vector<pxr::UsdPrim>& matchesRet);
 
+    /**
+     * @brief Points ``m_model`` at the Newton stage's current model.
+     * @details The Newton stage rebuilds its model whenever it re-initializes (for example after a USD change), so
+     *          the handle taken at construction can go stale.
+     */
+    void _refreshModel() const;
+
     py::object m_usdStage; ///< Value.
     py::object m_newtonStage; ///< Value.
-    py::object m_model; ///< Value.
+    mutable py::object m_model; ///< Newton model object; refreshed from the stage before use.
     int m_simDeviceOrdinal; ///< Value.
     bool m_valid; ///< Value.
     carb::Float3 m_gravity = { 0.0f, 0.0f, -9.81f }; ///< Value.

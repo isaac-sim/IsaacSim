@@ -27,11 +27,13 @@ if os.target() == "linux" then
     local generated_flatbuffers_python_dir = ogn.python_target_path .. "/messages"
 
     prebuildcommands {
+      string.format('"%s/tools/packman/python.sh" "%s/verify_schema_bundle.py" --schemas "%s"', root, schemas_dir, schemas_dir),
       string.format('"%s" --version', flatc),
       string.format('"%s" --cpp -o "%s" "%s/time.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
       string.format('"%s" --cpp -o "%s" "%s/header.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
       string.format('"%s" --cpp -o "%s" "%s/tensor.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
       string.format('"%s" --cpp -o "%s" "%s/math_types.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
+      string.format('"%s" --cpp -o "%s" "%s/geometry.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
       string.format('"%s" --cpp -o "%s" "%s/pose.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
       string.format('"%s" --cpp -o "%s" "%s/twist.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
       string.format('"%s" --cpp -o "%s" "%s/pose_with_covariance.fbs"', flatc, generated_flatbuffers_cpp_dir, schemas_dir),
@@ -46,6 +48,7 @@ if os.target() == "linux" then
       string.format('"%s" --python -o "%s" "%s/header.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
       string.format('"%s" --python -o "%s" "%s/tensor.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
       string.format('"%s" --python -o "%s" "%s/math_types.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
+      string.format('"%s" --python -o "%s" "%s/geometry.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
       string.format('"%s" --python -o "%s" "%s/pose.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
       string.format('"%s" --python -o "%s" "%s/twist.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),
       string.format('"%s" --python -o "%s" "%s/pose_with_covariance.fbs"', flatc, generated_flatbuffers_python_dir, schemas_dir),

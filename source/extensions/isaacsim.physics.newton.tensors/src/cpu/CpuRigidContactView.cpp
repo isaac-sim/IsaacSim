@@ -76,6 +76,8 @@ const float* CpuRigidContactView::_getThickness1() const
 
 bool CpuRigidContactView::getNetContactForces(const TensorDesc* dstTensor, float dt) const
 {
+    if (!_hasContactForces())
+        return false;
     if (!dstTensor || !dstTensor->data || m_sensorCount == 0)
         return false;
 
@@ -87,6 +89,8 @@ bool CpuRigidContactView::getNetContactForces(const TensorDesc* dstTensor, float
     }
 
     _refreshContactPointers();
+    if (!m_valid)
+        return false;
     size_t outBytes = m_sensorCount * 3 * sizeof(float);
 
     const float* force = _resolveContactForce();
@@ -106,6 +110,8 @@ bool CpuRigidContactView::getNetContactForces(const TensorDesc* dstTensor, float
 
 bool CpuRigidContactView::getContactForceMatrix(const TensorDesc* dstTensor, float dt) const
 {
+    if (!_hasContactForces())
+        return false;
     if (!dstTensor || !dstTensor->data || m_sensorCount == 0 || m_filterCount == 0)
         return false;
 
@@ -117,6 +123,8 @@ bool CpuRigidContactView::getContactForceMatrix(const TensorDesc* dstTensor, flo
     }
 
     _refreshContactPointers();
+    if (!m_valid)
+        return false;
     size_t outBytes = m_sensorCount * m_filterCount * 3 * sizeof(float);
 
     const float* force = _resolveContactForce();
@@ -143,6 +151,8 @@ bool CpuRigidContactView::getContactData(const TensorDesc* contactForceTensor,
                                          const TensorDesc* contactStartIndicesTensor,
                                          float dt) const
 {
+    if (!_hasContactForces())
+        return false;
     if (!contactForceTensor || !contactPointTensor || !contactNormalTensor || !contactSeparationTensor ||
         !contactCountTensor || !contactStartIndicesTensor)
         return false;
@@ -193,6 +203,8 @@ bool CpuRigidContactView::getContactData(const TensorDesc* contactForceTensor,
     }
 
     _refreshContactPointers();
+    if (!m_valid)
+        return false;
     const float* force = _resolveContactForce();
     if (!force)
         return false;
@@ -236,6 +248,8 @@ bool CpuRigidContactView::getFrictionData(const TensorDesc* frictionForceTensor,
                                           const TensorDesc* contactStartIndicesTensor,
                                           float dt) const
 {
+    if (!_hasContactForces())
+        return false;
     if (!frictionForceTensor || !contactPointTensor || !contactCountTensor || !contactStartIndicesTensor)
         return false;
     if (!frictionForceTensor->data || !contactPointTensor->data || !contactCountTensor->data ||
@@ -274,6 +288,8 @@ bool CpuRigidContactView::getFrictionData(const TensorDesc* frictionForceTensor,
     }
 
     _refreshContactPointers();
+    if (!m_valid)
+        return false;
     const float* force = _resolveContactForce();
     if (!force)
         return false;
@@ -315,6 +331,8 @@ bool CpuRigidContactView::getRawContactData(const TensorDesc* contactForceTensor
                                             const TensorDesc* otherActorIdsTensor,
                                             float dt) const
 {
+    if (!_hasContactForces())
+        return false;
     if (!contactForceTensor || !contactPointTensor || !contactNormalTensor || !contactSeparationTensor ||
         !contactCountTensor || !contactStartIndicesTensor || !otherActorIdsTensor)
         return false;
@@ -371,6 +389,8 @@ bool CpuRigidContactView::getRawContactData(const TensorDesc* contactForceTensor
     }
 
     _refreshContactPointers();
+    if (!m_valid)
+        return false;
     const float* force = _resolveContactForce();
     float dtScale = _getPhysicsDtScale(dt);
 

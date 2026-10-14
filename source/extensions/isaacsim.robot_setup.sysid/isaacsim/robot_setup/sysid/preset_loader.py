@@ -60,7 +60,7 @@ class ParameterPreset:
     #: "explicit" applies `residual_weights` verbatim; "auto" derives channel
     #: weights from telemetry channel presence (requires a loaded trajectory).
     residual_weights_mode: str = "explicit"
-    #: Optional engine settings: {engine, newton: {solver, featherstone_substeps, device}}.
+    #: Optional engine settings: {engine, newton: {solver, featherstone_substeps, mujoco_substeps, device}}.
     simulation: dict[str, Any] = field(default_factory=dict)
     #: Optional solver overrides: max_iterations, max_rollout_steps, backend fields.
     solver: dict[str, Any] = field(default_factory=dict)

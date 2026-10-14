@@ -3,6 +3,19 @@
   "version": "1.0",
   "rules": [
     {
+      "name": "Route Newton Mimic Properties",
+      "type": "isaacsim.asset.transformer.rules.core.properties.PropertyRoutingRule",
+      "destination": "payloads/Physics",
+      "params": {
+        "stage_name": "physics.usda",
+        "properties": [
+          "^newton:mimicJoint$",
+          "^newton:mimicCoef[01]$"
+        ]
+      },
+      "enabled": true
+    },
+    {
       "name": "Route Variants",
       "type": "isaacsim.asset.transformer.rules.structure.variants.VariantRoutingRule",
       "destination": "payloads",
@@ -95,7 +108,7 @@
       "destination": "payloads",
       "params": {
         "materials_layer": "materials.usda",
-        "assets_folder": "Textures",
+        "textures_folder": "textures",
         "download_textures": true
       },
       "enabled": true
@@ -140,6 +153,26 @@
       "enabled": true
     },
     {
+      "name": "Route Physics Schemas",
+      "type": "isaacsim.asset.transformer.rules.core.schemas.SchemaRoutingRule",
+      "destination": "payloads/Physics",
+      "params": {
+        "stage_name": "physics.usda",
+        "schemas": [
+          "Physics.*",
+          "Newton.*"
+        ],
+        "ignore_schemas": [
+          "PhysicsCollisionAPI"
+        ],
+        "prim_names": [
+          ".*"
+        ],
+        "ignore_prim_names": []
+      },
+      "enabled": true
+    },
+    {
       "name": "Route MuJoCo Schemas",
       "type": "isaacsim.asset.transformer.rules.core.schemas.SchemaRoutingRule",
       "destination": "payloads/Physics",
@@ -175,26 +208,6 @@
           "Mjc.*",
           "mjc.*"
         ]
-      },
-      "enabled": true
-    },
-    {
-      "name": "Route Physics Schemas",
-      "type": "isaacsim.asset.transformer.rules.core.schemas.SchemaRoutingRule",
-      "destination": "payloads/Physics",
-      "params": {
-        "stage_name": "physics.usda",
-        "schemas": [
-          "Physics.*",
-          "Newton.*"
-        ],
-        "ignore_schemas": [
-          "PhysicsCollisionAPI"
-        ],
-        "prim_names": [
-          ".*"
-        ],
-        "ignore_prim_names": []
       },
       "enabled": true
     },

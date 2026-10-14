@@ -197,6 +197,9 @@ class MuJoCoSolverConfig(NewtonSolverConfig):
     nconmax: int | None = 200
     """Number of contact points per environment (world)."""
 
+    cone: Literal["pyramidal", "elliptic"] | None = None
+    """Contact friction cone override. If None, use the value authored on the physics scene."""
+
     use_mujoco_cpu: bool = False
     """Whether to use the pure MuJoCo backend instead of `mujoco_warp`."""
 

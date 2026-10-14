@@ -29,7 +29,7 @@
             },
             "mecanumAngles": {
                 "type": "double[]",
-                "description": "Angles of the mecanum wheels with respect to wheel's rotation axis in radians"
+                "description": "Mecanum roller-axis angles in degrees, interpreted modulo 180 degrees"
             },  
             "wheelAxis": {
                 "type": "double[3]",

@@ -38,6 +38,7 @@ namespace array = isaacsim::common::array;
 using InputValueType =
     std::variant<std::string, std::vector<std::string>, std::vector<std::vector<std::string>>, array::Array>;
 using OutputValueType = std::variant<std::vector<std::string>, std::vector<std::vector<std::string>>, array::Array>;
+using ColorType = std::variant<std::string, std::vector<std::string>, array::Array>;
 
 /**
  * @class Prim
@@ -245,7 +246,7 @@ protected:
     int64_t _resolveIndexedSize(const std::optional<array::Array>& indices) const;
     /** @brief Returns paths for the selected prims. */
     std::vector<std::string> _resolveIndexedPaths(const std::optional<array::Array>& indices) const;
-    /** @brief Expands a scalar or list value to match the selected prim count. */
+    /** @brief Expands a string or list of strings value to match the selected prim count. */
     std::vector<std::string> _resolveStringList(const std::variant<std::string, std::vector<std::string>>& values,
                                                 const std::optional<array::Array>& indices) const;
 

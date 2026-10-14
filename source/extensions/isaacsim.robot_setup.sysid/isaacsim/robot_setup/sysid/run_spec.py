@@ -133,6 +133,10 @@ class NewtonSimulationRunSpec:
     solver: str = NEWTON_SOLVER_MUJOCO
     # Symplectic-Euler substeps per command sample (featherstone_diff only).
     featherstone_substeps: int = 4
+    # MuJoCo physics steps per command sample (mujoco only). MuJoCo integrates
+    # drive stiffness explicitly; raise this when a stiff drive diverges at the
+    # telemetry rate. Controls and explicit actuators still update per sample.
+    mujoco_substeps: int = 1
     # Controller feedforward model applied to the mapped joints during
     # featherstone_diff and mujoco rollouts and included in the reported torque
     # channel:
@@ -392,6 +396,8 @@ class OutputsRunSpec:
     validation_animation_path: str = ""
     validation_animation_fps: int = 24
     validation_animation_max_frames: int = 240
+    validation_relative_change_threshold: float = 0.01
+    validation_absolute_change_threshold: float = 1.0e-12
     # Post-solve per-parameter sensitivity ("value ± range where cost rises 10%").
     compute_parameter_confidence: bool = True
     parameter_confidence_rollout_budget: int = 2_000_000

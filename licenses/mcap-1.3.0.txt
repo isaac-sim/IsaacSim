@@ -1,7 +1,7 @@
 Package: mcap
 Version: 1.3.0
 Ecosystem: pypi
-License: Apache-2.0
+License: MIT
 Homepage: https://github.com/foxglove/mcap
 
 MIT License

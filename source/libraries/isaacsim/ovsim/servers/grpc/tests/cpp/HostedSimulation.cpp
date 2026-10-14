@@ -1,5 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <doctest/doctest.h>
 #include <isaacsim/common/array/Array.hpp>
@@ -8,6 +20,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -25,6 +38,7 @@ struct FakeState
 {
     std::atomic<int> importCalls{ 0 };
     std::atomic<int> initializeCalls{ 0 };
+    std::atomic<double> timeStep{ 0.0 };
     std::atomic<int> invalidateCalls{ 0 };
     std::atomic<int> closeCalls{ 0 };
     std::atomic<int> readCalls{ 0 };
@@ -68,8 +82,9 @@ public:
         return true;
     }
 
-    void initialize() override
+    void initialize(double timeStep) override
     {
+        m_state->timeStep = timeStep;
         ++m_state->initializeCalls;
         failWhilePositive(m_state->initializeFailures, "injected initialization failure");
     }
@@ -174,6 +189,64 @@ void releaseImport(const std::shared_ptr<FakeState>& state)
 
 TEST_SUITE("HostedSimulation lifecycle")
 {
+    TEST_CASE("rejects time steps outside the nanosecond timestamp range")
+    {
+        auto simulation = makeSimulation(std::make_shared<FakeState>());
+        for (const double timeStep :
+             { 0.0, 0.25e-9, 1e10, std::numeric_limits<double>::max(), std::numeric_limits<double>::quiet_NaN() })
+        {
+            CHECK_EQ(simulation->createSimulation("timing", "usd", timeStep).error_code(),
+                     ::grpc::StatusCode::INVALID_ARGUMENT);
+        }
+    }
+
+    TEST_CASE("advances at the minimum nanosecond time step")
+    {
+        auto state = std::make_shared<FakeState>();
+        auto simulation = makeSimulation(state);
+        REQUIRE(simulation->createSimulation("timing", "usd", 1e-9).ok());
+        (void)waitForState(*simulation, "timing", server::HostedSimulation::State::eReady);
+        for (int64_t timestamp = 1; timestamp <= 3; ++timestamp)
+        {
+            REQUIRE(simulation->step("timing", timestamp).ok());
+        }
+        CHECK_EQ(state->stepCalls.load(), 3);
+    }
+
+    TEST_CASE("rejects timestamp overflow while preserving retries")
+    {
+        auto state = std::make_shared<FakeState>();
+        auto simulation = makeSimulation(state);
+        REQUIRE(simulation->createSimulation("timing", "usd", 5e9).ok());
+        (void)waitForState(*simulation, "timing", server::HostedSimulation::State::eReady);
+        REQUIRE(simulation->step("timing", 5'000'000'000'000'000'000).ok());
+        CHECK(simulation->step("timing", 5'000'000'000'000'000'000).ok());
+        CHECK_EQ(simulation->step("timing", 6'000'000'000'000'000'000).error_code(), ::grpc::StatusCode::OUT_OF_RANGE);
+        CHECK_EQ(state->stepCalls.load(), 1);
+    }
+
+    TEST_CASE("uses the configured physics time step without timestamp drift")
+    {
+        for (const int frequency : { 60, 200 })
+        {
+            auto state = std::make_shared<FakeState>();
+            auto simulation = makeSimulation(state);
+            REQUIRE(simulation->createSimulation("timing", "usd", 1.0 / frequency).ok());
+            (void)waitForState(*simulation, "timing", server::HostedSimulation::State::eReady);
+            CHECK_EQ(state->timeStep.load(), 1.0 / frequency);
+            for (int64_t step = 1; step <= frequency * 10; ++step)
+            {
+                const int64_t timestamp = (step * 1'000'000'000 + frequency - 1) / frequency;
+                REQUIRE(simulation->step("timing", timestamp).ok());
+            }
+            server::HostedSimulation::Snapshot snapshot;
+            REQUIRE(simulation->getSnapshot("timing", &snapshot).ok());
+            CHECK_EQ(snapshot.simulationTimeNs, 10'000'000'000);
+            CHECK_EQ(state->stepCalls.load(), frequency * 10);
+            CHECK(simulation->shutdown().ok());
+        }
+    }
+
     TEST_CASE("forwards generic attribute writes and tracks conflicts per attribute")
     {
         auto state = std::make_shared<FakeState>();

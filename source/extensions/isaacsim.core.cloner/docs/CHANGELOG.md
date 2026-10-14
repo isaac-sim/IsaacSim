@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.6] - 2026-09-22
+### Fixed
+- Support orientation values that are authored as `quatd`, `quatf` or `quath`.
+- Keep the `xformOp:orient` precision of the source prim when copying from source.
+
 ## [1.7.5] - 2026-07-21
 ### Changed
 - Migrated robot asset references from `Isaac/Robots/` to `Isaac/Robots_Multiphysics/` for the new multiphysics-ready USDA assets.

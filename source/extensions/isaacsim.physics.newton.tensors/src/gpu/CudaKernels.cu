@@ -24,14 +24,50 @@ namespace tensors {
 
 constexpr int BLOCK_SIZE = 256;
 
+// ---- Mask to sentinel indices ----
+
+__global__ void maskToIndicesKernel(const uint8_t* mask, int* indices, int count) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < count) {
+        indices[i] = mask[i] != 0 ? i : -1;
+    }
+}
+
+// ---- Scalar float zero ----
+
+template<typename T>
+__global__ void zeroKernel(T* dst, int numIndices, unsigned dstStride = 1) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numIndices) {
+        dst[i * dstStride] = T(0);
+    }
+}
+
 // ---- Scalar float gather ----
 
 template<typename T>
-__global__ void gatherKernel(const T* src, T* dst, const int* indices, int numIndices) {
+__global__ void gatherKernel(const T* src, T* dst, const int* indices, int numIndices, unsigned dstStride = 1) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < numIndices) {
         int idx = indices[i];
-        dst[i] = (idx >= 0) ? src[idx] : T(0);
+        dst[i * dstStride] = (idx >= 0) ? src[idx] : T(0);
+    }
+}
+
+// ---- Multi gather ----
+
+template<typename T, int numSrc>
+__global__ void gatherMultiKernel(const cuda::std::array<T*, numSrc> src, T* dst, unsigned numDst, const int* indices, int numIndices) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numIndices) {
+        int idx = indices[i];
+        for (int v = 0; v < numDst; ++v) {
+            if (v < numSrc && idx >= 0) {
+                dst[i * numDst + v] = src[v][idx];
+            } else {
+                dst[i * numDst + v] = T(0);
+            }
+        }
     }
 }
 
@@ -114,6 +150,47 @@ __global__ void gatherSpatialVectorKernel(const wp::spatial_vector* src, float* 
     }
 }
 
+__global__ void gatherIncomingJointForceKernel(const wp::spatial_vector* bodyParentForce,
+                                               const wp::transform* bodyTransforms,
+                                               const wp::vec3* bodyCentersOfMass,
+                                               const wp::transform* jointChildTransforms,
+                                               float* dst,
+                                               const int* bodyIndices,
+                                               const int* jointIndices,
+                                               int numIndices) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numIndices) {
+        float* output = dst + i * 6;
+        int bodyIndex = bodyIndices[i];
+        int jointIndex = jointIndices[i];
+        if (bodyIndex < 0 || jointIndex < 0) {
+            for (int component = 0; component < 6; ++component) output[component] = 0.0f;
+            return;
+        }
+        details::computeIncomingJointWrench(bodyParentForce[bodyIndex], bodyTransforms[bodyIndex],
+                                            bodyCentersOfMass[bodyIndex], jointChildTransforms[jointIndex], output);
+    }
+}
+
+__global__ void gatherProjectedJointForceKernel(const wp::spatial_vector* bodyParentForce,
+                                                const wp::transform* bodyTransforms,
+                                                const wp::vec3* bodyCentersOfMass,
+                                                const wp::spatial_vector* motionSubspaces,
+                                                float* dst,
+                                                const int* bodyIndices,
+                                                const int* dofIndices,
+                                                int numIndices) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < numIndices) {
+        int bodyIndex = bodyIndices[i];
+        int dofIndex = dofIndices[i];
+        dst[i] = bodyIndex < 0 || dofIndex < 0 ?
+                     0.0f :
+                     details::computeProjectedJointForce(bodyParentForce[bodyIndex], bodyTransforms[bodyIndex],
+                                                         bodyCentersOfMass[bodyIndex], motionSubspaces[dofIndex]);
+    }
+}
+
 // ---- Mat33 (9 floats, row-major) ----
 
 __global__ void gatherMat33Kernel(const wp::mat33* src, float* dst, const int* indices, int numIndices) {
@@ -179,6 +256,7 @@ __global__ void scatterComOrientationKernel(const float* src, float* dst,
     int slot = i / elemPerSlot;
     int elem = i % elemPerSlot;
     int artiIdx = artiIndices ? artiIndices[slot] : slot;
+    if (artiIdx < 0) return;
     int flatIdx = artiIdx * elemPerSlot + elem;
     const float* in = src + flatIdx * srcStride + 3;
     float* out = dst + flatIdx * 4;
@@ -189,16 +267,17 @@ __global__ void scatterComOrientationKernel(const float* src, float* dst,
 
 __global__ void fusedDofScatterKernel(const float* src, float* dst,
                                       const int* artiIndices, const int* dofMapping,
-                                      int numArti, int maxDofs) {
+                                      int numArti, int maxDofs, int srcStide = 1) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numArti * maxDofs) return;
     int slot = i / maxDofs;
     int localDof = i % maxDofs;
     int artiIdx = artiIndices ? artiIndices[slot] : slot;
+    if (artiIdx < 0) return;
     int flatIdx = artiIdx * maxDofs + localDof;
     int dstIdx = dofMapping[flatIdx];
     if (dstIdx >= 0) {
-        dst[dstIdx] = src[flatIdx];
+        dst[dstIdx] = src[flatIdx * srcStide];
     }
 }
 
@@ -210,6 +289,7 @@ __global__ void fusedPairedDofScatterKernel(const float* src, float* dstA, float
     int slot = i / maxDofs;
     int localDof = i % maxDofs;
     int artiIdx = artiIndices ? artiIndices[slot] : slot;
+    if (artiIdx < 0) return;
     int flatIdx = artiIdx * maxDofs + localDof;
     int dstIdx = dofMapping[flatIdx];
     if (dstIdx >= 0) {
@@ -232,6 +312,7 @@ __global__ void fusedLinkScatterKernel(const float* src, float* dst,
     int linkSlot = remainder / numComponents;
     int comp = remainder % numComponents;
     int artiIdx = artiIndices ? artiIndices[slot] : slot;
+    if (artiIdx < 0) return;
     int bodyIdx = linkMapping[artiIdx * maxLinks + linkSlot];
     if (bodyIdx >= 0) {
         int srcIdx = (artiIdx * maxLinks + linkSlot) * srcElemSize + comp;
@@ -253,6 +334,7 @@ __global__ void fusedLinkAddKernel(const float* src, float* dst,
     int linkSlot = remainder / numComponents;
     int comp = remainder % numComponents;
     int artiIdx = artiIndices ? artiIndices[slot] : slot;
+    if (artiIdx < 0) return;
     int bodyIdx = linkMapping[artiIdx * maxLinks + linkSlot];
     if (bodyIdx >= 0) {
         int srcIdx = (artiIdx * maxLinks + linkSlot) * srcElemSize + comp;
@@ -338,9 +420,31 @@ __global__ void fusedRootFlatScatterKernel(const float* src, float* dst,
         return true; \
     } while(0)
 
+bool launchMaskToIndices(const uint8_t* mask, int* indices, int count, cudaStream_t stream) {
+    if (count == 0) return true;
+    int numIndices = count;
+    LAUNCH(maskToIndicesKernel, mask, indices, count);
+}
+
+bool launchZeroFloatStrided(float* dst, int numIndices, unsigned dstStride, cudaStream_t stream) {
+    LAUNCH(zeroKernel<float>, dst, numIndices, dstStride);
+}
+
 bool launchGatherFloat(const float* src, float* dst, const int* devIndices, int numIndices, cudaStream_t stream) {
     LAUNCH(gatherKernel<float>, src, dst, devIndices, numIndices);
 }
+
+bool launchGatherFloatStrided(const float* src, float* dst, const int* devIndices, int numIndices, unsigned dstStride, cudaStream_t stream) {
+    LAUNCH(gatherKernel<float>, src, dst, devIndices, numIndices, dstStride);
+}
+
+template<int numSrc>
+bool launchMultiGatherFloatStrided(const cuda::std::array<float*, numSrc> src, float* dst, unsigned numDst, const int* devIndices, int numIndices, cudaStream_t stream) {
+    const auto& func = gatherMultiKernel<float, numSrc>;
+    LAUNCH(func, src, dst, numDst, devIndices, numIndices);
+}
+// instantiation
+template bool launchMultiGatherFloatStrided<2>(const cuda::std::array<float*, 2>, float*, unsigned, const int*, int, cudaStream_t);
 
 bool launchGatherTransform(const wp::transform* src, float* dst, const int* devIndices, int numIndices, cudaStream_t stream) {
     LAUNCH(gatherTransformKernel, src, dst, devIndices, numIndices);
@@ -348,6 +452,32 @@ bool launchGatherTransform(const wp::transform* src, float* dst, const int* devI
 
 bool launchGatherSpatialVector(const wp::spatial_vector* src, float* dst, const int* devIndices, int numIndices, cudaStream_t stream) {
     LAUNCH(gatherSpatialVectorKernel, src, dst, devIndices, numIndices);
+}
+
+bool launchGatherIncomingJointForce(const wp::spatial_vector* bodyParentForce,
+                                    const wp::transform* bodyTransforms,
+                                    const wp::vec3* bodyCentersOfMass,
+                                    const wp::transform* jointChildTransforms,
+                                    float* dst,
+                                    const int* bodyIndices,
+                                    const int* jointIndices,
+                                    int numIndices,
+                                    cudaStream_t stream) {
+    LAUNCH(gatherIncomingJointForceKernel, bodyParentForce, bodyTransforms, bodyCentersOfMass, jointChildTransforms,
+           dst, bodyIndices, jointIndices, numIndices);
+}
+
+bool launchGatherProjectedJointForce(const wp::spatial_vector* bodyParentForce,
+                                     const wp::transform* bodyTransforms,
+                                     const wp::vec3* bodyCentersOfMass,
+                                     const wp::spatial_vector* motionSubspaces,
+                                     float* dst,
+                                     const int* bodyIndices,
+                                     const int* dofIndices,
+                                     int numIndices,
+                                     cudaStream_t stream) {
+    LAUNCH(gatherProjectedJointForceKernel, bodyParentForce, bodyTransforms, bodyCentersOfMass, motionSubspaces, dst,
+           bodyIndices, dofIndices, numIndices);
 }
 
 bool launchGatherMat33(const wp::mat33* src, float* dst, const int* devIndices, int numIndices, cudaStream_t stream) {
@@ -404,6 +534,18 @@ bool launchFusedDofScatter(const float* src, float* dst,
     (void)cudaGetLastError();
     fusedDofScatterKernel<<<numBlocks, BLOCK_SIZE, 0, stream>>>(
         src, dst, devArtiIndices, devDofMapping, numArti, maxDofs);
+    CHECK_CUDA_LAUNCH();
+    return true;
+}
+
+bool launchFusedDofScatterStrided(const float* src, float* dst,
+                                  const int* devArtiIndices, const int* devDofMapping,
+                                  int numArti, int maxDofs, unsigned srcStride, cudaStream_t stream) {
+    int totalWork = numArti * maxDofs;
+    int numBlocks = (totalWork + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    (void)cudaGetLastError();
+    fusedDofScatterKernel<<<numBlocks, BLOCK_SIZE, 0, stream>>>(
+        src, dst, devArtiIndices, devDofMapping, numArti, maxDofs, srcStride);
     CHECK_CUDA_LAUNCH();
     return true;
 }
@@ -675,9 +817,9 @@ __device__ inline void transformContactPoint(const float* point, const float* bo
         float ay = qw * py + qz * px - qx * pz;
         float az = qw * pz + qx * py - qy * px;
         float aw = -(qx * px + qy * py + qz * pz);
-        wx = tx + ax * qw - aw * qx + (ay * qz - az * qy) + sign * thickness * normal[0];
-        wy = ty + ay * qw - aw * qy + (az * qx - ax * qz) + sign * thickness * normal[1];
-        wz = tz + az * qw - aw * qz + (ax * qy - ay * qx) + sign * thickness * normal[2];
+        wx = tx + ax * qw - aw * qx + (az * qy - ay * qz) + sign * thickness * normal[0];
+        wy = ty + ay * qw - aw * qy + (ax * qz - az * qx) + sign * thickness * normal[1];
+        wz = tz + az * qw - aw * qz + (ay * qx - ax * qy) + sign * thickness * normal[2];
     } else {
         wx = px + sign * thickness * normal[0];
         wy = py + sign * thickness * normal[1];

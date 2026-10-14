@@ -407,12 +407,12 @@ private:
     physx::PxVec3 _directionFromAxisAndWorld(Axis axis, const physx::PxTransform& worldTransform) const;
 
     /**
-     * @brief Returns cached PhysX joint pointer for an attachment index, or nullptr if unavailable.
+     * @brief Resolves the current PhysX joint for an attachment index, or nullptr if unavailable.
      */
     physx::PxJoint* _getCachedJoint(size_t attachmentIndex) const;
 
     /**
-     * @brief Returns cached PhysX actor for a prim path, fetching and caching if needed.
+     * @brief Resolves the current PhysX actor for a prim path, or nullptr if unavailable.
      */
     physx::PxRigidActor* _getOrCacheActor(const std::string& actorPath);
 

@@ -23,7 +23,6 @@ import numpy as np
 import omni.graph.core as og
 import omni.kit.app
 import omni.kit.test
-import omni.kit.ui_test as ui_test
 import rclpy
 import usdrt.Sdf
 from isaacsim.core.experimental.objects import Cube, GroundPlane
@@ -37,10 +36,10 @@ from sensor_msgs.msg import Image, JointState, PointCloud2
 from std_msgs.msg import Float32, Header
 from tf2_msgs.msg import TFMessage
 
-from .common import ROS2TestCase
+from .common import ROS2UITestCase
 
 
-class ROS2MenuTestBase(ROS2TestCase):
+class ROS2MenuTestBase(ROS2UITestCase):
     """Base class for ROS2 OmniGraph Menu tests."""
 
     async def setUp(self) -> None:
@@ -90,7 +89,7 @@ class ROS2MenuTestBase(ROS2TestCase):
 
         XformPrim(xform_path, positions=np.array([[0.0, 0.0, 0.0]]), reset_xform_op_properties=True)
 
-        await omni.kit.app.get_app().next_update_async()
+        await self.wait_for_stage_loading()
 
         return robot, xform_path, articulation_root_path
 
@@ -142,7 +141,9 @@ class TestMenuROS2CameraGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 Camera Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         await omni.kit.app.get_app().next_update_async()
@@ -151,44 +152,56 @@ class TestMenuROS2CameraGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set the camera prim
-        camera_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        camera_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         camera_prim.model.set_value("/World/test_robot/chassis_link/sensors/front_hawk/left/camera_left")
 
         # Publish RGB as HEVC compressed images.
-        rgb_compression_dropdown = ui_test.find(
+        rgb_compression_dropdown = await self.find_widget_with_retry(
             root_widget_path + "/**/ComboBox[*].identifier=='ros2_camera_rgb_compression'"
         )
         self.assertIsNotNone(rgb_compression_dropdown, "RGB compression dropdown not found")
         rgb_compression_dropdown.model.get_item_value_model().set_value(2)
 
         # Enable Depth Point Clouds
-        depth_checkbox = ui_test.find(root_widget_path + "/HStack[8]/HStack[0]/VStack[0]/ToolButton[0]")
+        depth_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[8]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         depth_checkbox.model.set_value(True)
 
         # Enable Instance Segmentation
-        instance_checkbox = ui_test.find(root_widget_path + "/HStack[9]/HStack[0]/VStack[0]/ToolButton[0]")
+        instance_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[9]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         instance_checkbox.model.set_value(True)
 
         # Enable Semantic Segmentation
-        semantic_checkbox = ui_test.find(root_widget_path + "/HStack[10]/HStack[0]/VStack[0]/ToolButton[0]")
+        semantic_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[10]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         semantic_checkbox.model.set_value(True)
 
         # Enable BoundingBox2D Tight
-        bbox2d_tight_checkbox = ui_test.find(root_widget_path + "/HStack[11]/HStack[0]/VStack[0]/ToolButton[0]")
+        bbox2d_tight_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[11]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         bbox2d_tight_checkbox.model.set_value(True)
 
         # Enable BoundingBox2D Loose
-        bbox2d_loose_checkbox = ui_test.find(root_widget_path + "/HStack[12]/HStack[0]/VStack[0]/ToolButton[0]")
+        bbox2d_loose_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[12]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         bbox2d_loose_checkbox.model.set_value(True)
 
         # Enable BoundingBox3D
-        bbox3d_checkbox = ui_test.find(root_widget_path + "/HStack[13]/HStack[0]/VStack[0]/ToolButton[0]")
+        bbox3d_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[13]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         bbox3d_checkbox.model.set_value(True)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[14]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[14]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
         await omni.kit.app.get_app().next_update_async()
@@ -223,19 +236,21 @@ class TestMenuROS2CameraGraph(ROS2MenuTestBase):
         render_product = await self.create_reusable_render_product(render_product_path, camera_path)
 
         window_name = "ROS2 Camera Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
-        camera_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
-        render_product_prim = ui_test.find(root_widget_path + "/HStack[3]/StringField[0]")
+        camera_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
+        render_product_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[3]/StringField[0]")
         self.assertIsNotNone(render_product_prim, "Render product prim field not found")
         camera_prim.model.set_value(camera_path)
         render_product_prim.model.set_value(render_product_path)
 
         await omni.kit.app.get_app().next_update_async()
 
-        ok_button = ui_test.find(root_widget_path + "/HStack[14]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[14]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
         await omni.kit.app.get_app().next_update_async()
@@ -254,17 +269,19 @@ class TestMenuROS2CameraGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 Camera Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Leave camera path empty (null condition)
-        camera_prim_field = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        camera_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         camera_prim_field.model.set_value("")
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[14]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[14]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -313,23 +330,27 @@ class TestMenuROS2CameraGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 Camera Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/Camera", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Set camera path
-        camera_prim_field = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        camera_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         camera_prim_field.model.set_value("/World/test_robot/chassis_link/sensors/front_hawk/left/camera_left")
 
         # Enable Depth Point Clouds
-        depth_checkbox = ui_test.find(root_widget_path + "/HStack[8]/HStack[0]/VStack[0]/ToolButton[0]")
+        depth_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[8]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         depth_checkbox.model.set_value(True)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[14]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[14]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -341,6 +362,9 @@ class TestMenuROS2CameraGraph(ROS2MenuTestBase):
         # Define helper function to procress messages
         def spin_ros() -> None:
             rclpy.spin_once(self.node, timeout_sec=0.01)
+
+        for topic in (rgb_topic, depth_topic, point_cloud_topic):
+            await self.wait_for_publishers_on_topic(self.node, topic, per_frame_callback=spin_ros)
 
         # Run simulation
         await self.simulate_until_condition(
@@ -394,24 +418,28 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Lidar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Find and set the graph root prim
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set RTX Lidar prim
-        lidar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        lidar_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         lidar_prim.model.set_value("/World/test_robot/chassis_link/sensors/XT_32/PandarXT_32_10hz")
 
         # Enable Point Cloud
-        point_cloud_checkbox = ui_test.find(root_widget_path + "/HStack[7]/HStack[0]/VStack[0]/ToolButton[0]")
+        point_cloud_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[7]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         point_cloud_checkbox.model.set_value(True)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button (index updated due to metadata UI additions)
-        ok_button = ui_test.find(root_widget_path + "/HStack[9]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[9]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -437,20 +465,22 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Lidar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Find and set the graph root prim
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Leave lidar path empty (null condition)
-        lidar_prim_field = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        lidar_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         lidar_prim_field.model.set_value("")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button (index updated due to metadata UI additions)
-        ok_button = ui_test.find(root_widget_path + "/HStack[9]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[9]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -493,28 +523,34 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Lidar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Find and set the graph root prim
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set RTX Lidar prim
-        lidar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        lidar_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         lidar_prim.model.set_value(lidar_path)
 
         # Disable LaserScan as the lidar is 3D
-        laser_scan_checkbox = ui_test.find(root_widget_path + "/HStack[6]/HStack[0]/VStack[0]/ToolButton[0]")
+        laser_scan_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[6]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         laser_scan_checkbox.model.set_value(False)
 
         # Enable Point Cloud
-        point_cloud_checkbox = ui_test.find(root_widget_path + "/HStack[7]/HStack[0]/VStack[0]/ToolButton[0]")
+        point_cloud_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[7]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         point_cloud_checkbox.model.set_value(True)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button (index updated due to metadata UI additions)
-        ok_button = ui_test.find(root_widget_path + "/HStack[9]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[9]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -582,34 +618,40 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Lidar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Find and set the graph root prim
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set RTX Lidar prim
-        lidar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        lidar_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         lidar_prim.model.set_value("/World/test_robot/chassis_link/sensors/XT_32/PandarXT_32_10hz")
 
         # Disable Laser Scan
-        laser_scan_checkbox = ui_test.find(root_widget_path + "/HStack[6]/HStack[0]/VStack[0]/ToolButton[0]")
+        laser_scan_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[6]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         laser_scan_checkbox.model.set_value(False)
 
         # Enable Point Cloud
-        point_cloud_checkbox = ui_test.find(root_widget_path + "/HStack[7]/HStack[0]/VStack[0]/ToolButton[0]")
+        point_cloud_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[7]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         point_cloud_checkbox.model.set_value(True)
 
         # Enable some metadata options in the left VStack (HStack[8]/VStack[0])
         # Intensity checkbox is the first one in left VStack
-        intensity_checkbox = ui_test.find(
+        intensity_checkbox = await self.find_widget_with_retry(
             root_widget_path + "/HStack[8]/VStack[0]/HStack[0]/HStack[0]/VStack[0]/ToolButton[0]"
         )
         if intensity_checkbox:
             intensity_checkbox.model.set_value(True)
 
         # Timestamp checkbox is the second one in left VStack
-        timestamp_checkbox = ui_test.find(
+        timestamp_checkbox = await self.find_widget_with_retry(
             root_widget_path + "/HStack[8]/VStack[0]/HStack[1]/HStack[0]/VStack[0]/ToolButton[0]"
         )
         if timestamp_checkbox:
@@ -617,7 +659,7 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Enable some metadata options in the right VStack (HStack[8]/VStack[1])
         # Velocity checkbox is the second one in right VStack
-        velocity_checkbox = ui_test.find(
+        velocity_checkbox = await self.find_widget_with_retry(
             root_widget_path + "/HStack[8]/VStack[1]/HStack[1]/HStack[0]/VStack[0]/ToolButton[0]"
         )
         if velocity_checkbox:
@@ -626,7 +668,7 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[9]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[9]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -674,21 +716,23 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Lidar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Lidar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Find and set the graph root prim
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set RTX Lidar prim
-        lidar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        lidar_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         lidar_prim.model.set_value("/World/test_robot/chassis_link/sensors/XT_32/PandarXT_32_10hz")
 
         # Leave Laser Scan enabled (default)
         # Keep Point Cloud disabled (default)
 
         # Try to enable some metadata options (should show warning and be ignored)
-        intensity_checkbox = ui_test.find(
+        intensity_checkbox = await self.find_widget_with_retry(
             root_widget_path + "/HStack[8]/VStack[0]/HStack[0]/HStack[0]/VStack[0]/ToolButton[0]"
         )
         if intensity_checkbox:
@@ -697,7 +741,7 @@ class TestMenuROS2LidarGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[9]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[9]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -770,19 +814,21 @@ class TestMenuROS2RadarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Radar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set RTX Radar prim
-        radar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        radar_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         radar_prim.model.set_value(radar_path)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button (radar dialog OK/Cancel row is HStack[7])
-        ok_button = ui_test.find(root_widget_path + "/HStack[7]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[7]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -803,19 +849,21 @@ class TestMenuROS2RadarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Radar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Leave radar path empty (null condition)
-        radar_prim_field = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        radar_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         radar_prim_field.model.set_value("")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[7]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[7]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -846,20 +894,22 @@ class TestMenuROS2RadarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 RTX Radar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Find and set RTX Radar prim
-        radar_prim = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        radar_prim = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         radar_prim.model.set_value(radar_path)
 
         # Enable each metadata checkbox. Metadata rows live in the inner VStack[0]
         # (sibling to the parameter HStacks), one HStack per option. Order matches
         # Ros2RtxRadarGraph.METADATA_OPTIONS: RadialVelocityMS, Intensity, Timestamp.
         for row_index in range(3):
-            checkbox = ui_test.find(
+            checkbox = await self.find_widget_with_retry(
                 root_widget_path + f"/VStack[0]/HStack[{row_index}]/HStack[0]/VStack[0]/ToolButton[0]"
             )
             if checkbox:
@@ -868,7 +918,7 @@ class TestMenuROS2RadarGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[7]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[7]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -917,17 +967,19 @@ class TestMenuROS2RadarGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph.
         window_name = "ROS2 RTX Radar Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/RTX Radar", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
-        radar_prim_field = ui_test.find(root_widget_path + "/HStack[2]/StringField[0]")
+        radar_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[2]/StringField[0]")
         radar_prim_field.model.set_value(radar_path)
 
         await omni.kit.app.get_app().next_update_async()
 
-        ok_button = ui_test.find(root_widget_path + "/HStack[7]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[7]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -963,7 +1015,7 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 Joint States Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Joint States", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Joint States", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -971,21 +1023,25 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Set Articulation Root
-        articulation_root_field = ui_test.find(root_widget_path + "/HStack[3]/StringField[0]")
+        articulation_root_field = await self.find_widget_with_retry(root_widget_path + "/HStack[3]/StringField[0]")
         articulation_root_field.model.set_value(art_root_path)
 
         # Enable Publisher
-        publisher_checkbox = ui_test.find(root_widget_path + "/HStack[4]/HStack[0]/VStack[0]/ToolButton[0]")
+        publisher_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[4]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         publisher_checkbox.model.set_value(True)
 
         # Enable Subscriber
-        subscriber_checkbox = ui_test.find(root_widget_path + "/HStack[5]/HStack[0]/VStack[0]/ToolButton[0]")
+        subscriber_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[5]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         subscriber_checkbox.model.set_value(True)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[6]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[6]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1025,7 +1081,7 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 Joint States Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Joint States", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Joint States", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1033,13 +1089,13 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Leave robot path empty (null condition)
-        robot_prim_field = ui_test.find(root_widget_path + "/HStack[3]/StringField[0]")
+        robot_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[3]/StringField[0]")
         robot_prim_field.model.set_value("")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[6]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[6]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1072,13 +1128,15 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
         # Setup ROS2 subscribers
         # Store actual message data for validation
         self.joint_state_data = None
+        expected_joints = ("joint_wheel_left", "joint_wheel_right")
 
         # Define topic names
         joint_states_topic = "/joint_states"
 
         # Create callback to store message data
         def joint_states_callback(msg: Any) -> None:
-            self.joint_state_data = msg
+            if all(joint in msg.name for joint in expected_joints):
+                self.joint_state_data = msg
 
         # Create subscriber
         self.create_subscription(self.node, JointState, joint_states_topic, joint_states_callback)
@@ -1086,28 +1144,32 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
         # Create graph through menu
         window_name = "ROS2 Joint States Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Joint States", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Joint States", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Set Articulation Root to the actual articulation root prim (chassis_link)
-        articulation_root_field = ui_test.find(root_widget_path + "/HStack[3]/StringField[0]")
+        articulation_root_field = await self.find_widget_with_retry(root_widget_path + "/HStack[3]/StringField[0]")
         articulation_root_field.model.set_value(art_root_path)
 
         # Enable Publisher
-        publisher_checkbox = ui_test.find(root_widget_path + "/HStack[4]/HStack[0]/VStack[0]/ToolButton[0]")
+        publisher_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[4]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         publisher_checkbox.model.set_value(True)
 
         # Enable Subscriber
-        subscriber_checkbox = ui_test.find(root_widget_path + "/HStack[5]/HStack[0]/VStack[0]/ToolButton[0]")
+        subscriber_checkbox = await self.find_widget_with_retry(
+            root_widget_path + "/HStack[5]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         subscriber_checkbox.model.set_value(True)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[6]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[6]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click(human_delay_speed=50)
 
@@ -1147,7 +1209,6 @@ class TestMenuROS2JointStatesGraph(ROS2MenuTestBase):
             )
 
             # Nova Carter has specific joints we can check for
-            expected_joints = ["joint_wheel_left", "joint_wheel_right"]
             for joint in expected_joints:
                 self.assertIn(joint, self.joint_state_data.name, f"Expected joint '{joint}' not found")
 
@@ -1221,7 +1282,7 @@ class TestMenuROS2TFGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 TF Publisher Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/TF Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/TF Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1229,13 +1290,13 @@ class TestMenuROS2TFGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Set Target Prim
-        target_prim_field = ui_test.find(root_widget_path + "/HStack[5]/StringField[0]")
+        target_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[5]/StringField[0]")
         target_prim_field.model.set_value("/World/test_robot/chassis_link/base_link")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[8]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[8]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1258,7 +1319,7 @@ class TestMenuROS2TFGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 TF Publisher Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/TF Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/TF Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1266,13 +1327,13 @@ class TestMenuROS2TFGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Leave target prim empty (null condition)
-        target_prim_field = ui_test.find(root_widget_path + "/HStack[5]/StringField[0]")
+        target_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[5]/StringField[0]")
         target_prim_field.model.set_value("")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[8]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[8]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1309,7 +1370,7 @@ class TestMenuROS2TFGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 TF Publisher Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/TF Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/TF Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1317,13 +1378,13 @@ class TestMenuROS2TFGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Set Target Prim
-        target_prim_field = ui_test.find(root_widget_path + "/HStack[5]/StringField[0]")
+        target_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[5]/StringField[0]")
         target_prim_field.model.set_value(art_root_path)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[8]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[8]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1391,7 +1452,7 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 Odometry Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1399,17 +1460,17 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Set Articulation Root
-        articulation_root_field = ui_test.find(root_widget_path + "/HStack[4]/StringField[0]")
+        articulation_root_field = await self.find_widget_with_retry(root_widget_path + "/HStack[4]/StringField[0]")
         articulation_root_field.model.set_value("/World/test_robot/chassis_link/base_link")
 
         # Set Chassis Link Prim
-        chassis_link_prim_field = ui_test.find(root_widget_path + "/HStack[5]/StringField[0]")
+        chassis_link_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[5]/StringField[0]")
         chassis_link_prim_field.model.set_value("/World/test_robot/chassis_link")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[6]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[6]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1432,7 +1493,7 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 Odometry Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1441,17 +1502,17 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
 
         # Leave chassis and articulation root empty (null condition)
         # Set Articulation Root
-        articulation_root_field = ui_test.find(root_widget_path + "/HStack[4]/StringField[0]")
+        articulation_root_field = await self.find_widget_with_retry(root_widget_path + "/HStack[4]/StringField[0]")
         articulation_root_field.model.set_value("")
 
         # Set Chassis Link Prim
-        chassis_link_prim_field = ui_test.find(root_widget_path + "/HStack[5]/StringField[0]")
+        chassis_link_prim_field = await self.find_widget_with_retry(root_widget_path + "/HStack[5]/StringField[0]")
         chassis_link_prim_field.model.set_value("")
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[6]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[6]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1496,6 +1557,7 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
             "Tools/Robotics/ROS 2 OmniGraphs/Odometry Publisher",
             delays=[10, 100, 200],
             window_name=window_name,
+            use_direct_click=False,
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1506,22 +1568,24 @@ class TestMenuROS2OdometryGraph(ROS2MenuTestBase):
         odom_root_widget_path = f"{window_name}//Frame/VStack[0]"
 
         # Enable "Publish Robot's TF?" checkbox (critical for TF publishing)
-        publish_tf_checkbox = ui_test.find(odom_root_widget_path + "/HStack[3]/HStack[0]/VStack[0]/ToolButton[0]")
+        publish_tf_checkbox = await self.find_widget_with_retry(
+            odom_root_widget_path + "/HStack[3]/HStack[0]/VStack[0]/ToolButton[0]"
+        )
         if publish_tf_checkbox:
             publish_tf_checkbox.model.set_value(True)
 
         # Set Robot Articulation Root to the actual articulation root prim (chassis_link)
-        articulation_root_field = ui_test.find(odom_root_widget_path + "/HStack[4]/StringField[0]")
+        articulation_root_field = await self.find_widget_with_retry(odom_root_widget_path + "/HStack[4]/StringField[0]")
         articulation_root_field.model.set_value(art_root_path)
 
         # Set Chassis Link Prim
-        chassis_link_prim_field = ui_test.find(odom_root_widget_path + "/HStack[5]/StringField[0]")
+        chassis_link_prim_field = await self.find_widget_with_retry(odom_root_widget_path + "/HStack[5]/StringField[0]")
         chassis_link_prim_field.model.set_value(base_link_path)
 
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        odom_ok_button = ui_test.find(odom_root_widget_path + "/HStack[6]/Button[0]")
+        odom_ok_button = await self.find_enabled_widget_with_retry(odom_root_widget_path + "/HStack[6]/Button[0]")
         self.assertIsNotNone(odom_ok_button, "Odometry OK button not found")
         await odom_ok_button.click()
 
@@ -1638,7 +1702,9 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
 
         # Click through the menu to create the graph
         window_name = "ROS2 Clock Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/Clock", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/Clock", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         # Find and set the graph root prim
@@ -1647,7 +1713,7 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[1]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[1]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1689,7 +1755,9 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
 
         # Create graph through menu as required
         window_name = "ROS2 Clock Graph"
-        param_window = await menu_click_with_retry("Tools/Robotics/ROS 2 OmniGraphs/Clock", window_name=window_name)
+        param_window = await menu_click_with_retry(
+            "Tools/Robotics/ROS 2 OmniGraphs/Clock", window_name=window_name, use_direct_click=False
+        )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
         root_widget_path = f"{window_name}//Frame/VStack[0]"
@@ -1697,7 +1765,7 @@ class TestMenuROS2ClockGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[1]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[1]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1787,7 +1855,7 @@ class TestMenuROS2GenericPublisherGraph(ROS2MenuTestBase):
         # Click through the menu to create the graph
         window_name = "ROS2 Generic Publisher Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Generic Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Generic Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1797,7 +1865,7 @@ class TestMenuROS2GenericPublisherGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button
-        ok_button = ui_test.find(root_widget_path + "/HStack[2]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[2]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 
@@ -1835,7 +1903,7 @@ class TestMenuROS2GenericPublisherGraph(ROS2MenuTestBase):
         # Create graph through menu
         window_name = "ROS2 Generic Publisher Graph"
         param_window = await menu_click_with_retry(
-            "Tools/Robotics/ROS 2 OmniGraphs/Generic Publisher", window_name=window_name
+            "Tools/Robotics/ROS 2 OmniGraphs/Generic Publisher", window_name=window_name, use_direct_click=False
         )
         self.assertIsNotNone(param_window, "Parameter window not found")
 
@@ -1845,7 +1913,7 @@ class TestMenuROS2GenericPublisherGraph(ROS2MenuTestBase):
         await omni.kit.app.get_app().next_update_async()
 
         # Click OK button to create the base graph
-        ok_button = ui_test.find(root_widget_path + "/HStack[2]/Button[0]")
+        ok_button = await self.find_enabled_widget_with_retry(root_widget_path + "/HStack[2]/Button[0]")
         self.assertIsNotNone(ok_button, "OK button not found")
         await ok_button.click()
 

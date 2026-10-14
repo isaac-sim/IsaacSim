@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 import torch
 
+from .backend_capabilities import NEWTON_FEATHERSTONE_CAPABILITIES
 from .inertia_param import LOG_CHOLESKY_DIM, log_cholesky_to_inertia_matrix_torch
 from .parameter_types import GLOBAL_LINK_INDEX, SysIdParameterEntry, SysIdParameterType
 
@@ -37,18 +38,7 @@ _COM_AXIS_BY_TYPE = {
     SysIdParameterType.LINK_COM_OFFSET_Z: 2,
 }
 
-_DIFFERENTIABLE_PARAMETER_TYPES = frozenset(
-    {
-        SysIdParameterType.JOINT_FRICTION,
-        SysIdParameterType.JOINT_STIFFNESS,
-        SysIdParameterType.JOINT_DAMPING,
-        SysIdParameterType.LINK_MASS,
-        SysIdParameterType.LINK_COM_OFFSET_X,
-        SysIdParameterType.LINK_COM_OFFSET_Y,
-        SysIdParameterType.LINK_COM_OFFSET_Z,
-        SysIdParameterType.LINK_INERTIA_LOG_CHOLESKY,
-    }
-)
+_DIFFERENTIABLE_PARAMETER_TYPES = NEWTON_FEATHERSTONE_CAPABILITIES.parameter_types
 
 
 @dataclass

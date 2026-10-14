@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.11.12] - 2026-10-01
+### Fixed
+- Match textured OBJ and DAE import tests to the lowercase texture output directory.
+
+## [3.11.11] - 2026-09-19
+### Changed
+- Load `isaacsim.asset.importer.urdf` from the independently built `isaacsim-asset` wheel.
+
 ## [3.11.10] - 2026-08-23
 ### Changed
 - Pin `usd-exchange` to version 2.3.0 for reproducible standalone installs.

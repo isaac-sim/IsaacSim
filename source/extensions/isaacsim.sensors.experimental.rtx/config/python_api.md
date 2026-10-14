@@ -3,7 +3,7 @@
 ## Classes
 
 - class SensorAuthoring(XformPrim, ABC)
-  - def __init__(self, path: str)
+  - def __init__(self, path: str | list[str])
   - [property] def asset_root_path(self) -> str | None
   - [property] def aux_output_level(self) -> str
   - def author_spg(self, nodes: SPGNode | list[SPGNode], connections: list[tuple[str, str]] | None = None) -> str
@@ -46,7 +46,7 @@
   - [property] def radar(self) -> Radar
 
 - class RtxCamera(SensorAuthoring)
-  - def __init__(self, path: str)
+  - def __init__(self, path: str | list[str])
   - static def create(path: str) -> RtxCamera
   - [property] def camera(self) -> Camera
 
@@ -100,7 +100,7 @@
   - def set_projector_cycle_period(self, period: tuple[int, int] | None)
 
 - class TiledCameraSensor(SensorRuntime)
-  - def __init__(self, paths: str | list[str] | Camera)
+  - def __init__(self, paths: str | list[str] | Camera | RtxCamera)
   - [property] def camera(self) -> Camera
   - [property] def resolution(self) -> tuple[int, int]
   - [property] def tiled_resolution(self) -> tuple[int, int]

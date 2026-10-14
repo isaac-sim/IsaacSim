@@ -18,6 +18,7 @@
 import asyncio
 import json
 import os
+import threading
 
 # python
 from collections import namedtuple
@@ -243,12 +244,24 @@ def check_server(server: str, path: str, timeout: float = 10.0, *, accept_unsupp
         accept_unsupported: Treat an unsupported metadata operation as success.
 
     Returns:
-        True if folder is found.
+        True if the folder is found, False if unavailable or the request times out.
     """
-    carb.log_info(f"Checking path: {server}{path}")
-    # Increase hang detection timeout
-    omni.client.set_hang_detection_time_ms(20000)
-    result, _ = omni.client.stat(f"{server}{path}")
+    server_path = f"{server}{path}"
+    carb.log_info(f"Checking path: {server_path}")
+    completed = threading.Event()
+    result = Result.ERROR
+
+    def on_stat(stat_result: Result, entry: omni.client.ListEntry) -> None:
+        nonlocal result
+        result = stat_result
+        completed.set()
+
+    # The blocking `stat` call waits indefinitely; hang detection only emits diagnostics.
+    request = omni.client.stat_with_callback(server_path, callback=on_stat)
+    if not completed.wait(timeout):
+        request.stop()
+        carb.log_warn(f"check_server() timeout {timeout} on {server_path}")
+        return False
     if result == Result.OK:
         carb.log_info(f"Success: {server}{path}")
         return True

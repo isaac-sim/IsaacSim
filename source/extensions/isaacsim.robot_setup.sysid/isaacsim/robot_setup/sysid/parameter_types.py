@@ -245,6 +245,22 @@ _TYPE_DEFAULTS: dict[SysIdParameterType, tuple[float, float, float]] = {
 }
 
 
+def default_bounds_for_type(param_type: SysIdParameterType) -> tuple[float, float]:
+    """Return the range a parameter type is solved within by default.
+
+    A run's :class:`SysIdParameterSpec` rows may narrow these, so treat the
+    result as the widest a candidate can reach absent an explicit override.
+
+    Args:
+        param_type: Parameter kind to look up.
+
+    Returns:
+        Minimum and maximum value.
+    """
+    _initial, minimum, maximum = _TYPE_DEFAULTS[param_type]
+    return minimum, maximum
+
+
 def build_dof_parameter_specs(num_joints: int) -> tuple[SysIdParameterSpec, ...]:
     """Build basic joint rows plus one global link-mass row.
 

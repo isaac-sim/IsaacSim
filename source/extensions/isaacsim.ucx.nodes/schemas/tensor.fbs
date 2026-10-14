@@ -1,13 +1,20 @@
-// FlatBuffers schema demonstrating native_type approach with holoscan::Tensor
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+// FlatBuffers schema demonstrating the native_type approach with holoscan::Tensor.
 
 native_include "holoscan/core/domain/tensor.hpp";
 
-namespace isaac;
+namespace holoscan.schema;
 
 enum DLDataTypeCode : uint8 {
   kDLInt = 0,
   kDLUInt = 1,
   kDLFloat = 2,
+  kDLOpaqueHandle = 3,
+  kDLBfloat = 4,
+  kDLComplex = 5,
+  kDLBool = 6,
 }
 
 // Device type of a tensor.
@@ -42,12 +49,13 @@ struct DLDevice {
 
 // Defines a Tensor message based on DLPack, using holoscan::Tensor as the native type.
 table Tensor (native_type: "holoscan::Tensor") {
-  data: [ubyte];
-  shape: [int64];
-  dtype: DLDataType (native_inline);
-  device: DLDevice (native_inline);
-  ndim: uint32;
-  strides: [int64];
+  data: [ubyte] (id: 0);
+  shape: [int64] (id: 1);
+  dtype: DLDataType (id: 2, native_inline);
+  device: DLDevice (id: 3, native_inline);
+  ndim: uint32 (id: 4);
+  strides: [int64] (id: 5);
 }
 
 root_type Tensor;
+file_identifier "HSTN";

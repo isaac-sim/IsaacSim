@@ -1,0 +1,273 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Internal Staging Auto Merge
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Existing trusted staging PR number
+        required: true
+        type: number
+      head_sha:
+        description: Exact approved PR head SHA
+        required: true
+        type: string
+      automated:
+        description: Protected-source 6.2 staging dispatch
+        type: boolean
+        default: false
+      dry_run:
+        description: Evaluate checks without merging or sending notifications
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: read
+  pull-requests: write
+
+concurrency:
+  group: staging-merge-${{ github.event.issue.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: >-
+      github.repository == 'isaac-sim/IsaacSim-Internal' &&
+      ((github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/ok to test ')) ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      MODE: ${{ vars.RC_INTERNAL_STAGING_MODE }}
+      PR_NUMBER: ${{ github.event.issue.number || inputs.pr_number }}
+      COMMENT_BODY: ${{ github.event.comment.body || '' }}
+      COMMENT_ASSOCIATION: ${{ github.event.comment.author_association || 'MANUAL' }}
+      DISPATCH_HEAD_SHA: ${{ inputs.head_sha || '' }}
+      AUTOMATED: ${{ inputs.automated && 'true' || 'false' }}
+      DISPATCH_ACTOR: ${{ github.actor }}
+      TRUSTED_ACTOR: ${{ vars.RC_STAGING_AUTOMATION_ACTOR }}
+    steps:
+      - name: Validate unattended dispatch authority
+        if: inputs.automated
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_REPOSITORY" = "isaac-sim/IsaacSim-Internal" ]
+          [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]
+          [ "$GITHUB_REF" = "refs/heads/release/6.2" ]
+          [ "$GITHUB_REF_PROTECTED" = "true" ]
+          [ -n "$TRUSTED_ACTOR" ] && [ "$DISPATCH_ACTOR" = "$TRUSTED_ACTOR" ]
+
+      - name: Checkout trusted policy, never the PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.automated && github.sha || 'develop' }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate staging PR and exact approved head
+        id: pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$MODE" != "allowlisted-force" ]; then
+            echo "RC_INTERNAL_STAGING_MODE is not allowlisted-force; refusing merge."
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            case "$COMMENT_ASSOCIATION" in
+              OWNER|MEMBER|COLLABORATOR) ;;
+              *)
+                echo "Comment author association $COMMENT_ASSOCIATION is not trusted."
+                exit 1
+                ;;
+            esac
+            if [[ ! "$COMMENT_BODY" =~ ^/ok[[:space:]]+to[[:space:]]+test[[:space:]]+([0-9a-f]{40})$ ]]; then
+              echo "Comment does not contain one exact vetted SHA."
+              exit 1
+            fi
+            EXPECTED_HEAD="${BASH_REMATCH[1]}"
+          else
+            EXPECTED_HEAD="$DISPATCH_HEAD_SHA"
+          fi
+
+          PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+            --json state,baseRefName,headRefName,headRefOid,headRepository,isCrossRepository,title,body)
+          STATE=$(echo "$PR_INFO" | jq -r .state)
+          BASE=$(echo "$PR_INFO" | jq -r .baseRefName)
+          HEAD_REF=$(echo "$PR_INFO" | jq -r .headRefName)
+          HEAD_SHA=$(echo "$PR_INFO" | jq -r .headRefOid)
+          HEAD_REPO=$(echo "$PR_INFO" | jq -r .headRepository.nameWithOwner)
+          IS_CROSS=$(echo "$PR_INFO" | jq -r .isCrossRepository)
+          TITLE=$(echo "$PR_INFO" | jq -r .title)
+          BODY=$(echo "$PR_INFO" | jq -r .body)
+
+          [ "$STATE" = "OPEN" ] || { echo "PR is not open."; exit 1; }
+          EXPECTED_BASE=develop
+          if [ "$AUTOMATED" = "true" ]; then EXPECTED_BASE=release/6.2; fi
+          [ "$BASE" = "$EXPECTED_BASE" ] || { echo "Unexpected PR target."; exit 1; }
+          [ "$IS_CROSS" = "false" ] || { echo "PR crosses repositories."; exit 1; }
+          [ "$HEAD_REPO" = "$REPO" ] || { echo "Unexpected head repository."; exit 1; }
+          [[ "$HEAD_REF" =~ ^upstream/update_from_[0-9a-f]{8}$ ]] || {
+            echo "Head branch is not a generated staging branch."; exit 1;
+          }
+          [ "$HEAD_SHA" = "$EXPECTED_HEAD" ] || {
+            echo "Head changed: expected $EXPECTED_HEAD, found $HEAD_SHA."; exit 1;
+          }
+          if [ "$AUTOMATED" = "true" ]; then
+            TEST_HEAD=$(gh api "repos/$REPO/git/ref/heads/pull-request/$PR_NUMBER" --jq .object.sha)
+            [ "$TEST_HEAD" = "$EXPECTED_HEAD" ] || { echo "Test branch changed."; exit 1; }
+          fi
+          grep -q '<!-- rc-internal-staging-mode: allowlisted-force -->' <<<"$BODY" || {
+            echo "Internal staging marker is missing."; exit 1;
+          }
+
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "title<<__INTERNAL_STAGING_TITLE__"
+            echo "$TITLE"
+            echo "__INTERNAL_STAGING_TITLE__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Wait for required and self-hosted checks
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p _staging
+          for attempt in $(seq 1 180); do
+            CURRENT_HEAD=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq .headRefOid)
+            [ "$CURRENT_HEAD" = "$EXPECTED_HEAD" ] || { echo "PR head changed."; exit 1; }
+            gh pr checks "$PR_NUMBER" --repo "$REPO" \
+              --json name,state,bucket,link > _staging/checks-raw.json || true
+            if ! jq -e 'type=="array"' _staging/checks-raw.json >/dev/null 2>&1; then
+              echo "Could not read checks; retrying after a transient API failure."
+              sleep 30
+              continue
+            fi
+            missing=$(jq -r '
+              ([
+                "DCO",
+                "Path Filter",
+                "checks / Format Check (repo format -v)",
+                "build (linux-x86_64, release) / Build (linux-x86_64 / release)",
+                "build-cov (linux-x86_64, release) / Build (linux-x86_64 / release / cov)"
+              ] - [.[] | .name]) | length
+            ' _staging/checks-raw.json)
+            pending=$(jq '[.[] | select(.bucket=="pending")] | length' _staging/checks-raw.json)
+            if [ "$missing" -eq 0 ] && [ "$pending" -eq 0 ]; then
+              break
+            fi
+            if [ "$attempt" -eq 180 ]; then
+              echo "Checks did not settle within 90 minutes."
+              exit 1
+            fi
+            echo "Waiting for checks: missing=$missing pending=$pending attempt=$attempt"
+            sleep 30
+          done
+
+      - name: Collect per-check failure evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq '
+            map({
+              name,
+              status: (if .bucket=="pending" then "queued" else "completed" end),
+              conclusion: (
+                if .bucket=="pass" then "success"
+                elif .bucket=="fail" then "failure"
+                elif .bucket=="cancel" then "cancelled"
+                elif .bucket=="skipping" then "skipped"
+                else null end
+              ),
+              failure_text: "",
+              link
+            })
+          ' _staging/checks-raw.json > _staging/checks.json
+
+          while IFS=$'\t' read -r name link; do
+            job_id="${link##*/}"
+            failure_log=$(gh run view --repo "$REPO" --job "$job_id" --log-failed 2>&1 || true)
+            jq --arg name "$name" --arg log "$failure_log" \
+              'map(if .name==$name then .failure_text=$log else . end)' \
+              _staging/checks.json > _staging/checks.next.json
+            mv _staging/checks.next.json _staging/checks.json
+          done < <(jq -r '.[] | select(.bucket=="fail") | [.name,.link] | @tsv' _staging/checks-raw.json)
+
+      - name: Apply narrow internal merge policy
+        id: policy
+        shell: bash
+        run: |
+          python3 tools/github/ci/internal_staging_policy.py github \
+            _staging/checks.json \
+            --mode "$MODE" \
+            --repository "$REPO" \
+            --output _staging/decision.json
+
+      - name: Squash merge exact approved head
+        id: merge
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          MERGE_HEAD: ${{ steps.pr.outputs.head_sha }}
+          MERGE_TITLE: ${{ steps.pr.outputs.title }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: merge skipped."
+            exit 0
+          fi
+          waived=$(jq -r '.waived | if length==0 then "none" else join(", ") end' _staging/decision.json)
+          body=$(cat <<EOF
+          Automated internal QA staging merge.
+
+          Required checks passed: DCO, Path Filter.
+          Waived internal-only checks: $waived.
+          This is not public-promotion evidence.
+          EOF
+          )
+          gh pr merge "$PR_NUMBER" --repo "$REPO" --squash \
+            --match-head-commit "$MERGE_HEAD" \
+            --subject "$MERGE_TITLE" \
+            --body "$body"
+
+      - name: Upload merge-policy evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internal-staging-policy-${{ env.PR_NUMBER }}
+          path: _staging/
+          retention-days: 30
+
+      - name: Report terminal staging status to Slack
+        if: ${{ always() && !inputs.dry_run && steps.pr.outcome == 'success' }}
+        env:
+          ISAAC_SIM_NOTIFIER_SLACK_WEBHOOK: ${{ secrets.ISAAC_SIM_NOTIFIER_SLACK_WEBHOOK }}
+          PR_URL: https://github.com/${{ github.repository }}/pull/${{ env.PR_NUMBER }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          MERGE_OUTCOME: ${{ steps.merge.outcome || 'skipped' }}
+          POLICY_OUTCOME: ${{ steps.policy.outcome || 'skipped' }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 tools/github/ci/report_internal_staging_status.py \
+            --pr-number "$PR_NUMBER" \
+            --pr-url "$PR_URL" \
+            --head-sha "$HEAD_SHA" \
+            --merge-outcome "$MERGE_OUTCOME" \
+            --policy-outcome "$POLICY_OUTCOME" \
+            --run-url "$RUN_URL"

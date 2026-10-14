@@ -28,114 +28,6 @@ namespace entities
 namespace details
 {
 
-static array::Dtype convertDtype(tensors::DType dtype)
-{
-    switch (dtype)
-    {
-    case tensors::DType::eBool:
-        return array::Dtype::Bool();
-    case tensors::DType::eInt8:
-        return array::Dtype::Int8();
-    case tensors::DType::eInt16:
-        return array::Dtype::Int16();
-    case tensors::DType::eInt32:
-        return array::Dtype::Int32();
-    case tensors::DType::eInt64:
-        return array::Dtype::Int64();
-    case tensors::DType::eUInt8:
-        return array::Dtype::UInt8();
-    case tensors::DType::eUInt16:
-        return array::Dtype::UInt16();
-    case tensors::DType::eUInt32:
-        return array::Dtype::UInt32();
-    case tensors::DType::eUInt64:
-        return array::Dtype::UInt64();
-    case tensors::DType::eFloat32:
-        return array::Dtype::Float32();
-    case tensors::DType::eFloat64:
-        return array::Dtype::Float64();
-    default:
-        throw std::invalid_argument("convertDtype: unsupported tensors::DType");
-    }
-}
-
-static tensors::DType convertDtype(array::Dtype dtype)
-{
-    switch (dtype.kind())
-    {
-    case array::Dtype::Kind::eBool:
-        return tensors::DType::eBool;
-    case array::Dtype::Kind::eInt8:
-        return tensors::DType::eInt8;
-    case array::Dtype::Kind::eInt16:
-        return tensors::DType::eInt16;
-    case array::Dtype::Kind::eInt32:
-        return tensors::DType::eInt32;
-    case array::Dtype::Kind::eInt64:
-        return tensors::DType::eInt64;
-    case array::Dtype::Kind::eUInt8:
-        return tensors::DType::eUInt8;
-    case array::Dtype::Kind::eUInt16:
-        return tensors::DType::eUInt16;
-    case array::Dtype::Kind::eUInt32:
-        return tensors::DType::eUInt32;
-    case array::Dtype::Kind::eUInt64:
-        return tensors::DType::eUInt64;
-    case array::Dtype::Kind::eFloat32:
-        return tensors::DType::eFloat32;
-    case array::Dtype::Kind::eFloat64:
-        return tensors::DType::eFloat64;
-    default:
-        throw std::invalid_argument("convertDtype: unsupported array::Dtype");
-    }
-}
-
-static array::Device convertDevice(tensors::DeviceKind kind, int32_t ordinal)
-{
-    switch (kind)
-    {
-    case tensors::DeviceKind::eCpu:
-        return array::Device::Cpu();
-    case tensors::DeviceKind::eGpu:
-        return array::Device::Cuda(ordinal >= 0 ? ordinal : 0);
-    case tensors::DeviceKind::eEngineDefault:
-        return array::Device::Cpu();
-    default:
-        throw std::invalid_argument("convertDevice: unsupported tensors::DeviceKind");
-    }
-}
-
-array::Array convertTensorDescriptionToArray(const tensors::TensorDescription& description)
-{
-    array::Dtype dtype = convertDtype(description.dtype);
-    array::Device device = convertDevice(description.device, description.deviceOrdinal);
-    array::Shape shape(description.shape);
-
-    std::shared_ptr<std::byte[]> buffer;
-    if (description.keepAlive)
-    {
-        buffer = std::shared_ptr<std::byte[]>(description.keepAlive, static_cast<std::byte*>(description.data));
-    }
-    else
-    {
-        buffer = std::shared_ptr<std::byte[]>(std::shared_ptr<void>{}, static_cast<std::byte*>(description.data));
-    }
-
-    return array::Array::fromBuffer(buffer, shape, dtype, device);
-}
-
-tensors::TensorDescription convertArrayToTensorDescription(const array::Array& array)
-{
-    tensors::TensorDescription tensorDescription;
-    tensorDescription.dtype = convertDtype(array.dtype());
-    tensorDescription.device = array.device().isCpu() ? tensors::DeviceKind::eCpu : tensors::DeviceKind::eGpu;
-    tensorDescription.deviceOrdinal = array.device().ordinal();
-    tensorDescription.shape = array.shape().shape();
-    tensorDescription.data = const_cast<void*>(array.data());
-    tensorDescription.keepAlive = std::shared_ptr<void>(array.buffer(), array.buffer().get());
-    return tensorDescription;
-}
-
 // Returns the number of rows, that is, the product of every dimension but the last.
 static size_t computeRowCount(const std::string& context, const std::vector<int64_t>& dimensions)
 {
@@ -195,7 +87,11 @@ std::vector<array::Array> splitArray(const array::Array& array, size_t index)
     auto leftBuffer = std::shared_ptr<std::byte[]>(new std::byte[rowCount * leftColumnCount * elementSize]());
     auto rightBuffer = std::shared_ptr<std::byte[]>(new std::byte[rowCount * rightColumnCount * elementSize]());
 
-    const std::byte* source = static_cast<const std::byte*>(array.data());
+    // Rows are copied out as dense blocks, so compact a strided or broadcast operand first; this is a
+    // view when it is already contiguous.
+    const array::Array contiguousArray = array.contiguous();
+    array::ArrayReadAccess sourceAccess = array::acquireRead(contiguousArray);
+    const std::byte* source = static_cast<const std::byte*>(sourceAccess.data());
     for (size_t row = 0; row < rowCount; ++row)
     {
         const std::byte* rowSource = source + row * columnCount * elementSize;
@@ -209,9 +105,10 @@ std::vector<array::Array> splitArray(const array::Array& array, size_t index)
     std::vector<int64_t> rightDimensions = dimensions;
     rightDimensions.back() = static_cast<int64_t>(rightColumnCount);
 
-    return { array::Array::fromBuffer(std::move(leftBuffer), array::Shape(leftDimensions), array.dtype(), array.device()),
-             array::Array::fromBuffer(
-                 std::move(rightBuffer), array::Shape(rightDimensions), array.dtype(), array.device()) };
+    return { array::Array::fromBuffer(std::move(leftBuffer), rowCount * leftColumnCount * elementSize,
+                                      array::Shape(leftDimensions), array.dtype(), array.device()),
+             array::Array::fromBuffer(std::move(rightBuffer), rowCount * rightColumnCount * elementSize,
+                                      array::Shape(rightDimensions), array.dtype(), array.device()) };
 }
 
 array::Array joinArrays(const std::vector<array::Array>& arrays)
@@ -263,7 +160,10 @@ array::Array joinArrays(const std::vector<array::Array>& arrays)
     size_t columnOffset = 0;
     for (size_t i = 0; i < arrays.size(); ++i)
     {
-        const std::byte* source = static_cast<const std::byte*>(arrays[i].data());
+        // Same dense-block read as splitArray(): compact a strided or broadcast operand first.
+        const array::Array contiguousArray = arrays[i].contiguous();
+        array::ArrayReadAccess sourceAccess = array::acquireRead(contiguousArray);
+        const std::byte* source = static_cast<const std::byte*>(sourceAccess.data());
         const size_t columnCount = columnCounts[i];
         for (size_t row = 0; row < rowCount; ++row)
         {
@@ -276,8 +176,8 @@ array::Array joinArrays(const std::vector<array::Array>& arrays)
     std::vector<int64_t> joinedDimensions = referenceDimensions;
     joinedDimensions.back() = static_cast<int64_t>(joinedColumnCount);
 
-    return array::Array::fromBuffer(
-        std::move(buffer), array::Shape(joinedDimensions), reference.dtype(), reference.device());
+    return array::Array::fromBuffer(std::move(buffer), rowCount * joinedColumnCount * elementSize,
+                                    array::Shape(joinedDimensions), reference.dtype(), reference.device());
 }
 
 } // namespace details

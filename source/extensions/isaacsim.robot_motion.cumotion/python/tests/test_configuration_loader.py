@@ -15,9 +15,9 @@
 
 """Test suite for configuration loader functions."""
 
+import importlib.resources
 import pathlib
 
-import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.robot_motion.cumotion as cu_mg
 import omni.kit.test
 
@@ -41,11 +41,11 @@ class TestConfigurationLoader(omni.kit.test.AsyncTestCase):
         franka_from_supported = cu_mg.load_cumotion_supported_robot("franka")
         self.assertIsNotNone(franka_from_supported)
 
-        ext_directory = pathlib.Path(app_utils.get_extension_path("isaacsim.robot_motion.cumotion"))
+        package_directory = pathlib.Path(str(importlib.resources.files("isaacsim.robot_motion.cumotion")))
 
         # load franka from path:
         franka_from_path = cu_mg.load_cumotion_robot(
-            directory=ext_directory / "robot_configurations" / "franka",
+            directory=package_directory / "robot_configurations" / "franka",
         )
 
         self.assertEqual(franka_from_path.controlled_joint_names, franka_from_supported.controlled_joint_names)

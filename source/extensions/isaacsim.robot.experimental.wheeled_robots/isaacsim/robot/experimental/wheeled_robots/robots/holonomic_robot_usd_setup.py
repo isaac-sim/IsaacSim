@@ -44,7 +44,7 @@ class HolonomicRobotUsdSetup:
             com_prim_path: Path to the center-of-mass prim (or empty to use robot prim).
 
         Raises:
-            ValueError: If robot_prim_path is invalid.
+            ValueError: If `robot_prim_path` is invalid or contains no mecanum wheel joints.
         """
         stage = stage_utils.get_current_stage(backend="usd")
         robot_prim = stage.GetPrimAtPath(robot_prim_path)
@@ -55,6 +55,10 @@ class HolonomicRobotUsdSetup:
             com_prim = robot_prim
 
         self._mecanum_joints = [j for j in Usd.PrimRange(robot_prim) if j.GetAttribute("isaacmecanumwheel:angle")]
+        if not self._mecanum_joints:
+            raise ValueError(
+                f"No mecanum wheel joints with 'isaacmecanumwheel:angle' found under robot prim: {robot_prim_path}"
+            )
         self._num_wheels = len(self._mecanum_joints)
         self._wheel_radius = [j.GetAttribute("isaacmecanumwheel:radius").Get() for j in self._mecanum_joints]
         self._mecanum_angles = [j.GetAttribute("isaacmecanumwheel:angle").Get() for j in self._mecanum_joints]

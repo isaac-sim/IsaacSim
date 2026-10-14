@@ -1,6 +1,6 @@
 ---
 name: isaac-sim-workflow
-description: "Scope demos, POCs, and presentation captures before implementation. Use to define deliverables, acceptance criteria, evidence, and specialist handoffs; technique execution belongs to routed skills."
+description: "Scope Isaac Sim demos, libraries, POCs, and captures when deliverables or criteria are undefined, or only a plan is requested. Route approved builds to isaac-sim-orchestrator."
 license: Apache-2.0
 metadata:
   author: Aaron Young <info@nvidia.com>
@@ -10,24 +10,23 @@ metadata:
 
 ## Purpose
 
-Scope demos, showcases, and proof-of-concept captures before implementation: define the deliverable type, acceptance criteria, evidence, and routing into technique skills.
+Scope library deliverables, demos, and captures before implementation when the contract is missing or the user requests planning only: define acceptance criteria, evidence, and routed handoffs. An approved request to build and deliver a demo belongs to `isaac-sim-orchestrator`; its phase 1 uses the given criteria directly.
 
 ## Prerequisites
 
-- Built Isaac Sim (`$ISAAC_SIM_DIR` or `_build/linux-x86_64/release`).
-- NVIDIA GPU with a current driver (`nvidia-smi`).
-- Shell env contract from `isaac-sim-orchestrator`: `$ISAAC_SIM_DIR`, `$ISAAC_LAB_DIR`, `$WORKSPACE_DIR`.
+- Library-only deliverables need a source checkout or installed library environment.
+- Kit and GPU prerequisites apply only to routes that use them.
 
 ## Limitations
 
-- Targets Isaac Sim 6 / Kit 110 unless a section states otherwise.
+- Kit-specific guidance targets Isaac Sim 6 / Kit 110 unless stated otherwise.
 - Does not replace official NVIDIA documentation for unsupported edge cases.
 
 ## Troubleshooting
 
 | Error / symptom | Cause | Solution |
 |---|---|---|
-| Extension or import not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
+| Kit extension not found | Wrong `$ISAAC_SIM_DIR` or stale build | Point env vars at `_build/linux-x86_64/release` or rebuild |
 | Black or empty frames | Missing lights or non-RTX render mode | Add dome/key light; confirm RTX / PathTracing settings |
 | Hang on stage load or first render | MDL compile or oversized stage | Follow isolation steps in `isaac-sim-troubleshooting` |
 
@@ -44,6 +43,8 @@ Determine the primary output before building:
 |---|---|---|
 | Presentation capture | video, stills, partner review, showcase | behavior is visible, legible, framed, lit, and captured from the actual scene |
 | Technical reference | runnable how-to, API workflow, autonomy behavior | behavior is reproducible, measured, and backed by the routed technique skill's validation gates |
+| Library API or SDK | Python/native API, wheel, SDK | public facade or headers work without Kit; package and consumer checks pass |
+| Library in Kit | expose a library to Kit | stage its wheel and SDK in an extension; keep implementation in the library |
 | Hybrid | presentation asset plus working script | technical gates pass first; then package a presentation-quality capture |
 
 Clarifying questions are opt-in. Ask them only when the user explicitly asks

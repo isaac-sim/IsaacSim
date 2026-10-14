@@ -16,7 +16,7 @@ A singleton registry that maps fully qualified rule class names to their impleme
 
 Coordinates the execution of a `RuleProfile` against a USD stage. The manager:
 
-1. Opens the input stage and creates a flattened base layer in the output package
+1. Opens the input stage and creates a base layer in the output package, flattened when `flatten_source` is enabled
 2. Collects external asset dependencies into the package directory
 3. Canonicalizes orientation quaternions for deterministic output
 4. Iterates through enabled rules in profile order, instantiating each rule class and calling `process_rule()`

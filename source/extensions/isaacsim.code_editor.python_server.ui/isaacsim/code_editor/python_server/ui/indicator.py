@@ -81,7 +81,8 @@ class PythonServerDelegate(ui.MenuDelegate):
         self._port_model = ui.SimpleIntModel(status.configured_port)
         self._status = status
         self._port_shared = False
-        self._port_monitor_task = asyncio.create_task(self._monitor_port()) if psutil.LINUX else None
+        # ensure_future (not create_task): the extension can start from a UI callback with no running loop.
+        self._port_monitor_task = asyncio.ensure_future(self._monitor_port()) if psutil.LINUX else None
         self._task: asyncio.Task[object] | None = None
         self._confirm_apply = False
         self._destroyed = False

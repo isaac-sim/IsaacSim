@@ -41,6 +41,120 @@ function(_isaacsim_validate_test_sources module_name language_directory extensio
     endforeach()
 endfunction()
 
+function(_isaacsim_stage_windows_test_runtime test_target module_target)
+    if(NOT WIN32)
+        return()
+    endif()
+
+    # Tests for one module share a runtime directory, so serialize their post-build copies.
+    get_property(runtime_staging_predecessor TARGET ${module_target}
+        PROPERTY ISAACSIM_WINDOWS_TEST_RUNTIME_STAGING_TARGET)
+    if(runtime_staging_predecessor)
+        add_dependencies(${test_target} ${runtime_staging_predecessor})
+    endif()
+    set_property(TARGET ${module_target} PROPERTY
+        ISAACSIM_WINDOWS_TEST_RUNTIME_STAGING_TARGET ${test_target})
+
+    # Resolved at generate time, so this sees linked DLLs that are not available while the
+    # dependency targets are first declared.
+    add_custom_command(TARGET ${test_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_RUNTIME_DLLS:${test_target}>"
+            "$<TARGET_FILE_DIR:${test_target}>"
+        COMMAND_EXPAND_LISTS
+    )
+
+    # TARGET_RUNTIME_DLLS stops at a module's private link boundary and cannot represent data
+    # directories. Walk the explicit module runtime graph so tests receive both kinds of payload
+    # from every transitive dependency copied beside the executable.
+    _isaacsim_collect_runtime_targets(${module_target} test_runtime_modules)
+    get_target_property(test_output_directory ${test_target} RUNTIME_OUTPUT_DIRECTORY)
+    set(staged_external_runtime_targets)
+    set(staged_runtime_directories)
+    set(test_runtime_search_directories)
+    foreach(runtime_module IN LISTS test_runtime_modules)
+        get_target_property(test_runtime_targets
+            ${runtime_module} ISAACSIM_TEST_RUNTIME_TARGETS)
+        if(test_runtime_targets AND NOT test_runtime_targets MATCHES "-NOTFOUND$")
+            foreach(runtime_target IN LISTS test_runtime_targets)
+                if(runtime_target IN_LIST staged_external_runtime_targets)
+                    continue()
+                endif()
+                list(APPEND staged_external_runtime_targets ${runtime_target})
+                add_custom_command(TARGET ${test_target} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "$<TARGET_FILE:${runtime_target}>"
+                        "$<TARGET_FILE_DIR:${test_target}>/$<TARGET_FILE_NAME:${runtime_target}>"
+                    VERBATIM
+                )
+            endforeach()
+        endif()
+
+        get_target_property(runtime_directories ${runtime_module} ISAACSIM_TEST_RUNTIME_DIRECTORIES)
+        if(runtime_directories AND NOT runtime_directories MATCHES "-NOTFOUND$")
+            while(runtime_directories)
+                list(POP_FRONT runtime_directories runtime_source runtime_destination)
+                string(MD5 runtime_directory_key "${runtime_source}|${runtime_destination}")
+                if(runtime_directory_key IN_LIST staged_runtime_directories)
+                    continue()
+                endif()
+                list(APPEND staged_runtime_directories ${runtime_directory_key})
+                add_custom_command(TARGET ${test_target} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND}
+                        "-DSOURCE=${runtime_source}"
+                        "-DDESTINATION=$<TARGET_FILE_DIR:${test_target}>/${runtime_destination}"
+                        -P "${_ISAACSIM_CMAKE_HELPER_DIR}/CopyRuntimeDirectory.cmake"
+                    VERBATIM
+                )
+
+                # Runtime directories may contain DLLs that are loaded privately by a plugin,
+                # rather than linked by the module. Preserve their directory layout, and make
+                # each DLL's staged directory visible to the Windows loader when CTest runs.
+                file(GLOB_RECURSE runtime_directory_dlls LIST_DIRECTORIES FALSE
+                    "${runtime_source}/*.dll"
+                )
+                foreach(runtime_directory_dll IN LISTS runtime_directory_dlls)
+                    get_filename_component(runtime_dll_source_directory
+                        "${runtime_directory_dll}" DIRECTORY)
+                    file(RELATIVE_PATH runtime_dll_relative_directory
+                        "${runtime_source}" "${runtime_dll_source_directory}")
+                    set(runtime_dll_staged_directory
+                        "${test_output_directory}/${runtime_destination}")
+                    if(NOT runtime_dll_relative_directory STREQUAL ".")
+                        string(APPEND runtime_dll_staged_directory
+                            "/${runtime_dll_relative_directory}")
+                    endif()
+                    list(APPEND test_runtime_search_directories
+                        "${runtime_dll_staged_directory}")
+                endforeach()
+            endwhile()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES test_runtime_search_directories)
+    set_property(TARGET ${test_target} PROPERTY
+        ISAACSIM_WINDOWS_TEST_RUNTIME_PATHS "${test_runtime_search_directories}")
+endfunction()
+
+function(_isaacsim_configure_windows_test_environment test_target module_output_dir)
+    if(NOT WIN32)
+        return()
+    endif()
+
+    set(test_path_modifications "PATH=path_list_prepend:${module_output_dir}/lib")
+    get_target_property(test_runtime_search_directories
+        ${test_target} ISAACSIM_WINDOWS_TEST_RUNTIME_PATHS)
+    if(test_runtime_search_directories
+       AND NOT test_runtime_search_directories MATCHES "-NOTFOUND$")
+        foreach(runtime_directory IN LISTS test_runtime_search_directories)
+            list(APPEND test_path_modifications
+                "PATH=path_list_prepend:${runtime_directory}")
+        endforeach()
+    endif()
+    set_property(TEST ${test_target} APPEND PROPERTY
+        ENVIRONMENT_MODIFICATION ${test_path_modifications}
+    )
+endfunction()
+
 function(isaacsim_add_c_tests)
     set(one_value_args MODULE RESOURCE_DIR)
     set(multi_value_args SOURCES DEPENDENCIES LABELS)
@@ -67,39 +181,10 @@ function(isaacsim_add_c_tests)
         RUNTIME_OUTPUT_DIRECTORY "${module_output_dir}/tests"
         BUILD_RPATH "${module_output_dir}/lib"
     )
-    if(WIN32)
-        # Resolved at generate time, so it sees linked dependencies whose add_subdirectory() runs
-        # after this one -- a configure-time target walk silently drops those and the test then
-        # fails to launch with STATUS_DLL_NOT_FOUND.
-        add_custom_command(TARGET ${test_target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_RUNTIME_DLLS:${test_target}>"
-                "$<TARGET_FILE_DIR:${test_target}>"
-            COMMAND_EXPAND_LISTS
-        )
-        # Runtime-only plugins are not linked, so TARGET_RUNTIME_DLLS cannot see them.
-        get_target_property(external_test_runtime_targets
-            ${module_target} ISAACSIM_EXTERNAL_RUNTIME_TARGETS)
-        if(external_test_runtime_targets
-           AND NOT external_test_runtime_targets MATCHES "-NOTFOUND$")
-            list(REMOVE_DUPLICATES external_test_runtime_targets)
-            foreach(runtime_target IN LISTS external_test_runtime_targets)
-                add_custom_command(TARGET ${test_target} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        "$<TARGET_FILE:${runtime_target}>"
-                        "$<TARGET_FILE_DIR:${test_target}>/$<TARGET_FILE_NAME:${runtime_target}>"
-                    VERBATIM
-                )
-            endforeach()
-        endif()
-    endif()
+    _isaacsim_stage_windows_test_runtime(${test_target} ${module_target})
     add_test(NAME ${test_target} COMMAND ${test_target})
     set_tests_properties(${test_target} PROPERTIES LABELS "unit;c;${ARG_MODULE};${ARG_LABELS}")
-    if(WIN32)
-        set_property(TEST ${test_target} APPEND PROPERTY
-            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${module_output_dir}/lib"
-        )
-    endif()
+    _isaacsim_configure_windows_test_environment(${test_target} "${module_output_dir}")
     if(ARG_RESOURCE_DIR)
         set(resource_working_directory "${ARG_RESOURCE_DIR}")
         if(NOT IS_ABSOLUTE "${resource_working_directory}")
@@ -143,39 +228,10 @@ function(isaacsim_add_cpp_tests)
         RUNTIME_OUTPUT_DIRECTORY "${module_output_dir}/tests"
         BUILD_RPATH "${module_output_dir}/lib"
     )
-    if(WIN32)
-        # Resolved at generate time, so it sees linked dependencies whose add_subdirectory() runs
-        # after this one -- a configure-time target walk silently drops those and the test then
-        # fails to launch with STATUS_DLL_NOT_FOUND.
-        add_custom_command(TARGET ${test_target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_RUNTIME_DLLS:${test_target}>"
-                "$<TARGET_FILE_DIR:${test_target}>"
-            COMMAND_EXPAND_LISTS
-        )
-        # Runtime-only plugins are not linked, so TARGET_RUNTIME_DLLS cannot see them.
-        get_target_property(external_test_runtime_targets
-            ${module_target} ISAACSIM_EXTERNAL_RUNTIME_TARGETS)
-        if(external_test_runtime_targets
-           AND NOT external_test_runtime_targets MATCHES "-NOTFOUND$")
-            list(REMOVE_DUPLICATES external_test_runtime_targets)
-            foreach(runtime_target IN LISTS external_test_runtime_targets)
-                add_custom_command(TARGET ${test_target} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        "$<TARGET_FILE:${runtime_target}>"
-                        "$<TARGET_FILE_DIR:${test_target}>/$<TARGET_FILE_NAME:${runtime_target}>"
-                    VERBATIM
-                )
-            endforeach()
-        endif()
-    endif()
+    _isaacsim_stage_windows_test_runtime(${test_target} ${module_target})
     add_test(NAME ${test_target} COMMAND ${test_target})
     set_tests_properties(${test_target} PROPERTIES LABELS "unit;cpp;${ARG_MODULE};${ARG_LABELS}")
-    if(WIN32)
-        set_property(TEST ${test_target} APPEND PROPERTY
-            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${module_output_dir}/lib"
-        )
-    endif()
+    _isaacsim_configure_windows_test_environment(${test_target} "${module_output_dir}")
     if(ARG_RESOURCE_DIR)
         set(resource_working_directory "${ARG_RESOURCE_DIR}")
         if(NOT IS_ABSOLUTE "${resource_working_directory}")

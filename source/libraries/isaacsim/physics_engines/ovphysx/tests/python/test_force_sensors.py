@@ -107,8 +107,11 @@ class _PhysxArticulationApiMixin:
 class _PhysxForceApiMixin(_PhysxArticulationApiMixin):
     """Author PhysX force metadata matching the tensor-driven scenarios.
 
-    Each environment receives one world-space force on the pendulum child link
-    and one on its fixed-joint link.
+    Each environment receives disabled world-space force metadata on the
+    pendulum child and fixed-joint links. The common scenario enables the load
+    for exactly one measured step through rigid-body tensors; leaving the
+    authored force enabled would apply the same load a second time now that
+    ovphysx 0.6.3 requires and consumes the registered PhysX schemas.
     """
 
     def _apply_engine_specifics(self) -> None:
@@ -123,7 +126,7 @@ class _PhysxForceApiMixin(_PhysxArticulationApiMixin):
                 force=self.child_force,
                 torque=zero,
                 mode="force",
-                is_enabled=True,
+                is_enabled=False,
                 is_world_space=True,
             )
             _add_force_torque(
@@ -132,7 +135,7 @@ class _PhysxForceApiMixin(_PhysxArticulationApiMixin):
                 force=self.fixed_force,
                 torque=zero,
                 mode="force",
-                is_enabled=True,
+                is_enabled=False,
                 is_world_space=True,
             )
 

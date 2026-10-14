@@ -148,6 +148,11 @@ class _MultiGetBase(_ContactContractBase):
             with pytest.raises(ValueError, match="output buffer 0 has shape"):
                 self.view.get_data_multi(_IMPL, idx, wrong_shape)
 
+            wrong_metadata_shape = list(bufs)
+            wrong_metadata_shape[4] = wp.zeros((1, bufs[4].size), dtype=bufs[4].dtype, device=self.wp_device)
+            with pytest.raises(ValueError, match="output buffer 4 has shape"):
+                self.view.get_data_multi(_IMPL, idx, wrong_metadata_shape)
+
             wrong_dtype = list(bufs)
             wrong_dtype[0] = wp.zeros(bufs[0].shape, dtype=wp.float64, device=self.wp_device)
             with pytest.raises(TypeError, match="output buffer 0 has dtype"):

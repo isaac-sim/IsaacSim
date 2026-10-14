@@ -204,6 +204,58 @@ foreach(dependency_spec IN LISTS DEPENDENCY_SPECS)
         )
     endif()
 endforeach()
+# Inspect installed artifacts, not build-tree files: compiler-injected RPATHs
+# and copied local runtime helpers can otherwise pass header/import checks while
+# still depending on the build machine. Other platforms use different loaders.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    find_program(installed_readelf NAMES readelf llvm-readelf REQUIRED)
+    set(installed_prefixes "${cpp_prefix}")
+    if(PYTHON_ENABLED)
+        list(APPEND installed_prefixes "${python_prefix}")
+    endif()
+    foreach(installed_prefix IN LISTS installed_prefixes)
+        file(GLOB_RECURSE installed_libraries
+            "${installed_prefix}/*.so" "${installed_prefix}/*.so.*" "${installed_prefix}/bin/isaacsim-*")
+        foreach(installed_library IN LISTS installed_libraries)
+            if(IS_DIRECTORY "${installed_library}" OR IS_SYMLINK "${installed_library}")
+                continue()
+            endif()
+            # Generated module/runtime names and binding paths identify our binaries.
+            # Imported vendor payloads retain their upstream loader policy.
+            get_filename_component(installed_library_name "${installed_library}" NAME)
+            if(NOT installed_library_name MATCHES "^libisaacsim[-_].*\\.so"
+               AND NOT installed_library MATCHES "/bindings/_bindings[^/]*\\.so$"
+               AND NOT installed_library MATCHES "/bin/isaacsim-[^/]+$")
+                continue()
+            endif()
+            file(READ "${installed_library}" elf_magic LIMIT 4 HEX)
+            if(NOT elf_magic STREQUAL "7f454c46")
+                continue()
+            endif()
+            execute_process(
+                COMMAND "${CMAKE_COMMAND}" -E env LC_ALL=C "${installed_readelf}" -d "${installed_library}"
+                RESULT_VARIABLE readelf_result
+                OUTPUT_VARIABLE dynamic_entries
+                ERROR_VARIABLE readelf_error
+            )
+            if(NOT readelf_result EQUAL 0)
+                message(FATAL_ERROR "Cannot inspect installed runtime ${installed_library}: ${readelf_error}")
+            endif()
+            string(REGEX MATCHALL "[^\n]*(RPATH|RUNPATH)[^\n]*" runtime_path_entries "${dynamic_entries}")
+            foreach(runtime_path_entry IN LISTS runtime_path_entries)
+                string(REGEX REPLACE ".*\\[([^]]*)\\].*" "\\1" runtime_paths "${runtime_path_entry}")
+                string(REPLACE ":" ";" runtime_paths "${runtime_paths}")
+                foreach(runtime_path IN LISTS runtime_paths)
+                    if(IS_ABSOLUTE "${runtime_path}")
+                        message(FATAL_ERROR
+                            "Installed runtime ${installed_library} contains absolute RPATH: ${runtime_path}")
+                    endif()
+                endforeach()
+            endforeach()
+        endforeach()
+    endforeach()
+endif()
+
 run_checked("Installed consumer configuration"
     "${CMAKE_COMMAND}" -S "${CONSUMER_SOURCE_DIR}" -B "${consumer_build_dir}"
     ${consumer_generator_arguments}

@@ -22,35 +22,14 @@ import tempfile
 import threading
 import time
 
+import omni.kit.actions.core
 import omni.kit.ui_test as ui_test
 import omni.usd
 from isaacsim.core.experimental.utils import stage as stage_utils
 from isaacsim.ros2.core.impl.ros2_test_case import ROS2TestCase
-from isaacsim.test.utils import find_widget_with_retry, get_widget_screen_center, menu_click_with_retry
+from isaacsim.ros2.urdf.robot_definition_reader import RobotDefinitionReader
+from isaacsim.test.utils import find_widget_with_retry
 from pxr import Sdf
-
-
-async def _wait_for_widget_layout(widget_ref: object, timeout: float = 10.0) -> None:
-    """Wait until a UI-test widget has usable on-screen click geometry."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        widget = widget_ref.widget
-        center_x, center_y = get_widget_screen_center(widget)
-        if (
-            widget.visible
-            and widget.computed_width > 0
-            and widget.computed_height > 0
-            and center_x > 0
-            and center_y > 0
-        ):
-            return
-        await omni.kit.app.get_app().next_update_async()
-
-    raise TimeoutError(
-        f"Widget did not receive usable click geometry within {timeout:.1f} seconds: "
-        f"position=({widget.screen_position_x}, {widget.screen_position_y}), "
-        f"size=({widget.computed_width}, {widget.computed_height}), visible={widget.visible}"
-    )
 
 
 class TestRos2UrdfNodeImporter(ROS2TestCase):
@@ -60,6 +39,7 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
         """Prepare the UI test fixture."""
         await super().setUp()
         ext_manager = omni.kit.app.get_app().get_extension_manager()
+        self._ros2_urdf_ext_id = ext_manager.get_enabled_extension_id("isaacsim.ros2.urdf")
         ext_id = ext_manager.get_enabled_extension_id("isaacsim.asset.importer.urdf")
         self._extension_path = ext_manager.get_extension_path(ext_id)
         self._urdf_path = os.path.normpath(
@@ -82,6 +62,7 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
         """Clean up after the test."""
         import rclpy
 
+        RobotDefinitionReader().cancel()
         if hasattr(self, "_server_stop_event"):
             self._server_stop_event.set()
         if hasattr(self, "_server_thread") and self._server_thread.is_alive():
@@ -139,17 +120,21 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
 
         await omni.kit.app.get_app().next_update_async()
 
-        await menu_click_with_retry("File/Import from ROS2 URDF Node", window_name="Import from ROS2 URDF Node")
+        omni.kit.actions.core.execute_action(self._ros2_urdf_ext_id, "import_from_ros2_urdf")
         await omni.kit.app.get_app().next_update_async()
 
         string_field = await find_widget_with_retry(
             "Import from ROS2 URDF Node//Frame/**/StringField[*].identifier=='ros2_urdf_node_name'"
         )
-        # The initial lookup is triggered by the field's end-edit callback. Wait
-        # for usable geometry before input so UI automation cannot click at (0, 0).
-        await _wait_for_widget_layout(string_field)
-        await string_field.input(self._node_name)
+        string_field.model.set_value(self._node_name)
         self.assertEqual(string_field.model.get_value_as_string(), self._node_name)
+
+        find_node_button = await find_widget_with_retry(
+            "Import from ROS2 URDF Node//Frame/**/Button[*].identifier=='ros2_urdf_find_node'"
+        )
+        # Invoke the registered callback directly because pointer-based clicks and
+        # edit-end events depend on layout geometry unavailable in `--no-window` tests.
+        find_node_button.widget.call_clicked_fn()
 
         import_button = await find_widget_with_retry(
             "Import from ROS2 URDF Node//Frame/**/Button[*].identifier=='ros2_urdf_import'",
@@ -163,8 +148,9 @@ class TestRos2UrdfNodeImporter(ROS2TestCase):
             "Import button was found but did not become enabled after fetching the ROS 2 robot_description.",
         )
 
-        await _wait_for_widget_layout(import_button)
-        await import_button.click()
+        # Invoke the button's registered UI callback directly because pointer-based
+        # clicks depend on layout geometry that headless extension tests do not have.
+        import_button.widget.call_clicked_fn()
         await ui_test.human_delay()
 
         # Wait for the USD stage to finish loading after the import (up to ~3 seconds).

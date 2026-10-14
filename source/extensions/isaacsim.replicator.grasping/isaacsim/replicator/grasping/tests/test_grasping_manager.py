@@ -15,14 +15,18 @@
 
 """Test the grasping manager functionality."""
 
+import os
+import tempfile
+
 import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import omni.kit.commands
 import omni.kit.test
 import omni.usd
+import yaml
 from isaacsim.replicator.grasping.grasping_manager import GraspingManager
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import UsdGeom
+from pxr import UsdGeom, UsdPhysics
 
 from .common import check_grasp_pose_generation_dependencies
 
@@ -85,6 +89,50 @@ class TestGraspingManager(omni.kit.test.AsyncTestCase):
         success_generation = grasping_manager.generate_grasp_poses(config=DEFAULT_SAMPLER_CONFIG)
         self.assertTrue(success_generation)
         self.assertTrue(len(grasping_manager.grasp_locations) > 0)
+
+    async def test_load_config_malformed_input(self) -> None:
+        """Test that malformed phase entries and unknown components are reported instead of raising."""
+        stage = stage_utils.get_current_stage()
+        gripper_path = "/World/Gripper"
+        joint_path = f"{gripper_path}/Joint"
+        UsdGeom.Xform.Define(stage, gripper_path)
+        UsdPhysics.RevoluteJoint.Define(stage, joint_path)
+        await app_utils.update_app_async()
+
+        def load_config(config: dict, components: list[str]) -> tuple[GraspingManager, dict[str, str]]:
+            grasping_manager = GraspingManager()
+            grasping_manager.set_gripper(gripper_path)
+            with tempfile.TemporaryDirectory() as temp_dir:
+                config_path = os.path.join(temp_dir, "config.yaml")
+                with open(config_path, "w") as file:
+                    yaml.dump(config, file)
+                return grasping_manager, grasping_manager.load_config(config_path, components=components)
+
+        # Missing required `name` key is skipped, remaining valid phases are loaded
+        manager, status = load_config(
+            {"grasp_phases": [{"simulation_steps": 8}, {"name": "close", "joint_drive_targets": {joint_path: 1.0}}]},
+            ["phases"],
+        )
+        self.assertEqual(status["phases"], "Success (some entries skipped due to errors)")
+        self.assertEqual(manager.get_grasp_phase_names(), ["close"])
+
+        # Only malformed phase entries fail the component
+        manager, status = load_config({"grasp_phases": [{"joint_drive_targets": {}}, 42]}, ["phases"])
+        self.assertTrue(status["phases"].startswith("Failed"))
+        self.assertEqual(manager.grasp_phases, [])
+
+        # Unknown phase keys are ignored
+        manager, status = load_config({"grasp_phases": [{"name": "close", "bogus_key": 42}]}, ["phases"])
+        self.assertEqual(status["phases"], "Success")
+        self.assertEqual(manager.get_grasp_phase_names(), ["close"])
+
+        # Non-dictionary joint targets are skipped
+        manager, status = load_config({"grasp_phases": [{"name": "close", "joint_drive_targets": 5}]}, ["phases"])
+        self.assertTrue(status["phases"].startswith("Failed"))
+
+        # Unknown component names are reported as failed, valid ones still load
+        manager, status = load_config({"gripper_path": gripper_path}, ["grip", "gripper"])
+        self.assertEqual(status, {"grip": "Failed (Unknown component)", "gripper": "Success"})
 
     async def test_grasp_pose_generation_assets(self) -> None:
         """Test grasp pose generation on a referenced USD asset."""

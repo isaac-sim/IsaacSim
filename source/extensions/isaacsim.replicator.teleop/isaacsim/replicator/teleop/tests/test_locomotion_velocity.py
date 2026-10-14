@@ -18,8 +18,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import isaacsim.core.experimental.utils.app as app_utils
+import isaacsim.core.experimental.utils.backend as backend_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import omni.kit.test
@@ -74,6 +76,41 @@ class TestLocomotionVelocity(omni.kit.test.AsyncTestCase):
 
         self.assertGreater(stopped_position, 0.04, "Velocity disable must not restore the enable-time pose")
         self.assertAlmostEqual(stopped_position, moved_x, delta=0.02)
+        self.assertLess(float(np.linalg.norm(linear_velocities.numpy())), 1e-4)
+        self.assertLess(float(np.linalg.norm(angular_velocities.numpy())), 1e-4)
+
+    async def test_velocity_writes_ignore_transform_backend(self) -> None:
+        """Fabric pose selection must not leak into Tensor/USD-only velocity writes."""
+        controller = self._controller
+        controller.set_prim_path(_CUBE_PATH)
+        controller.set_drive_mode(LocomotionDriveMode.VELOCITY)
+        ok, message = controller.enable()
+        self.assertTrue(ok, message)
+        timeline = omni.timeline.get_timeline_interface()
+        timeline.play()
+        for _ in range(5):
+            await app_utils.update_app_async()
+
+        rigid_prim = controller._ensure_rigid_prim()  # noqa: SLF001
+        self.assertIsNotNone(rigid_prim)
+        self.assertTrue(rigid_prim.is_physics_tensor_entity_valid())
+        world_pose = rigid_prim.get_world_poses()
+        get_current_backend = backend_utils.get_current_backend
+
+        def require_supported_backend(supported: list[str], **_kwargs: object) -> str:
+            return get_current_backend(supported, raise_on_unsupported=True)
+
+        with (
+            patch("isaacsim.replicator.teleop._backend.get_teleop_backend", return_value="fabric"),
+            patch.object(RigidPrim, "get_world_poses", return_value=world_pose),
+            patch.object(backend_utils, "get_current_backend", side_effect=require_supported_backend),
+        ):
+            controller._apply_velocity(1.0, 0.0, 0.0, 0.0, False)  # noqa: SLF001
+            linear_velocities, _ = rigid_prim.get_velocities()
+            self.assertGreater(float(np.linalg.norm(linear_velocities.numpy())), 0.1)
+            controller.stop_motion()
+
+        linear_velocities, angular_velocities = rigid_prim.get_velocities()
         self.assertLess(float(np.linalg.norm(linear_velocities.numpy())), 1e-4)
         self.assertLess(float(np.linalg.norm(angular_velocities.numpy())), 1e-4)
 

@@ -1,5 +1,5 @@
 [package]
-version = "1.0.1"
+version = "1.0.2"
 category = "Simulation"
 title = "SimReady Profile Validation UI"
 description = "Profile-driven asset validation with actionable results for Isaac Sim."
@@ -30,6 +30,8 @@ name = "isaacsim.asset.validation.ui.tests"
 public = false
 
 [settings]
+# Base URL for "Open requirement docs". Relative requirement paths are appended under capabilities/.
+exts."isaacsim.asset.validation.ui".docsUrl = "https://nvidia.github.io/simready-foundation/2026.06.0"
 # Profile IDs excluded from the profile selector. Set to [] to show every bundled profile.
 exts."isaacsim.asset.validation.ui".profileFilter = [
     "Package",

@@ -17,14 +17,13 @@
 
 from __future__ import annotations
 
-import logging
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
+import carb
+
 if TYPE_CHECKING:
     from pxr import Usd
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def find_articulation_root(stage: Usd.Stage, robot_path: str) -> str | None:
@@ -63,11 +62,9 @@ def find_articulation_root(stage: Usd.Stage, robot_path: str) -> str | None:
         nearest_depth = min(depth for depth, _path in candidates)
         nearest = sorted(path for depth, path in candidates if depth == nearest_depth)
         if len(nearest) > 1:
-            _LOGGER.warning(
-                "SysId: multiple articulation roots are equally close below '%s': %s. "
-                "Select the intended articulation root explicitly.",
-                robot_path,
-                nearest,
+            carb.log_warn(
+                f"SysId: multiple articulation roots are equally close below '{robot_path}': {nearest}. "
+                "Select the intended articulation root explicitly."
             )
             return None
         return nearest[0]
@@ -275,37 +272,30 @@ def order_joint_paths_for_trajectory(joint_paths: list[str], trajectory: Any) ->
         existing = by_leaf.get(leaf)
         if existing is not None:
             duplicate_leaves.add(leaf)
-            _LOGGER.warning(
-                "SysId: multiple joint prims share leaf name '%s': '%s' and '%s'. "
-                "Telemetry joint-name ordering is ambiguous.",
-                leaf,
-                existing,
-                path_text,
+            carb.log_warn(
+                f"SysId: multiple joint prims share leaf name '{leaf}': '{existing}' and '{path_text}'. "
+                "Telemetry joint-name ordering is ambiguous."
             )
             continue
         by_leaf[leaf] = path_text
     ordered: list[str] = []
     for name in names:
         if str(name) in duplicate_leaves:
-            _LOGGER.warning(
-                "SysId: telemetry joint '%s' matches multiple joint prims; keeping USD traversal order.",
-                name,
-            )
+            carb.log_warn(f"SysId: telemetry joint '{name}' matches multiple joint prims; keeping USD traversal order.")
             return joint_paths
         path = by_leaf.get(str(name))
         if path is None:
-            _LOGGER.warning(
-                "SysId: telemetry joint '%s' has no matching joint prim; keeping USD traversal order "
-                "(verify the robot import and topic mapping).",
-                name,
+            carb.log_warn(
+                f"SysId: telemetry joint '{name}' has no matching joint prim; keeping USD traversal order "
+                "(verify the robot import and topic mapping)."
             )
             return joint_paths
         ordered.append(path)
     ordered_set = set(ordered)
     remainder = [path for path in joint_paths if path not in ordered_set]
     if ordered != joint_paths[: len(ordered)]:
-        _LOGGER.warning(
-            "SysId: reordered joint paths to match telemetry joint_names (USD traversal order differed): %s",
-            [path.rsplit("/", 1)[-1] for path in ordered],
+        reordered = [path.rsplit("/", 1)[-1] for path in ordered]
+        carb.log_warn(
+            f"SysId: reordered joint paths to match telemetry joint_names (USD traversal order differed): {reordered}"
         )
     return ordered + remainder

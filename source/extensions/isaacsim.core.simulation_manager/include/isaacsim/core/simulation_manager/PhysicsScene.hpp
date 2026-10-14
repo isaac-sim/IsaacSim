@@ -55,6 +55,7 @@ public:
      * @param[in] path The USD path to the physics scene prim.
      *
      * @throws std::invalid_argument If a prim exists at the path but is not a PhysicsScene.
+     * @throws std::runtime_error If the default USD stage is unavailable.
      */
     PhysicsScene(const std::string& path);
 
@@ -67,9 +68,8 @@ public:
      *
      * @throws std::invalid_argument If a prim exists at the path but is not a PhysicsScene.
      */
-    PhysicsScene(const pxr::SdfPath& path)
+    PhysicsScene(const pxr::SdfPath& path) : PhysicsScene(path.GetString())
     {
-        PhysicsScene(path.GetString());
     }
 
     /**
@@ -81,9 +81,8 @@ public:
      *
      * @throws std::invalid_argument If the prim is not a PhysicsScene.
      */
-    PhysicsScene(const pxr::UsdPrim& prim)
+    PhysicsScene(const pxr::UsdPrim& prim) : PhysicsScene(prim.GetPath().GetString())
     {
-        PhysicsScene(prim.GetPath().GetString());
     }
 
     /**
@@ -151,7 +150,7 @@ private:
  * Traverses all prims in the default USD context's stage and returns
  * the paths of any prims that are of type UsdPhysicsScene.
  *
- * @return A vector of string paths to all PhysicsScene prims in the stage.
+ * @return A vector of string paths to all PhysicsScene prims in the stage, or an empty vector if no stage is open.
  */
 std::vector<std::string> ISAACSIM_EXPORT getPhysicsScenePaths();
 

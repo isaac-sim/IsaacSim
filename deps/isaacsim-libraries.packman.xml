@@ -9,7 +9,7 @@
   </dependency>
   <!-- Direct OmniClient SDK dependency, resolved for the target OS and ABI. -->
   <dependency name="omni_client_library" linkPath="../_cmake_build/isaacsim-libraries-target-deps/omni_client_library">
-    <package name="omni_client_library.${platform_target_abi}" version="2.72.3" />
+    <package name="omni_client_library.${platform_target_abi}" version="2.74.0" />
   </dependency>
   <!--  OpenUSD  -->
   <dependency name="openusd" linkPath="../_cmake_build/isaacsim-libraries-target-deps/openusd">

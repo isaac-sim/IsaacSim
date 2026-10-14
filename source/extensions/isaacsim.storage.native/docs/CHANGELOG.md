@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.12.2] - 2026-10-02
+### Changed
+- `persistent.isaac.asset_root.timeout`: increase the default asset-root check timeout from 5 to 10 seconds.
+
+### Fixed
+- `TestVerifyAssetRootPath`: mock callback-based metadata checks to keep asset-root verification tests isolated.
+
+## [1.12.1] - 2026-10-02
+### Fixed
+- Enforce the timeout for synchronous asset-server checks and cancel unresponsive requests.
+
+## [1.12.0] - 2026-10-02
+### Changed
+- Update the default, US, and China asset roots to Isaac Sim 6.2.
+
 ## [1.11.0] - 2026-09-01
 ### Changed
 - Use Asset Region Profile naming for regional asset routing and add an explicit default profile.

@@ -151,6 +151,7 @@ class Articulation(XformPrim):
         # -- other properties
         self._num_shapes = 0
         self._num_fixed_tendons = 0
+        self._newton_friction_warning_messages: set[str] = set()
         # -- articulation physics view
         self._physics_articulation_view = None
         self._physics_tensor_entity_initialized = False
@@ -940,6 +941,12 @@ class Articulation(XformPrim):
 
         Backends: :guilabel:`tensor`, :guilabel:`usd`.
 
+        .. warning::
+
+            Newton has one joint friction effort. It is returned as both static and dynamic friction, and viscous
+            friction is returned as zero. Newton's XPBD and VBD solvers ignore joint friction; it affects simulation
+            only with the MuJoCo solver.
+
         Args:
             indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
             dof_indices: Indices of DOFs to process (shape ``(D,)``). If not defined, all DOFs are processed.
@@ -967,6 +974,12 @@ class Articulation(XformPrim):
         """
         assert self.valid, _MSG_PRIM_NOT_VALID
         backend = self._check_for_tensor_backend(backend_utils.get_current_backend(["tensor", "usd"]))
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self._warn_newton_friction_once(
+                "Newton exposes one joint friction effort. It is returned as both static and dynamic friction, and "
+                "viscous friction is returned as zero. Newton's XPBD and VBD solvers ignore joint friction; it affects "
+                "simulation only with the MuJoCo solver."
+            )
         # Tensor API
         if backend == "tensor":
             data = self._physics_articulation_view.get_dof_friction_properties()  # shape: (N, max_dofs, 3)
@@ -998,19 +1011,26 @@ class Articulation(XformPrim):
                 for j, dof_index in enumerate(dof_indices.numpy()):
                     dof_prim = stage.GetPrimAtPath(self.dof_paths[index][dof_index])
                     _, drive_type = self._get_drive_api_and_type(index, dof_index)
-                    dof_prim.ApplyAPI("PhysxJointAxisAPI", drive_type)
-                    static_frictions[i][j] = dof_prim.GetAttribute(
-                        f"physxJointAxis:{drive_type}:staticFrictionEffort"
-                    ).Get()
-                    dynamic_frictions[i][j] = dof_prim.GetAttribute(
-                        f"physxJointAxis:{drive_type}:dynamicFrictionEffort"
-                    ).Get()
-                    viscous_friction = dof_prim.GetAttribute(
-                        f"physxJointAxis:{drive_type}:viscousFrictionCoefficient"
-                    ).Get()
-                    if drive_type == "angular":
-                        viscous_friction = np.rad2deg(viscous_friction)
-                    viscous_frictions[i][j] = viscous_friction
+                    if SimulationManager.get_active_physics_engine() == "newton":
+                        dof_prim.ApplyAPI("NewtonJointAPI")
+                        newton_friction = dof_prim.GetAttribute("newton:friction").Get()
+                        static_frictions[i][j] = newton_friction
+                        dynamic_frictions[i][j] = newton_friction
+                        viscous_frictions[i][j] = 0
+                    else:
+                        dof_prim.ApplyAPI("PhysxJointAxisAPI", drive_type)
+                        static_frictions[i][j] = dof_prim.GetAttribute(
+                            f"physxJointAxis:{drive_type}:staticFrictionEffort"
+                        ).Get()
+                        dynamic_frictions[i][j] = dof_prim.GetAttribute(
+                            f"physxJointAxis:{drive_type}:dynamicFrictionEffort"
+                        ).Get()
+                        viscous_friction = dof_prim.GetAttribute(
+                            f"physxJointAxis:{drive_type}:viscousFrictionCoefficient"
+                        ).Get()
+                        if drive_type == "angular":
+                            viscous_friction = np.rad2deg(viscous_friction)
+                        viscous_frictions[i][j] = viscous_friction
             return (
                 ops_utils.place(static_frictions, device=self._device),
                 ops_utils.place(dynamic_frictions, device=self._device),
@@ -1033,6 +1053,9 @@ class Articulation(XformPrim):
         .. warning::
 
             The ``static_frictions`` must be greater than or equal to the ``dynamic_frictions``.
+            Newton has one joint friction effort and uses ``static_frictions`` for it. ``dynamic_frictions`` and
+            ``viscous_frictions`` are ignored. If ``static_frictions`` is omitted, no Newton friction value is changed.
+            Newton's XPBD and VBD solvers ignore joint friction; it affects simulation only with the MuJoCo solver.
 
         Args:
             static_frictions: Static friction efforts (shape ``(N, D)``).
@@ -1059,6 +1082,8 @@ class Articulation(XformPrim):
             static_frictions is not None or dynamic_frictions is not None or viscous_frictions is not None
         ), "All 'static_frictions', 'dynamic_frictions', and 'viscous_frictions' are not defined. Define at least one of them"
         assert self.valid, _MSG_PRIM_NOT_VALID
+        if SimulationManager.get_active_physics_engine() == "newton":
+            self._warn_newton_friction_setter(static_frictions, dynamic_frictions, viscous_frictions)
         backend = self._check_for_tensor_backend(backend_utils.get_current_backend(["tensor", "usd"]))
         # Tensor API
         if backend == "tensor":
@@ -1124,22 +1149,56 @@ class Articulation(XformPrim):
                 for j, dof_index in enumerate(dof_indices.numpy()):
                     dof_prim = stage.GetPrimAtPath(self.dof_paths[index][dof_index])
                     _, drive_type = self._get_drive_api_and_type(index, dof_index)
-                    dof_prim.ApplyAPI("PhysxJointAxisAPI", drive_type)
-                    if static_frictions is not None:
-                        dof_prim.GetAttribute(f"physxJointAxis:{drive_type}:staticFrictionEffort").Set(
-                            static_frictions[i][j].item()
-                        )
-                    if dynamic_frictions is not None:
-                        dof_prim.GetAttribute(f"physxJointAxis:{drive_type}:dynamicFrictionEffort").Set(
-                            dynamic_frictions[i][j].item()
-                        )
-                    if viscous_frictions is not None:
-                        viscous_friction = viscous_frictions[i][j].item()
-                        if drive_type == "angular":
-                            viscous_friction = np.deg2rad(viscous_friction)
-                        dof_prim.GetAttribute(f"physxJointAxis:{drive_type}:viscousFrictionCoefficient").Set(
-                            viscous_friction
-                        )
+                    if SimulationManager.get_active_physics_engine() == "newton":
+                        dof_prim.ApplyAPI("NewtonJointAPI")
+                        if static_frictions is not None:
+                            newton_friction = static_frictions[i][j].item()
+                            # Map the PhysX static-friction slot to Newton's single joint-friction value.
+                            dof_prim.GetAttribute("newton:friction").Set(newton_friction)
+                    else:
+                        dof_prim.ApplyAPI("PhysxJointAxisAPI", drive_type)
+                        if static_frictions is not None:
+                            dof_prim.GetAttribute(f"physxJointAxis:{drive_type}:staticFrictionEffort").Set(
+                                static_frictions[i][j].item()
+                            )
+                        if dynamic_frictions is not None:
+                            dof_prim.GetAttribute(f"physxJointAxis:{drive_type}:dynamicFrictionEffort").Set(
+                                dynamic_frictions[i][j].item()
+                            )
+                        if viscous_frictions is not None:
+                            viscous_friction = viscous_frictions[i][j].item()
+                            if drive_type == "angular":
+                                viscous_friction = np.deg2rad(viscous_friction)
+                            dof_prim.GetAttribute(f"physxJointAxis:{drive_type}:viscousFrictionCoefficient").Set(
+                                viscous_friction
+                            )
+
+    def _warn_newton_friction_once(self, message: str) -> None:
+        """Log a Newton friction mapping warning once for this articulation wrapper."""
+        if message not in self._newton_friction_warning_messages:
+            carb.log_warn(message)
+            self._newton_friction_warning_messages.add(message)
+
+    def _warn_newton_friction_setter(
+        self, static_frictions: Any | None, dynamic_frictions: Any | None, viscous_frictions: Any | None
+    ) -> None:
+        """Describe how the PhysX-shaped friction arguments map to Newton."""
+        details = ["Newton exposes one joint friction effort."]
+        if static_frictions is None:
+            details.append("No value will be changed because static_frictions was not provided.")
+        else:
+            details.append("The static_frictions value is used as the Newton joint friction effort.")
+        ignored = []
+        if dynamic_frictions is not None:
+            ignored.append("dynamic_frictions")
+        if viscous_frictions is not None:
+            ignored.append("viscous_frictions")
+        if ignored:
+            details.append(f"{' and '.join(ignored)} {'is' if len(ignored) == 1 else 'are'} ignored.")
+        details.append(
+            "Newton's XPBD and VBD solvers ignore joint friction; it affects simulation only with the MuJoCo solver."
+        )
+        self._warn_newton_friction_once(" ".join(details))
 
     def get_dof_drive_model_properties(
         self,
@@ -1988,7 +2047,7 @@ class Articulation(XformPrim):
         # Tensor API
         data = self._physics_articulation_view.get_dof_positions()  # shape: (N, max_dofs)
         if indices is None and dof_indices is None and data.shape[1] == self.num_dofs:
-            return data.contiguous().to(self._device)
+            return wp.clone(data, device=self._device)
         indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
         dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
         return data[indices, dof_indices].contiguous().to(self._device)
@@ -2033,7 +2092,7 @@ class Articulation(XformPrim):
         if backend == "tensor":
             data = self._physics_articulation_view.get_dof_position_targets()  # shape: (N, max_dofs)
             if indices is None and dof_indices is None and data.shape[1] == self.num_dofs:
-                return data.contiguous().to(self._device)
+                return wp.clone(data, device=self._device)
             indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
             dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
             return data[indices, dof_indices].contiguous().to(self._device)
@@ -2091,7 +2150,7 @@ class Articulation(XformPrim):
         # Tensor API
         data = self._physics_articulation_view.get_dof_velocities()  # shape: (N, max_dofs)
         if indices is None and dof_indices is None and data.shape[1] == self.num_dofs:
-            return data.contiguous().to(self._device)
+            return wp.clone(data, device=self._device)
         indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
         dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
         return data[indices, dof_indices].contiguous().to(self._device)
@@ -2136,7 +2195,7 @@ class Articulation(XformPrim):
         if backend == "tensor":
             data = self._physics_articulation_view.get_dof_velocity_targets()  # shape: (N, max_dofs)
             if indices is None and dof_indices is None and data.shape[1] == self.num_dofs:
-                return data.contiguous().to(self._device)
+                return wp.clone(data, device=self._device)
             indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
             dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
             return data[indices, dof_indices].contiguous().to(self._device)
@@ -3746,16 +3805,22 @@ class Articulation(XformPrim):
 
         Args:
             indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
-            dof_indices: Indices of DOFs to process (shape ``(D,)``). If not defined, all DOFs are processed.
+            dof_indices: Generalized-force column indices to select (shape ``(K,)``). If not defined,
+                all columns are returned. For floating bases, indices 0 through 5 select root-wrench
+                components and index ``6 + j`` selects joint DOF ``j``. For fixed bases, index ``j``
+                selects joint DOF ``j``.
 
         Returns:
             The Coriolis and centrifugal compensation forces of the prims.
-            For fixed articulation base shape is ``(N, D)``. For non-fixed (floating) articulation base shape
-            is ``(N, D + 6)`` since the forces acting on the root are also provided.
+            With no ``dof_indices``, shape is ``(N, D)`` for fixed bases and ``(N, 6 + D)`` for
+            floating bases, where ``D`` is the number of joint DOFs. The floating-base tensor contains
+            the six root-wrench components first, followed by all joint forces. With explicit
+            ``dof_indices``, shape is ``(N, K)`` in the requested column order.
 
         Raises:
             AssertionError: Wrapped prims are not valid.
             AssertionError: Physics tensor entity is not valid.
+            RuntimeError: The physics backend returns an unexpected force tensor layout.
 
         Example:
 
@@ -3771,10 +3836,8 @@ class Articulation(XformPrim):
         # Tensor API
         data = (
             self._physics_articulation_view.get_coriolis_and_centrifugal_compensation_forces()
-        )  # shape: (N, max_dofs) or (N, max_dofs + 6)
-        indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
-        dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
-        return data[indices, dof_indices].contiguous().to(self._device)
+        )  # shape: (N, max_dofs) or (N, 6 + max_dofs)
+        return self._select_dof_compensation_forces(data, indices=indices, dof_indices=dof_indices)
 
     def get_dof_gravity_compensation_forces(
         self,
@@ -3792,16 +3855,22 @@ class Articulation(XformPrim):
 
         Args:
             indices: Indices of prims to process (shape ``(N,)``). If not defined, all wrapped prims are processed.
-            dof_indices: Indices of DOFs to process (shape ``(D,)``). If not defined, all DOFs are processed.
+            dof_indices: Generalized-force column indices to select (shape ``(K,)``). If not defined,
+                all columns are returned. For floating bases, indices 0 through 5 select root-wrench
+                components and index ``6 + j`` selects joint DOF ``j``. For fixed bases, index ``j``
+                selects joint DOF ``j``.
 
         Returns:
             The gravity compensation forces of the prims.
-            For fixed articulation base shape is ``(N, D)``. For non-fixed (floating) articulation base shape
-            is ``(N, D + 6)`` since the forces acting on the root are also provided.
+            With no ``dof_indices``, shape is ``(N, D)`` for fixed bases and ``(N, 6 + D)`` for
+            floating bases, where ``D`` is the number of joint DOFs. The floating-base tensor contains
+            the six root-wrench components first, followed by all joint forces. With explicit
+            ``dof_indices``, shape is ``(N, K)`` in the requested column order.
 
         Raises:
             AssertionError: Wrapped prims are not valid.
             AssertionError: Physics tensor entity is not valid.
+            RuntimeError: The physics backend returns an unexpected force tensor layout.
 
         Example:
 
@@ -3822,9 +3891,37 @@ class Articulation(XformPrim):
         # Tensor API
         data = (
             self._physics_articulation_view.get_gravity_compensation_forces()
-        )  # shape: (N, max_dofs) or (N, max_dofs + 6)
-        indices = ops_utils.resolve_indices(indices, count=len(self), device=data.device)
-        dof_indices = ops_utils.resolve_indices(dof_indices, count=self.num_dofs, device=data.device)
+        )  # shape: (N, max_dofs) or (N, 6 + max_dofs)
+        return self._select_dof_compensation_forces(data, indices=indices, dof_indices=dof_indices)
+
+    def _select_dof_compensation_forces(
+        self,
+        data: wp.array,
+        *,
+        indices: int | list | np.ndarray | wp.array | None,
+        dof_indices: int | list | np.ndarray | wp.array | None,
+    ) -> wp.array:
+        """Select generalized-force columns while preserving the backend root-first layout.
+
+        Args:
+            data: Backend compensation-force tensor.
+            indices: Articulation indices, or None for all articulations.
+            dof_indices: Generalized-force column indices, or None for all columns.
+
+        Returns:
+            Contiguous compensation-force tensor on the wrapper device.
+
+        Raises:
+            RuntimeError: The backend tensor has unexpected dimensions.
+        """
+        count, num_dofs = len(self), self.num_dofs
+        if data.ndim != 2 or data.shape[0] != count or data.shape[1] not in (num_dofs, num_dofs + 6):
+            raise RuntimeError(
+                f"Unexpected compensation-force tensor shape {data.shape}; "
+                f"expected {(count, num_dofs)} or {(count, num_dofs + 6)}"
+            )
+        indices = ops_utils.resolve_indices(indices, count=count, device=data.device)
+        dof_indices = ops_utils.resolve_indices(dof_indices, count=data.shape[1], device=data.device)
         return data[indices, dof_indices].contiguous().to(self._device)
 
     def get_link_masses(
@@ -4953,16 +5050,14 @@ class Articulation(XformPrim):
         if self._cpp_data_view is not None:
             return
         from ._cpp_buffers import get_device_ordinal
-        from .extension import get_prim_data_reader
-
-        reader = get_prim_data_reader()
-        if reader is None:
-            return
+        from .extension import get_initialized_prim_data_reader
 
         stage = stage_utils.get_current_stage(backend="usd")
         if stage is None:
             return
-        reader.initialize(stage_utils.get_stage_id(stage), get_device_ordinal())
+        reader = get_initialized_prim_data_reader(stage_utils.get_stage_id(stage), get_device_ordinal())
+        if reader is None:
+            return
 
         art_view = self._physics_articulation_view
         if art_view is None:

@@ -41,6 +41,7 @@ public:
     bool createSensor(const char* articulationRootPath) override;
     void removeSensor(const char* articulationRootPath) override;
     JointStateSensorReading getSensorReading(const char* articulationRootPath) override;
+    JointStateSensorReadingView* getSensorReadingView(const char* articulationRootPath) override;
 
 private:
     struct ImplData;

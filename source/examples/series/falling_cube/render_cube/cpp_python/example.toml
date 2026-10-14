@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+id = "falling_cube.render_cube.cpp_python"
+title = "Render a Cube with C++"
+summary = "Render every simulated frame of the falling cube with ovrtx through the C++ API."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.foundation.prims",
+    "isaacsim.physics.manager",
+    "isaacsim.physics_engines.ovphysx",
+]
+topics = ["cpp", "physics", "python", "rendering", "usd"]
+
+[build]
+adapter = "cmake"
+targets = ["_render_cube_cpp"]
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["cmake", "cpp", "python", "python_development"]
+
+[[requirements.modules]]
+name = "isaacsim_common"
+surfaces = ["native_sdk"]
+
+[[requirements.modules]]
+name = "isaacsim_foundation"
+surfaces = ["native_sdk", "python"]
+
+[[requirements.modules]]
+name = "isaacsim_physics"
+surfaces = ["native_sdk"]
+
+[[requirements.modules]]
+name = "isaacsim_physics_engines"
+surfaces = ["native_sdk"]
+
+[[test]]
+name = "default"
+# The renderer compiles its shaders on the first run against a cold cache, which takes several
+# minutes more than the steady-state run this example otherwise completes in.
+timeout_seconds = 600
+stdout_contains = ["The cube fell.", "The render followed the simulation."]

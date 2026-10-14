@@ -17,12 +17,16 @@ adapter = "none"
 adapter = "python"
 path = "main.py"
 
+[run.server]
+adapter = "command"
+command = "isaacsim-ovsim-grpc-server"
+arguments = ["--listen-address", "127.0.0.1:50051"]
+
 [requirements]
 system = ["python"]
-
-[[requirements.modules]]
-name = "isaacsim_ovsim"
-surfaces = ["native_sdk", "python"]
+modules = [
+    { name = "isaacsim_ovsim", surfaces = ["native_sdk", "python"] },
+]
 
 [[test]]
 name = "loopback"

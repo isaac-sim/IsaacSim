@@ -1,5 +1,5 @@
 [package]
-version = "0.1.0"
+version = "0.1.1"
 category = "Utility"
 title = "Python Server UI"
 description = "Status and runtime controls for the Isaac Sim Python Server"

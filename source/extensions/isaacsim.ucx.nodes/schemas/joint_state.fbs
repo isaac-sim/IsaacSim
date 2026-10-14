@@ -7,25 +7,27 @@ namespace isaac;
 table JointState {
 
   // Header
-  header: Header (id: 0);
+  header: holoscan.schema.Header (id: 0);
 
   // Names of the joints.
   name: [string] (id: 1);
 
   // Position of each joint (radians or meters).
-  position: Tensor (id: 2);
+  position: holoscan.schema.Tensor (id: 2);
 
   // Velocity of each joint (radians/second or meters/second).
-  velocity: Tensor (id: 3);
+  velocity: holoscan.schema.Tensor (id: 3);
 
   // Acceleration of each joint (radians/second^2 or meters/second^2).
-  acceleration: Tensor (id: 4);
+  acceleration: holoscan.schema.Tensor (id: 4);
 
   // Actuator effort applied in each joint (Newton meters or Newtons).
-  effort: Tensor (id: 5);
+  effort: holoscan.schema.Tensor (id: 5);
 
   // Temperature of each joint (Celsius).
-  temperature: Tensor (id: 6);
+  temperature: holoscan.schema.Tensor (id: 6);
 }
 
 root_type JointState;
+
+file_identifier "IJST";

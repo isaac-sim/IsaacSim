@@ -138,9 +138,9 @@ static inline void cpuTransformPoint(const float* point,
         float ay = qw * py + qz * px - qx * pz;
         float az = qw * pz + qx * py - qy * px;
         float aw = -(qx * px + qy * py + qz * pz);
-        wx = tx + ax * qw - aw * qx + (ay * qz - az * qy) + sign * thickness * normal[0];
-        wy = ty + ay * qw - aw * qy + (az * qx - ax * qz) + sign * thickness * normal[1];
-        wz = tz + az * qw - aw * qz + (ax * qy - ay * qx) + sign * thickness * normal[2];
+        wx = tx + ax * qw - aw * qx + (az * qy - ay * qz) + sign * thickness * normal[0];
+        wy = ty + ay * qw - aw * qy + (ax * qz - az * qx) + sign * thickness * normal[1];
+        wz = tz + az * qw - aw * qz + (ay * qx - ax * qy) + sign * thickness * normal[2];
     }
     else
     {

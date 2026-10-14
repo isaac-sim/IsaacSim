@@ -20,6 +20,7 @@
 #include <isaacsim/core/includes/BindingsPythonUtils.hpp>
 #include <isaacsim/core/simulation_manager/ISimulationManager.hpp>
 #include <isaacsim/core/simulation_manager/PhysicsScene.hpp>
+#include <pxr/external/boost/python/extract.hpp>
 #include <pybind11/functional.h>
 
 CARB_BINDINGS("isaacsim.core.simulation_manager.python")
@@ -83,18 +84,23 @@ It also manages USD notice handling to track stage changes.)pbdoc";
         .def(py::init(
                  [](py::object prim)
                  {
-                     if (py::isinstance<pxr::UsdPrim>(prim))
+                     if (py::isinstance<py::str>(prim))
                      {
-                         return new PhysicsScene(prim.cast<pxr::UsdPrim>());
+                         return new PhysicsScene(prim.cast<std::string>());
                      }
-                     else if (py::isinstance<pxr::SdfPath>(prim))
+
+                     PXR_BOOST_PYTHON_NAMESPACE::extract<pxr::UsdPrim> usdPrim(prim.ptr());
+                     if (usdPrim.check())
                      {
-                         return new PhysicsScene(prim.cast<pxr::SdfPath>());
+                         return new PhysicsScene(usdPrim());
                      }
-                     else if (py::isinstance<py::str>(prim))
+
+                     PXR_BOOST_PYTHON_NAMESPACE::extract<pxr::SdfPath> sdfPath(prim.ptr());
+                     if (sdfPath.check())
                      {
-                         return new PhysicsScene(prim.cast<py::str>().cast<std::string>());
+                         return new PhysicsScene(sdfPath());
                      }
+
                      throw py::value_error("Invalid prim type. Must be a UsdPrim, SdfPath, or std::string.");
                  }),
              "Constructor")

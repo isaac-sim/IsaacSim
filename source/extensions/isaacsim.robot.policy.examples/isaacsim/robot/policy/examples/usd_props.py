@@ -545,7 +545,8 @@ def _apply_newton_joint_defaults(root_prim: Usd.Prim, joint_defaults: Mapping[st
         else:
             limit_namespace = None
 
-        if limit_namespace is not None:
+        has_authored_mjc_limit = _has_authored_attr(joint_prim, ("mjc:solreflimit",))
+        if limit_namespace is not None and not has_authored_mjc_limit:
             for name, suffix in (("limit_ke", "ke"), ("limit_kd", "kd")):
                 generic_value = _resolve_authored_value(joint_prim, PrimType.JOINT, name)
                 axis_value = _resolve_authored_value(joint_prim, PrimType.JOINT, f"limit_{limit_namespace}_{suffix}")

@@ -309,6 +309,17 @@ class TestMesh(omni.kit.test.AsyncTestCase):
                     check_array(output[i], shape=(expected_v0[i].shape[0], 3), dtype=wp.float32, device=device)
                     check_allclose(expected_v0[i], output[i], given=(v0[i],))
 
+    async def test_get_normals_with_unauthored_attribute(self) -> None:
+        """Return an empty array when a valid mesh has no authored normals."""
+        await stage_utils.create_new_stage_async()
+        prim = Mesh("/World/EmptyMesh")
+
+        normals = prim.get_normals()
+
+        self.assertEqual(len(normals), 1)
+        self.assertEqual(normals[0].shape, (0,))
+        self.assertEqual(normals[0].dtype, wp.float32)
+
     @parametrize(backends=["usd"], prim_class=Mesh, populate_stage_func=populate_stage)
     async def test_face_specs(self, prim: Any, num_prims: Any, device: Any, backend: Any) -> None:
         """Test face specs.

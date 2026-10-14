@@ -21,10 +21,12 @@ from pathlib import Path
 
 import omni.kit.test
 import omni.ui as ui
+from isaacsim.asset.transformer import RuleConfigurationParam, RuleSpec
 from isaacsim.asset.transformer.ui.action_models import (
     ActionItemValueModel,
     ActionListItem,
     ActionListModel,
+    RuleActionItem,
 )
 
 
@@ -274,6 +276,31 @@ class TestActionItemSerialization(omni.kit.test.AsyncTestCase):
         # Should round-trip through JSON
         parsed = json.loads(json_str)
         self.assertEqual(parsed, data)
+
+    async def test_rule_action_mutable_defaults_are_isolated(self) -> None:
+        """Verify each rule action receives its own copy of mutable parameter defaults."""
+        declared_default = {"variant": {"selection": "red"}}
+        param = RuleConfigurationParam(
+            name="selected_variants",
+            display_name="Selected Variants",
+            param_type=dict,
+            default_value=declared_default,
+        )
+        first_spec = RuleSpec(name="First", type="example.Rule")
+        second_spec = RuleSpec(name="Second", type="example.Rule")
+        first_action = object.__new__(RuleActionItem)
+        second_action = object.__new__(RuleActionItem)
+        first_action._spec = first_spec
+        second_action._spec = second_spec
+
+        first_action._ensure_param_defaults([param])
+        second_action._ensure_param_defaults([param])
+        first_spec.params["selected_variants"]["variant"]["selection"] = "blue"
+
+        self.assertEqual(declared_default["variant"]["selection"], "red")
+        self.assertEqual(second_spec.params["selected_variants"]["variant"]["selection"], "red")
+        self.assertIsNot(first_spec.params["selected_variants"], declared_default)
+        self.assertIsNot(first_spec.params["selected_variants"]["variant"], declared_default["variant"])
 
 
 class TestActionListModelSerialization(omni.kit.test.AsyncTestCase):

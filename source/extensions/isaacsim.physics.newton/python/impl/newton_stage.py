@@ -92,6 +92,7 @@ class NewtonStage:
         self.state_temp = None
         self.graph = None
         self._graph_capture_dt = None
+        self._graph_capture_substeps = None
         self._kernels_compiled = False
         self.q_ik = None
         self.qd_ik = None
@@ -334,10 +335,13 @@ class NewtonStage:
         )
 
         if use_cuda_graph and self.initialized:
-            # The timestep is baked into the captured graph, so the graph must be
-            # recaptured whenever the step size changes; otherwise dynamics advance
-            # at the captured dt while bookkeeping advances at the current dt.
-            dt_changed = self.graph is not None and abs(dt - self._graph_capture_dt) > 1e-9
+            # The timestep and the substep count are baked into the captured graph, so the
+            # graph must be recaptured whenever either changes; otherwise dynamics advance
+            # with the captured values while bookkeeping advances with the current ones.
+            num_substeps = getattr(self.cfg, "num_substeps", 1)
+            graph_stale = self.graph is not None and (
+                abs(dt - self._graph_capture_dt) > 1e-9 or num_substeps != self._graph_capture_substeps
+            )
             if not self._kernels_compiled:
                 # Run the first step without graph capture so that
                 # dynamically-generated solver kernels (tile_matmul,
@@ -345,12 +349,13 @@ class NewtonStage:
                 # compiled with full LTO retry support.  Capturing
                 # this step would record a graph with failed kernels.
                 self._kernels_compiled = True
-                self.simulate(dt=dt)
-            elif self.graph is None or dt_changed:
+                self.simulate(num_substeps=num_substeps, dt=dt)
+            elif self.graph is None or graph_stale:
                 self._graph_capture_dt = dt
+                self._graph_capture_substeps = num_substeps
                 wp.capture_begin()
                 try:
-                    self.simulate(dt=dt)
+                    self.simulate(num_substeps=num_substeps, dt=dt)
                 finally:
                     self.graph = wp.capture_end()  # type: ignore[assignment]
                 wp.capture_launch(self.graph)  # type: ignore[arg-type]
@@ -664,7 +669,22 @@ class NewtonStage:
 
         self.control = self.model.control()
         self.model.ground = True
-        self.model.request_contact_attributes("force")
+        if self.cfg.solver_outputs.contact_forces:
+            self.model.request_contact_attributes("force")
+
+        if self.cfg.solver_outputs.link_incoming_joint_force:
+            if solver_type == "vbd":
+                carb.log_warn(
+                    "[Newton] Link incoming joint force reporting is not supported by the VBD solver; "
+                    "the output will remain unavailable."
+                )
+            elif solver_type == "mujoco" and getattr(self.cfg.solver_cfg, "use_mujoco_cpu", False):
+                carb.log_warn(
+                    "[Newton] Link incoming joint force reporting is not supported by native MuJoCo CPU; "
+                    "use MuJoCo Warp or XPBD."
+                )
+            else:
+                self.model.request_state_attributes("body_parent_f")
 
         # `state_0` is retained only when reset-on-stop is disabled.
         if not carb_config.reset_on_stop() and self.state_0:
@@ -677,10 +697,6 @@ class NewtonStage:
 
         self.state_1 = self.model.state()
         self.state_1.assign(self.state_0)
-
-        if self.cfg.use_cuda_graph:
-            self.state_temp = self.model.state()
-            self.state_temp.assign(self.state_0)
 
         valid_body_paths = set(self.model.body_label)
         self.fabric_manager.cleanup_stale_newton_index(valid_body_paths, self.device)
@@ -753,16 +769,6 @@ class NewtonStage:
         if self.collision_pipeline is None:
             return
 
-        state_0_dict = None
-        state_1_dict = None
-        state_temp_dict = None
-        if self.cfg.use_cuda_graph:
-            if self.state_temp is None:
-                return
-            state_0_dict = self.state_0.__dict__
-            state_1_dict = self.state_1.__dict__
-            state_temp_dict = self.state_temp.__dict__
-
         solver_type = self.cfg.solver_cfg.solver_type
 
         if solver_type == "mujoco":
@@ -774,19 +780,19 @@ class NewtonStage:
             self.collision_pipeline.collide(self.state_0, self.contacts)  # type: ignore[arg-type]
             contacts = self.contacts  # type: ignore[has-type]
 
-        for i in range(num_substeps):
+        # ``state_0`` must name the same buffer at the end of every step, for any substep count and
+        # with or without graph capture: a captured CUDA graph replays on the buffers that were live
+        # at capture time, and tensor views cache ``state_0`` pointers when they are created. The
+        # substeps ping-pong the two buffers; after an odd number of swaps the newest state is copied
+        # back into the pinned buffer (the ``need_state_copy`` pattern of the Newton examples).
+        pinned_state = self.state_0
+        for _ in range(num_substeps):
             self.solver.step(self.state_0, self.state_1, self.control, contacts, step_dt / float(num_substeps))  # type: ignore[has-type]
-
-            if i == num_substeps - 1 and self.cfg.use_cuda_graph and state_0_dict is not None:
-                for key, value in state_0_dict.items():
-                    if isinstance(value, wp.array):
-                        state_temp_dict[key].assign(value)  # type: ignore[index]
-                        state_0_dict[key].assign(state_1_dict[key])  # type: ignore[index]
-                        state_1_dict[key].assign(state_temp_dict[key])  # type: ignore[index]
-            else:
-                self.state_0, self.state_1 = self.state_1, self.state_0
-
+            self.state_0, self.state_1 = self.state_1, self.state_0
             self.state_0.clear_forces()
+        if self.state_0 is not pinned_state:
+            pinned_state.assign(self.state_0)
+            self.state_0, self.state_1 = pinned_state, self.state_0
 
         if solver_type == "mujoco" and self.contacts is not None and not getattr(self.solver, "use_mujoco_cpu", False):  # type: ignore[has-type]
             self.solver.update_contacts(self.contacts, self.state_0)  # type: ignore[has-type]

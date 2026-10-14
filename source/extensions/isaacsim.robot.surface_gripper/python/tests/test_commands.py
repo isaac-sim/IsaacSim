@@ -52,3 +52,31 @@ class TestCreateSurfaceGripperCommand(omni.kit.test.AsyncTestCase):
         omni.kit.undo.undo()
         await omni.kit.app.get_app().next_update_async()
         self.assertFalse(stage.GetPrimAtPath(gripper_path).IsValid())
+
+    async def test_create_surface_gripper_at_pseudo_root(self) -> None:
+        """The API accepts the pseudo-root and assigns unique sibling paths."""
+        from isaacsim.robot.surface_gripper import create_surface_gripper
+
+        await omni.usd.get_context().new_stage_async()
+        stage = omni.usd.get_context().get_stage()
+        stage.ClearDefaultPrim()
+        first = create_surface_gripper(stage, "/")
+        second = create_surface_gripper(stage, "/")
+        self.assertEqual(str(first.GetPath()), "/SurfaceGripper")
+        self.assertNotEqual(first.GetPath(), second.GetPath())
+        self.assertTrue(second.IsValid())
+        self.assertEqual(second.GetPath().GetParentPath(), first.GetPath().GetParentPath())
+
+    async def test_create_surface_gripper_root_undo_redo(self) -> None:
+        """Redo creates the same sibling, rather than nesting under its former path."""
+        await omni.usd.get_context().new_stage_async()
+        stage = omni.usd.get_context().get_stage()
+        stage.ClearDefaultPrim()
+        success, prim = omni.kit.commands.execute("CreateSurfaceGripperPrim", prim_path="/")
+        self.assertTrue(success)
+        self.assertEqual(str(prim.GetPath()), "/SurfaceGripper")
+        omni.kit.undo.undo()
+        self.assertFalse(stage.GetPrimAtPath("/SurfaceGripper"))
+        omni.kit.undo.redo()
+        self.assertTrue(stage.GetPrimAtPath("/SurfaceGripper"))
+        self.assertFalse(stage.GetPrimAtPath("/SurfaceGripper/SurfaceGripper"))

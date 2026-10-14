@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Descriptor tensor operations check registration and support before inspecting buffers; optional command data and
+  semantically irrelevant negative strides remain usable through Array-backed views.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

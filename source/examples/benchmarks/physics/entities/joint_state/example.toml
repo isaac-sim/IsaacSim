@@ -1,0 +1,33 @@
+id = "benchmarks.physics.entities.joint_state"
+title = "Articulation State Reads Benchmark"
+summary = "Measure completed physics steps and public entity state readback."
+owners = [
+    "isaacsim.foundation.objects",
+    "isaacsim.physics.manager",
+    "isaacsim.physics.entities",
+    "isaacsim.physics_engines.ovphysx",
+    "isaacsim.performance.benchmarking",
+]
+topics = ["physics"]
+
+[build]
+adapter = "none"
+
+[run]
+adapter = "python"
+path = "main.py"
+
+[requirements]
+system = ["python"]
+modules = [
+    { name = "isaacsim_foundation", surfaces = ["python"] },
+    { name = "isaacsim_physics", surfaces = ["python"] },
+    { name = "isaacsim_physics_engines", surfaces = ["python"] },
+    { name = "isaacsim_performance", surfaces = ["python"] },
+]
+
+[[test]]
+name = "smoke"
+path = "test.py"
+timeout_seconds = 300
+stdout_contains = ["Benchmark smoke test passed."]

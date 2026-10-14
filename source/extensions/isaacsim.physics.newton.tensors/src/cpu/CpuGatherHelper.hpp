@@ -20,6 +20,7 @@
 // No heap allocation; designed for direct use in CPU view getter/setter methods.
 
 #include "utils/WarpCompat.hpp"
+#include "utils/WrenchOps.hpp"
 
 #include <cstddef>
 #include <cstring>
@@ -33,10 +34,16 @@ namespace newton
 namespace tensors
 {
 
-inline void gatherFloat(const float* src, float* dst, const int* indices, size_t n)
+inline void zeroFloat(float* dst, size_t n, unsigned dstStride = 1)
 {
     for (size_t i = 0; i < n; ++i)
-        dst[i] = (indices[i] >= 0) ? src[indices[i]] : 0.0f;
+        dst[i * dstStride] = 0.0f;
+}
+
+inline void gatherFloat(const float* src, float* dst, const int* indices, size_t n, unsigned dstStride = 1)
+{
+    for (size_t i = 0; i < n; ++i)
+        dst[i * dstStride] = (indices[i] >= 0) ? src[indices[i]] : 0.0f;
 }
 
 inline void gatherTransform(const wp::transform* src, float* dst, const int* indices, size_t n)
@@ -83,6 +90,50 @@ inline void gatherSpatialVector(const wp::spatial_vector* src, float* dst, const
         {
             std::memset(d, 0, 6 * sizeof(float));
         }
+    }
+}
+
+inline void gatherIncomingJointForce(const wp::spatial_vector* bodyParentForce,
+                                     const wp::transform* bodyTransforms,
+                                     const wp::vec3* bodyCentersOfMass,
+                                     const wp::transform* jointChildTransforms,
+                                     float* dst,
+                                     const int* bodyIndices,
+                                     const int* jointIndices,
+                                     size_t n)
+{
+    for (size_t i = 0; i < n; ++i)
+    {
+        float* output = dst + i * 6;
+        const int bodyIndex = bodyIndices[i];
+        const int jointIndex = jointIndices[i];
+        if (bodyIndex < 0 || jointIndex < 0)
+        {
+            std::memset(output, 0, 6 * sizeof(float));
+            continue;
+        }
+        details::computeIncomingJointWrench(bodyParentForce[bodyIndex], bodyTransforms[bodyIndex],
+                                            bodyCentersOfMass[bodyIndex], jointChildTransforms[jointIndex], output);
+    }
+}
+
+inline void gatherProjectedJointForce(const wp::spatial_vector* bodyParentForce,
+                                      const wp::transform* bodyTransforms,
+                                      const wp::vec3* bodyCentersOfMass,
+                                      const wp::spatial_vector* motionSubspaces,
+                                      float* dst,
+                                      const int* bodyIndices,
+                                      const int* dofIndices,
+                                      size_t n)
+{
+    for (size_t i = 0; i < n; ++i)
+    {
+        const int bodyIndex = bodyIndices[i];
+        const int dofIndex = dofIndices[i];
+        dst[i] = bodyIndex < 0 || dofIndex < 0 ?
+                     0.0f :
+                     details::computeProjectedJointForce(bodyParentForce[bodyIndex], bodyTransforms[bodyIndex],
+                                                         bodyCentersOfMass[bodyIndex], motionSubspaces[dofIndex]);
     }
 }
 
@@ -147,10 +198,11 @@ inline void gatherCenterOfMass(const wp::vec3* src, float* dst, const int* indic
     }
 }
 
-inline void indirectScatterFloat(const float* src, float* dst, const int* srcOffsets, const int* dstIndices, size_t n)
+inline void indirectScatterFloat(
+    const float* src, float* dst, const int* srcOffsets, const int* dstIndices, size_t n, unsigned srcStride = 1)
 {
     for (size_t i = 0; i < n; ++i)
-        dst[dstIndices[i]] = src[srcOffsets[i]];
+        dst[dstIndices[i]] = src[srcOffsets[i] * srcStride];
 }
 
 inline void indirectAddFloat(const float* src, float* dst, const int* srcOffsets, const int* dstIndices, size_t n)

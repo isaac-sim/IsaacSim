@@ -1,14 +1,11 @@
 # OV SIM Python interfaces
 
-This directory contains the canonical Python callable-type aliases for the OV SIM API. It is currently source-only: no
-`source/libraries` distribution registers these files for staging or installation, and no Python provider is checked
-against them.
+This directory defines the shared Python callable aliases for the OV SIM API. They are currently source-only: no
+distribution installs them, and no Python provider is checked against them yet.
 
-The sibling C++ headers use a package-level ownership model. `isaacsim-foundation`, `isaacsim-physics`, and
-`isaacsim-ovsim` all consume that one canonical source tree, and each distribution whose public SDK includes those
-headers installs an identical copy so the SDK remains self-contained. Those distributions do not currently install
-this Python interface tree; their Python surfaces are backed by the verified C++ contracts and package-specific
-bindings.
+The sibling C++ interfaces are shared by `isaacsim-foundation`, `isaacsim-physics`, and `isaacsim-ovsim`. Each package
+installs a copy of the C++ headers so its SDK remains self-contained. They do not install these Python aliases; their
+Python APIs use package-specific bindings backed by the verified C++ contracts.
 
 When a Python OV SIM provider is added, it must expose concrete free functions whose signatures match the aliases it
 implements and add provider-side static verification.
@@ -32,9 +29,8 @@ ovsim/
 
 ## Verification
 
-To enforce compliance at static-analysis time, assign each concrete provider function to a variable annotated with
-the corresponding alias in a provider-side `verify_interfaces.py`. In this illustrative pattern, replace `provider`
-with the implementation module:
+To check a provider statically, assign each implementation function to a variable annotated with the corresponding
+alias in `verify_interfaces.py`. Replace `provider` below with the implementation module:
 
 ```python
 import provider
@@ -53,8 +49,8 @@ _read: data_interface.ReadFunction = provider.data.read
 _write: data_interface.WriteFunction = provider.data.write
 ```
 
-A static type checker such as mypy or pyright reports a mismatching signature on the assignment. These aliases do not
-perform runtime validation.
+A static type checker such as mypy or pyright reports signatures that do not match. These aliases do not perform
+runtime validation.
 
 ## Notes
 

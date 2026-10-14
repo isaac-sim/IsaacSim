@@ -6,6 +6,12 @@
 
 ### Added
 
+- Windows packages install the OpenUSD plugin registry and the third-party schema trees beside the module binary.
+
+## [7.0.0a1] - 2026-09-16
+
+### Added
+
 - A thin C++ wrapper over OpenUSD exposes stage lifecycle, prim authoring, schema queries, variant selection, and
   attribute I/O through a stable ABI based on opaque `int64_t` stage handles and standard C++ types.
 - The packaged bindings support Windows.

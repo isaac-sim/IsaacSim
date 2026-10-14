@@ -166,6 +166,13 @@ class TestPrim(omni.kit.test.AsyncTestCase):
                 ]
                 self.assertEqual(prim_utils.find_matching_prim_paths(".*C.*", traverse=True), match)
 
+    async def test_find_matching_prim_paths_rejects_empty_expression(self) -> None:
+        """Test that empty path expressions are rejected independently of stage contents."""
+        for path in ["", "   "]:
+            for traverse in [False, True]:
+                with self.assertRaisesRegex(ValueError, "must not be empty"):
+                    prim_utils.find_matching_prim_paths(path, traverse=traverse)
+
     async def test_get_all_matching_child_prims(self) -> None:
         """Test get all matching child prims."""
         stage_utils.define_prim("/World")

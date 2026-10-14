@@ -1425,10 +1425,10 @@ class SimulationManager:
             method will always return ``True``.
 
         Args:
-            enable_warm_start: Whether to enable/disable the warm start callback.
-            enable_on_stop: Whether to enable/disable the on stop callback.
-            enable_stage_open: Whether to enable/disable the stage open callback.
-            enable_stage_close: Whether to enable/disable the stage close callback.
+            enable_warm_start: Whether to enable/disable the warm start callback. If ``None``, leave it unchanged.
+            enable_on_stop: Whether to enable/disable the on stop callback. If ``None``, leave it unchanged.
+            enable_stage_open: Whether to enable/disable the stage open callback. If ``None``, leave it unchanged.
+            enable_stage_close: Whether to enable/disable the stage close callback. If ``None``, leave it unchanged.
         """
         # on play (warm-up)
         if enable_warm_start is not None:
@@ -1438,25 +1438,28 @@ class SimulationManager:
             else:
                 cls._default_callback_warm_start = None
         # on stop
-        cls._default_callbacks_state["on_stop"] = enable_on_stop
-        if enable_on_stop:
-            cls._setup_on_stop_callback()
-        else:
-            cls._default_callback_on_stop = None
+        if enable_on_stop is not None:
+            cls._default_callbacks_state["on_stop"] = enable_on_stop
+            if enable_on_stop:
+                cls._setup_on_stop_callback()
+            else:
+                cls._default_callback_on_stop = None
         # on stage opened
-        cls._default_callbacks_state["stage_open"] = enable_stage_open
-        if enable_stage_open:
-            cls._setup_stage_open_callback()
-        else:
-            cls._default_callback_stage_open = None
-            cls._reset(reset_assets=True)
+        if enable_stage_open is not None:
+            cls._default_callbacks_state["stage_open"] = enable_stage_open
+            if enable_stage_open:
+                cls._setup_stage_open_callback()
+            else:
+                cls._default_callback_stage_open = None
+                cls._reset(reset_assets=True)
         # on stage closed
-        cls._default_callbacks_state["stage_close"] = enable_stage_close
-        if enable_stage_close:
-            cls._setup_stage_close_callback()
-        else:
-            cls._default_callback_stage_close = None
-            cls._reset(reset_assets=True)
+        if enable_stage_close is not None:
+            cls._default_callbacks_state["stage_close"] = enable_stage_close
+            if enable_stage_close:
+                cls._setup_stage_close_callback()
+            else:
+                cls._default_callback_stage_close = None
+                cls._reset(reset_assets=True)
 
     # Convenience methods for bulk operations
     @classmethod

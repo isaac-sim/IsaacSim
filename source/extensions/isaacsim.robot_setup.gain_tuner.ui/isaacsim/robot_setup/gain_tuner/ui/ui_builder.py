@@ -477,9 +477,9 @@ class UIBuilder:
         self._dt_sweep_level_dts: list[float] = []
         self._dt_sweep_level_index = 0
 
-        # Self-collision override state. `enabledSelfCollisions` is a cook-time
-        # PhysX property, so toggling it requires a timeline stop/play recook.
-        self._self_collision_original = None
+        # `enabledSelfCollisions` is a cook-time PhysX property, so applying the
+        # override requires a timeline stop/play recook. The override itself is
+        # owned by the core tuner; this only tracks that recook.
         self._restarting_for_override = False
 
         self._reset_ui_next_frame = False
@@ -595,11 +595,11 @@ class UIBuilder:
         # and can be overridden per column via the hamburger menu.
         self._gain_table_frame = None  # rebuildable Frame holding the whole table
         self._gain_table_view = None  # active GainTableView (TreeView) widget
-        # One-shot flag: True after a robot is selected but setup() enumerated zero
-        # joints because the articulation's DOF view had not cooked yet (the Newton
-        # backend builds the physics-tensor articulation lazily, so num_dofs is 0
-        # for the first frame(s) after construction).  on_render_step re-runs setup
-        # once the view reports DOFs so the joints populate, then clears the flag.
+        # True after a robot is selected but setup() enumerated zero joints because
+        # the articulation's DOF view had not cooked yet (the Newton backend builds
+        # the physics-tensor articulation lazily, so num_dofs is 0 for the first
+        # frame(s) after construction).  on_render_step re-runs setup once the view
+        # reports DOFs so the joints populate, then clears the flag.
         self._awaiting_articulation_dofs = False
         # Multi-selection to restore on the next table rebuild (set before a source
         # switch so the selection survives the in-place rebuild); None otherwise.
@@ -782,6 +782,13 @@ class UIBuilder:
         Args:
             event: Event Type
         """
+        # Stopping the timeline ends a running test without going through cancel
+        # or completion, so the override has to be dropped here too. The recook
+        # the override itself performs also stops the timeline; that one is
+        # flagged, and must not tear down the override it is installing.
+        if self._timeline.is_stopped() and not self._restarting_for_override:
+            self._restore_self_collision_override()
+
         if not self._articulation_menu_model or not self._articulation_menu_model.has_item():
             return
         # NOTE: We intentionally do NOT force accordion collapse/expand on play/stop.
@@ -819,15 +826,64 @@ class UIBuilder:
         """
         return bool(awaiting) and int(num_dofs) > 0
 
+    @staticmethod
+    def _should_await_articulation_dofs(num_dofs: int, has_joint_entries: bool) -> bool:
+        """Return True when a setup that found no joints should wait and retry.
+
+        A zero DOF count means the articulation view has not cooked yet, so the
+        joints may still appear once it does.  That is the only case worth
+        waiting for, and the wait lasts as long as the view takes to cook.
+
+        A robot that already reports DOFs and still enumerates no joints has
+        joints the robot schema does not reach, which re-running the same
+        enumeration cannot resolve.  Waiting on it would retry on every render
+        step, and each retry restarts the timeline from ``_setup_robot_links``.
+
+        Args:
+            num_dofs: The articulation's currently reported DOF count.
+            has_joint_entries: True when the setup enumerated at least one joint.
+
+        Returns:
+            True only when no joints were enumerated and no DOFs exist yet.
+        """
+        return not has_joint_entries and int(num_dofs) <= 0
+
+    def _articulation_num_dofs(self) -> int:
+        """Return the bound articulation's DOF count, or 0 when it cannot be read.
+
+        An articulation view that has not cooked yet can raise rather than report
+        zero, and for the deferred-joint wait the two mean the same thing.
+
+        Returns:
+            The reported DOF count, or 0 when no articulation is bound or the
+            query failed.
+        """
+        art = getattr(self._gains_tuner, "_articulation", None)
+        if art is None:
+            return 0
+        try:
+            return int(art.num_dofs)
+        except _UI_GUARD_ERRORS:
+            return 0
+
+    def _arm_deferred_joint_wait(self) -> None:
+        """Arm or clear the deferred joint-entry wait for the setup that just ran."""
+        self._awaiting_articulation_dofs = self._should_await_articulation_dofs(
+            self._articulation_num_dofs(), bool(self._gains_tuner.get_joint_entries())
+        )
+
     def _maybe_repopulate_deferred_joints(self) -> None:
         """Re-run joint-entry setup once the articulation's DOF view has cooked.
 
         Handles the Newton lazy-articulation case (see
         :meth:`_should_repopulate_deferred_joints`): when the initial ``setup()``
         found ``num_dofs == 0`` and cached zero joints, re-run the selection once
-        the view reports DOFs so the table populates.  One-shot per binding — the
-        flag is cleared here, so this never rebuilds every frame (no flicker), and
-        a robot whose view never cooks just stays empty after a single retry.
+        the view reports DOFs so the table populates.
+
+        The re-setup re-arms the wait through
+        :meth:`_should_await_articulation_dofs`, which arms again only while the
+        view still reports no DOFs, so a robot that reports DOFs but enumerates
+        no joints is left alone after this one re-setup.
         """
         if not self._awaiting_articulation_dofs:
             return
@@ -836,16 +892,10 @@ class UIBuilder:
         if not path:
             self._awaiting_articulation_dofs = False
             return
-        art = getattr(tuner, "_articulation", None)
-        try:
-            num_dofs = int(art.num_dofs) if art is not None else 0
-        except _UI_GUARD_ERRORS:
-            num_dofs = 0
-        if not self._should_repopulate_deferred_joints(True, num_dofs):
+        if not self._should_repopulate_deferred_joints(True, self._articulation_num_dofs()):
             return  # view not cooked yet; keep waiting (cheap early-out per frame)
-        # View is ready -> re-run the selection once so joints are re-enumerated.
-        # force=True re-runs setup()+rebuild and re-evaluates the awaiting flag from
-        # the freshly enumerated entries (populated now -> flag cleared).
+        # View is ready -> re-run the selection so joints are re-enumerated.
+        # force=True re-runs setup()+rebuild.
         self._awaiting_articulation_dofs = False
         self._on_articulation_selection(path, force=True)
 
@@ -860,6 +910,15 @@ class UIBuilder:
         # sync_viewport_from_scroll_frame only rebuilds when it actually changes.
         self.sync_viewport_from_scroll_frame()
 
+        # Suppress frame rebuilds while a self-collision override is recooking the
+        # scene (the timeline stop/play would otherwise trigger a rebuild that
+        # resets the test controls mid-launch).  The backend poll and the deferred
+        # re-setup below are held back with them: both re-run selection, which
+        # resets the tuner and would drop the override being installed.  The
+        # recook is a few frames, and each is picked up on the next one.
+        if self._restarting_for_override:
+            return
+
         # The physics engine can change with no event to subscribe to, so it is
         # polled here.  The per-frame cost is one string comparison against the
         # simulation manager's cached engine name; everything expensive happens
@@ -871,11 +930,7 @@ class UIBuilder:
         # If a robot was selected before its (Newton, lazy) articulation view had
         # cooked, setup() cached zero joints; re-populate now that DOFs are ready.
         self._maybe_repopulate_deferred_joints()
-        # Suppress frame rebuilds while a self-collision override is recooking the
-        # scene (the timeline stop/play would otherwise trigger a rebuild that
-        # resets the test controls mid-launch).
-        if self._restarting_for_override:
-            return
+
         if self._reset_ui_next_frame:
             if self._timeline.is_stopped() and self._gains_tuning_frame:
                 self._gains_tuning_frame.rebuild()
@@ -6445,11 +6500,11 @@ class UIBuilder:
             self._gains_tuner.setup(articulation_path)
             # The Newton backend constructs the physics-tensor articulation lazily,
             # so setup() can enumerate zero joints on the first try (num_dofs == 0
-            # for the first frame(s)).  If so, arrange a one-shot re-setup from
+            # for the first frame(s)).  If so, arrange a re-setup from
             # on_render_step once the DOF view cooks, so the joints still populate
             # ("no joints found" regression under Newton).  A normal (PhysX) robot
             # enumerates its joints immediately, so the flag stays clear.
-            self._awaiting_articulation_dofs = not self._gains_tuner.get_joint_entries()
+            self._arm_deferred_joint_wait()
             # Fully reset per-robot test/selection/plot state so nothing carries
             # over from the previously loaded robot (fixes stale selection/results
             # after a robot switch).
@@ -6818,9 +6873,15 @@ class UIBuilder:
             test_params.get("hold_duration", 0.0),
         )
 
-        # Disabling self-collisions is a cook-time PhysX property, so it needs a
-        # timeline stop/play recook before the test starts.  Dispatch that
-        # asynchronously; the test begins once the recook completes.
+        # An override from an earlier run survives anything that ended the run
+        # without going through cancel or completion, such as the toolbar stop.
+        # Clear it here so a test never inherits the previous run's collision
+        # state, least of all one launched with the option switched off.
+        self._restore_self_collision_override()
+
+        # Both engines read their self-collision property when the scene is
+        # cooked, so the option needs a timeline stop/play recook before the test
+        # starts.  Dispatch that asynchronously; the test begins once it lands.
         if test_params.get("disable_self_collisions") and test_mode in (
             GainsTestMode.SNAP_TO_LIMITS,
             GainsTestMode.STRESS_TEST,
@@ -6863,40 +6924,49 @@ class UIBuilder:
         for panel in self._test_in_progress_panels:
             panel.visible = True
 
-    def _get_self_collision_attr(self) -> Usd.Attribute | None:
-        """Return the ``physxArticulation:enabledSelfCollisions`` USD attribute, or None.
+    def _warn_self_collision_override_unavailable(self, reason: str) -> None:
+        """Tell the user the self-collision override will not take effect.
+
+        Args:
+            reason: Why the override cannot be applied, used verbatim in the message.
+        """
+        message = f"Self-collisions stay enabled for this test: {reason}."
+        carb.log_warn(f"GainTuner: {message}")
+        nm.post_notification(message, duration=6, status=nm.NotificationStatus.WARNING)
+
+    def _self_collision_override_unsupported_reason(self) -> str | None:
+        """Return why the active backend cannot honour the override, or None.
+
+        PhysX and Newton each define a self-collision property and both are
+        authored, so both are supported. Any other engine is unsupported, as is
+        an engine that could not be read.
 
         Returns:
-            Self-collision attribute on the active articulation, or None if no
-            articulation is bound or the attribute is absent.
+            A reason to surface, or None when the backend honours the override.
         """
-        articulation = self._gains_tuner.get_articulation()
-        if articulation is None:
+        backend = self._active_backend()
+        if gain_tuner.backend_supported(backend):
             return None
-        prim = articulation.prims[0]
-        return prim.GetAttribute("physxArticulation:enabledSelfCollisions") or None
+        engine = f"is {gain_tuner.backend_display_label(backend)}" if backend else "could not be read"
+        return f"disabling self-collisions is supported under PhysX and Newton and the active physics engine {engine}"
 
     def _restore_self_collision_override(self) -> None:
-        """Restore the saved self-collision value on the USD prim.
+        """Drop the self-collision override for this test run.
 
-        Safe to call even when no override was applied (no-op).  The value is
-        written back directly; because ``enabledSelfCollisions`` is a cook-time
-        property, PhysX picks it up on the next timeline play (no recook is forced
-        here to avoid replaying the timeline after a test completes or is cancelled).
+        Safe to call when no override was applied. Both engines read their
+        self-collision property when the scene is cooked, so the restored value
+        is picked up on the next timeline play; no recook is forced here, to
+        avoid replaying the timeline after a test completes or is cancelled.
         """
-        if self._self_collision_original is None:
-            return
-        attr = self._get_self_collision_attr()
-        if attr:
-            attr.Set(self._self_collision_original)
-        self._self_collision_original = None
+        self._gains_tuner.restore_self_collision_override()
 
     async def _apply_override_and_run(self, test_params, duration) -> None:
         """Disable self-collisions (cook-time), recook via timeline restart, then run.
 
-        ``physxArticulation:enabledSelfCollisions`` only takes effect when physics
-        loads the scene, so a timeline stop/play cycle forces that reload before the
-        test starts.
+        Both engines read their self-collision property when physics loads the
+        scene, so a timeline stop/play cycle forces that reload before the test
+        starts.  The test still runs when the override cannot be applied, but the
+        user is told so the run is not mistaken for a self-collision-free one.
 
         Args:
             test_params: Fully built test parameter dictionary.
@@ -6906,10 +6976,16 @@ class UIBuilder:
         """
         app = omni.kit.app.get_app()
 
-        attr = self._get_self_collision_attr()
-        if attr:
-            self._self_collision_original = attr.Get()
-            attr.Set(False)
+        # Check the engine before authoring anything: on a backend that ignores the
+        # property, writing it and paying the recook only delays a test that runs
+        # with self-collisions on regardless.
+        unsupported = self._self_collision_override_unsupported_reason()
+        if unsupported:
+            self._warn_self_collision_override_unavailable(unsupported)
+        else:
+            reason = self._gains_tuner.apply_self_collision_override()
+            if reason:
+                self._warn_self_collision_override_unavailable(reason)
 
         self._restarting_for_override = True
         cancelled = False
@@ -6930,10 +7006,16 @@ class UIBuilder:
             self._restore_self_collision_override()
             return
 
-        self._gains_tuner.initialize()
-        await app.next_update_async()
-
-        self._begin_gains_test(test_params, duration)
+        started = False
+        try:
+            self._gains_tuner.initialize()
+            await app.next_update_async()
+            self._begin_gains_test(test_params, duration)
+            started = True
+        finally:
+            # Nothing downstream drops the override unless the run actually began.
+            if not started:
+                self._restore_self_collision_override()
 
     def _rebased_effort_snapshot(self) -> tuple[list, list]:
         """Copy the current per-step effort capture, rebasing its times to start at 0.

@@ -25,6 +25,8 @@
 
 #include "utils/WarpCompat.hpp"
 
+#include <cuda/std/array>
+
 #include <cstdint>
 #include <cuda_runtime.h>
 
@@ -36,6 +38,29 @@ namespace newton
 {
 namespace tensors
 {
+
+/// Converts an 8-bit mask to a fixed-size device index array.
+///
+/// ``indices[i] = mask[i] != 0 ? i : -1`` for ``i`` in ``[0, count)``.
+///
+/// @param mask Device pointer to the mask array, length ``count``.
+/// @param indices Device pointer to the destination index array, length ``count``.
+/// @param count Number of mask entries.
+/// @param stream CUDA stream to launch on.
+/// @return ``true`` if the launch succeeded.
+bool launchMaskToIndices(const uint8_t* mask, int* indices, int count, cudaStream_t stream = nullptr);
+
+/// Zero out zero an array with stride
+///
+/// ``dst[i * dstStride] = 0.0f`` for
+/// ``i`` in ``[0, numIndices)``.
+///
+/// @param dst Device pointer to the destination array, length ``numIndices * dstStride``.
+/// @param numIndices Number of gather slots.
+/// @param dstStride stride for writing to destination.
+/// @param stream CUDA stream to launch on.
+/// @return ``true`` if the launch succeeded.
+bool launchZeroFloatStrided(float* dst, int numIndices, unsigned dstStride, cudaStream_t stream = nullptr);
 
 /// Gather scalar floats by index, writing zero for ``-1`` entries.
 ///
@@ -49,6 +74,49 @@ namespace tensors
 /// @param stream CUDA stream to launch on.
 /// @return ``true`` if the launch succeeded.
 bool launchGatherFloat(const float* src, float* dst, const int* devIndices, int numIndices, cudaStream_t stream = nullptr);
+
+/// Gather scalar floats by index, writing zero for ``-1`` entries.
+///
+/// ``dst[i * dstStride] = devIndices[i] >= 0 ? src[devIndices[i]] : 0.0f`` for
+/// ``i`` in ``[0, numIndices)``.
+///
+/// @param src Device pointer to the source scalar array.
+/// @param dst Device pointer to the destination array, length ``numIndices * dstStride``.
+/// @param devIndices Device index array, length ``numIndices``.
+/// @param numIndices Number of gather slots.
+/// @param dstStride stride for writing to destination.
+/// @param stream CUDA stream to launch on.
+/// @return ``true`` if the launch succeeded.
+bool launchGatherFloatStrided(const float* src,
+                              float* dst,
+                              const int* devIndices,
+                              int numIndices,
+                              unsigned dstStride,
+                              cudaStream_t stream = nullptr);
+
+/// Gather scalar floats by index, and channel.
+/// Writing zero for ``-1`` entries, and dst channels with no corresponding src array.
+///
+///
+/// ``dst[i * numDst + v] = (devIndices[i] >= 0 && v < numSrc) ? src[v][devIndices[i]] : 0.0f``
+/// for ``i`` in ``[0, numIndices)``,
+/// for ``v`` in ``[0, numDest)``.
+///
+/// @tparam numSrc Number of source scalar arrays.
+/// @param src Device pointers to the source scalar arrays.
+/// @param dst Device pointer to the destination array, length ``numIndices * numDst``.
+/// @param numDst Number of destination array channels
+/// @param devIndices Device index array, length ``numIndices``.
+/// @param numIndices Number of gather slots.
+/// @param stream CUDA stream to launch on.
+/// @return ``true`` if the launch succeeded.
+template <int numSrc>
+bool launchMultiGatherFloatStrided(const cuda::std::array<float*, numSrc> src,
+                                   float* dst,
+                                   unsigned numDst,
+                                   const int* devIndices,
+                                   int numIndices,
+                                   cudaStream_t stream = nullptr);
 
 /// Gather :class:`wp::transform` entries (7 floats each) into a packed output.
 ///
@@ -71,6 +139,53 @@ bool launchGatherTransform(
 /// @return ``true`` if the launch succeeded.
 bool launchGatherSpatialVector(
     const wp::spatial_vector* src, float* dst, const int* devIndices, int numIndices, cudaStream_t stream = nullptr);
+
+/// Gather incoming joint wrenches and express them at each child joint frame.
+///
+/// Newton stores each wrench in world space at the child body's center of mass.
+/// Root links and padded slots are zero-filled.
+///
+/// @param bodyParentForce Device source incoming wrenches indexed by body.
+/// @param bodyTransforms Device body transforms in world space.
+/// @param bodyCentersOfMass Device body center-of-mass offsets.
+/// @param jointChildTransforms Device child-body-to-joint transforms.
+/// @param dst Device pointer to ``[numIndices, 6]`` output floats.
+/// @param bodyIndices Device mapping from output slots to bodies.
+/// @param jointIndices Device mapping from output slots to inbound joints.
+/// @param numIndices Number of output link slots.
+/// @param stream CUDA stream.
+/// @return ``true`` if the launch succeeded.
+bool launchGatherIncomingJointForce(const wp::spatial_vector* bodyParentForce,
+                                    const wp::transform* bodyTransforms,
+                                    const wp::vec3* bodyCentersOfMass,
+                                    const wp::transform* jointChildTransforms,
+                                    float* dst,
+                                    const int* bodyIndices,
+                                    const int* jointIndices,
+                                    int numIndices,
+                                    cudaStream_t stream = nullptr);
+
+/// Project incoming joint wrenches onto the corresponding DOF motion subspaces.
+///
+/// @param bodyParentForce Device source incoming wrenches indexed by body.
+/// @param bodyTransforms Device body transforms in world space.
+/// @param bodyCentersOfMass Device body center-of-mass offsets.
+/// @param motionSubspaces Device motion-subspace columns indexed by model DOF.
+/// @param dst Device pointer to ``[numIndices]`` output floats.
+/// @param bodyIndices Device mapping from output slots to child bodies.
+/// @param dofIndices Device mapping from output slots to model DOFs.
+/// @param numIndices Number of output DOF slots.
+/// @param stream CUDA stream.
+/// @return ``true`` if the launch succeeded.
+bool launchGatherProjectedJointForce(const wp::spatial_vector* bodyParentForce,
+                                     const wp::transform* bodyTransforms,
+                                     const wp::vec3* bodyCentersOfMass,
+                                     const wp::spatial_vector* motionSubspaces,
+                                     float* dst,
+                                     const int* bodyIndices,
+                                     const int* dofIndices,
+                                     int numIndices,
+                                     cudaStream_t stream = nullptr);
 
 /// Gather :class:`wp::mat33` entries (9 floats each, row-major).
 ///
@@ -186,6 +301,31 @@ bool launchFusedDofScatter(const float* src,
                            int numArti,
                            int maxDofs,
                            cudaStream_t stream = nullptr);
+
+/// Fused indexed DOF scatter: writes view-scoped DOF values into a flat model DOF array.
+///
+/// For each view articulation ``a`` and DOF slot ``d``, writes
+/// ``dst[ devDofMapping[a * maxDofs + d] ] = src[(a * maxDofs + d) * srdStride]`` when the
+/// mapping entry is non-negative. ``devArtiIndices`` may be ``nullptr`` to use
+/// the identity ``0..numArti-1``.
+///
+/// @param src Device source buffer, shape ``[numArti, maxDofs(, srcStride)]``.
+/// @param dst Device destination buffer (flat model DOF array).
+/// @param devArtiIndices Optional device articulation index array.
+/// @param devDofMapping Device DOF mapping, shape ``[numArti * maxDofs]``.
+/// @param numArti Number of selected articulations.
+/// @param maxDofs Maximum DOF count per articulation.
+/// @param srcStride stride for the source array.
+/// @param stream CUDA stream.
+/// @return ``true`` if the launch succeeded.
+bool launchFusedDofScatterStrided(const float* src,
+                                  float* dst,
+                                  const int* devArtiIndices,
+                                  const int* devDofMapping,
+                                  int numArti,
+                                  int maxDofs,
+                                  unsigned srcStride,
+                                  cudaStream_t stream = nullptr);
 
 /// Fused indexed DOF scatter that writes the same value into two destinations.
 ///

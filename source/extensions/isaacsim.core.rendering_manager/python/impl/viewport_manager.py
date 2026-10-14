@@ -838,12 +838,13 @@ class ViewportManager:
         def _set_target(xformable: UsdGeom.Xformable, position: Gf.Vec3d) -> None:
             parent_inverse_transform = xformable.ComputeParentToWorldTransform(time_code).GetInverse()
             local_transform = xformable.ComputeLocalToWorldTransform(time_code) * parent_inverse_transform
-            position_in_parent = parent_inverse_transform.Transform(local_transform.Transform(Gf.Vec3d(0, 0, 0)))
+            eye_in_parent = local_transform.ExtractTranslation()
             # adjust for collinearity, if needed
             position = _adjust_for_collinearity(xformable, position)
-            up_direction = Gf.Vec3d(0, 0, 1) if stage_utils.get_stage_up_axis() == "Z" else Gf.Vec3d(0, 1, 0)
-            center_in_parent = parent_inverse_transform.Transform(position)
-            new_local_transform = transform_utils.look_at_matrix(position_in_parent, center_in_parent, up_direction)
+            up_world = Gf.Vec3d(0, 0, 1) if stage_utils.get_stage_up_axis() == "Z" else Gf.Vec3d(0, 1, 0)
+            target_in_parent = parent_inverse_transform.Transform(position)
+            up_in_parent = Gf.Vec3d(parent_inverse_transform.TransformDir(up_world)).GetNormalized()
+            new_local_transform = transform_utils.look_at_matrix(eye_in_parent, target_in_parent, up_in_parent)
             omni.kit.commands.create(
                 "TransformPrimCommand",
                 path=prim.GetPath(),
@@ -869,7 +870,7 @@ class ViewportManager:
             target = ops_utils.place(target, dtype=wp.float32, device="cpu").numpy().flatten().tolist()
             target = Gf.Vec3d(target[0], target[1], target[2])
         # determine transform strategy
-        update_coi = False
+        preserve_target_offset = False
         if coi_attr is None:
             if eye is None and target is None:
                 carb.log_warn(
@@ -877,28 +878,33 @@ class ViewportManager:
                     "As the 'omni:kit:centerOfInterest' attribute was not authored, the camera view will not change."
                 )
         else:
-            if eye is None and target is None:
-                target = coi_attr.Get(time_code)
-            elif eye is None and target is not None:
-                update_coi = True
-                if relative_tracking:
+            world_coi = None
+            if target is None or (eye is None and relative_tracking):
+                local_coi = coi_attr.Get(time_code)
+                if local_coi is not None:
+                    world_coi = xformable.ComputeLocalToWorldTransform(time_code).Transform(local_coi)
+            if target is None:
+                if world_coi is not None:
+                    target = world_coi
+                elif eye is None:
+                    carb.log_warn(
+                        "Neither the 'eye' nor the 'target' was provided. "
+                        "As the 'omni:kit:centerOfInterest' attribute has no authored value, "
+                        "the camera view will not change."
+                    )
+            elif eye is None and relative_tracking:
+                if world_coi is not None:
                     world_transform = xformable.ComputeLocalToWorldTransform(time_code)
                     world_transform.Orthonormalize()
-                    eye = (
-                        world_transform.ExtractTranslation()
-                        - coi_attr.Get(time_code)
-                        + Gf.Vec3d(target[0], target[1], target[2])
-                    )
-            elif eye is not None and target is None:
-                target = coi_attr.Get(time_code)
-            else:
-                update_coi = True
+                    eye = world_transform.ExtractTranslation() - world_coi + target
+                    preserve_target_offset = True
         # set eye position
         if eye is not None:
             _set_eye(xformable, eye)
         # set target position
-        if target is not None:
+        if target is not None and not preserve_target_offset:
             _set_target(xformable, target)
-        # update center of interest (if exists)
-        if update_coi:
-            coi_attr.Set(target)
+        # The COI is authored in camera-local space even though this API accepts world-space targets.
+        if coi_attr is not None and target is not None:
+            world_inverse_transform = xformable.ComputeLocalToWorldTransform(time_code).GetInverse()
+            coi_attr.Set(world_inverse_transform.Transform(target))

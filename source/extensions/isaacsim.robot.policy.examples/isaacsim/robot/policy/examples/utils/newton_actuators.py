@@ -27,10 +27,10 @@ from newton.actuators import (
     ClampingDCMotor,
     ClampingMaxEffort,
     ClampingPositionBased,
-    ControllerNeuralLSTM,
-    ControllerNeuralMLP,
-    ControllerPD,
     Delay,
+    DriveNeuralLSTM,
+    DriveNeuralMLP,
+    DrivePD,
 )
 
 from ..env_config import SUPPORTED_NEWTON_ACTUATOR_CLASSES, NewtonActuatorSpec
@@ -56,8 +56,8 @@ def build_newton_actuator_configs(
     *,
     num_robots: int = 1,
     device: str | None = None,
-) -> list[tuple[ActuatorConfig, str]]:
-    """Build Newton ``(ActuatorConfig, dof_name)`` pairs for one exported group.
+) -> list[tuple[ActuatorConfig, list[str]]]:
+    """Build one Newton ``(ActuatorConfig, dof_names)`` group from an exported group.
 
     Neural actuator checkpoints are accepted as bytes because deployment policies may come
     from Nucleus or other ``omni.client`` paths.
@@ -69,11 +69,32 @@ def build_newton_actuator_configs(
         device: Warp device used for actuator component arrays.
 
     Returns:
-        Newton actuator configs paired with their target DOF names.
+        One Newton actuator config paired with its target DOF names.
 
     Raises:
         ValueError: If an actuator parameter or required checkpoint is invalid.
         NotImplementedError: If the exported actuator class has no Newton adapter.
+
+    Example:
+
+    .. code-block:: python
+
+        >>> from isaacsim.robot.policy.examples.env_config import NewtonActuatorSpec
+        >>> from isaacsim.robot.policy.examples.utils.newton_actuators import build_newton_actuator_configs
+
+        >>> spec = NewtonActuatorSpec(
+        ...     class_name="IdealPDActuator",
+        ...     joints=("joint_1", "joint_2"),
+        ...     network_file=None,
+        ...     stiffness=(100.0, 120.0),
+        ...     damping=(10.0, 12.0),
+        ...     effort_limit=(50.0, 60.0),
+        ...     velocity_limit=(100.0, 120.0),
+        ...     saturation_effort=(50.0, 60.0),
+        ... )
+        >>> configs = build_newton_actuator_configs(spec, device="cpu")
+        >>> configs[0][1]
+        ['joint_1', 'joint_2']
     """
     if num_robots < 1:
         raise ValueError(f"num_robots must be positive, got {num_robots}.")
@@ -88,58 +109,57 @@ def build_newton_actuator_configs(
     network_path = _materialize_checkpoint(network_data) if class_name.startswith("ActuatorNet") else None
     try:
 
-        def scalar(value: float) -> object:
-            return wp.array([float(value)] * num_robots, dtype=wp.float32, device=device)
+        def per_motor(values: tuple[float, ...]) -> object:
+            return wp.array(list(values) * num_robots, dtype=wp.float32, device=device)
 
-        pairs: list[tuple[ActuatorConfig, str]] = []
-        for i, dof_name in enumerate(spec.joints):
-            kp = spec.stiffness[i]
-            kd = spec.damping[i]
-            effort_limit = spec.effort_limit[i]
-            velocity_limit = spec.velocity_limit[i]
-            saturation_effort = spec.saturation_effort[i]
+        if class_name == "ActuatorNetLSTM":
+            # The LSTM network keeps its exported weight layout and is stepped inside the
+            # engine's pre-physics callback, where no caller scope can wrap it; cuDNN's
+            # non-contiguous-chunk warning would otherwise print once per substep. The
+            # filter is message-narrow but process-global by necessity.
+            warnings.filterwarnings(
+                "ignore",
+                message="RNN module weights are not part of single contiguous chunk of memory.*",
+                category=UserWarning,
+            )
+            controller = DriveNeuralLSTM(model_path=network_path)
+        elif class_name == "ActuatorNetMLP":
+            controller = DriveNeuralMLP(model_path=network_path)
+        else:
+            controller = DrivePD(kp=per_motor(spec.stiffness), kd=per_motor(spec.damping))
 
-            if class_name == "ActuatorNetLSTM":
-                # The LSTM network keeps its exported weight layout and is stepped inside the
-                # engine's pre-physics callback, where no caller scope can wrap it; cuDNN's
-                # non-contiguous-chunk warning would otherwise print once per substep. The
-                # filter is message-narrow but process-global by necessity.
-                warnings.filterwarnings(
-                    "ignore",
-                    message="RNN module weights are not part of single contiguous chunk of memory.*",
-                    category=UserWarning,
+        if class_name == "RemotizedPDActuator":
+            if not spec.joint_parameter_lookup:
+                raise ValueError("RemotizedPDActuator requires joint_parameter_lookup.")
+            clamping = [
+                ClampingPositionBased(
+                    lookup_positions=tuple(row[0] for row in spec.joint_parameter_lookup),
+                    lookup_efforts=tuple(row[2] for row in spec.joint_parameter_lookup),
                 )
-                controller = ControllerNeuralLSTM(model_path=network_path)
-            elif class_name == "ActuatorNetMLP":
-                controller = ControllerNeuralMLP(model_path=network_path)
-            else:
-                controller = ControllerPD(kp=scalar(kp), kd=scalar(kd))
+            ]
+        elif class_name in {"IdealPDActuator", "DelayedPDActuator"}:
+            clamping = [ClampingMaxEffort(per_motor(spec.effort_limit))]
+        else:
+            clamping = [
+                ClampingDCMotor(
+                    per_motor(spec.saturation_effort),
+                    per_motor(spec.velocity_limit),
+                    per_motor(spec.effort_limit),
+                )
+            ]
 
-            if class_name == "RemotizedPDActuator":
-                if not spec.joint_parameter_lookup:
-                    raise ValueError("RemotizedPDActuator requires joint_parameter_lookup.")
-                clamping = [
-                    ClampingPositionBased(
-                        lookup_positions=tuple(row[0] for row in spec.joint_parameter_lookup),
-                        lookup_efforts=tuple(row[2] for row in spec.joint_parameter_lookup),
-                    )
-                ]
-            elif class_name in {"IdealPDActuator", "DelayedPDActuator"}:
-                clamping = [ClampingMaxEffort(scalar(effort_limit))]
-            else:
-                clamping = [ClampingDCMotor(scalar(saturation_effort), scalar(velocity_limit), scalar(effort_limit))]
+        delay = None
+        # Match Isaac Lab's Newton-native export, which authors max_delay as a fixed deployment delay.
+        # See https://github.com/isaac-sim/IsaacLab/blob/develop/source/isaaclab/isaaclab/sim/schemas/schemas_actuators.py#L252-L256
+        # Note that old IsaacLab Actuators default is to choose a random delay from min_delay to max_delay.
+        # https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab/isaaclab/actuators/actuator_pd.py#L310
+        if class_name in {"DelayedDCMotor", "DelayedPDActuator", "RemotizedPDActuator"} and spec.max_delay > 0:
+            motor_count = num_robots * len(spec.joints)
+            delay_steps = wp.full(motor_count, spec.max_delay, dtype=wp.int32, device=device)
+            delay = Delay(delay_steps=delay_steps, max_delay=spec.max_delay)
 
-            delay = None
-            # Match Isaac Lab's Newton-native export, which authors max_delay as a fixed deployment delay.
-            # See https://github.com/isaac-sim/IsaacLab/blob/develop/source/isaaclab/isaaclab/sim/schemas/schemas_actuators.py#L252-L256
-            # Note that old IsaacLab Actuators default is to choose a random delay from min_delay to max_delay.
-            # https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab/isaaclab/actuators/actuator_pd.py#L310
-            if class_name in {"DelayedDCMotor", "DelayedPDActuator", "RemotizedPDActuator"} and spec.max_delay > 0:
-                delay_steps = wp.full(num_robots, spec.max_delay, dtype=wp.int32, device=device)
-                delay = Delay(delay_steps=delay_steps, max_delay=spec.max_delay)
-
-            pairs.append((ActuatorConfig(controller=controller, clamping=clamping, delay=delay), dof_name))
-        return pairs
+        config = ActuatorConfig(controller=controller, clamping=clamping, delay=delay)
+        return [(config, list(spec.joints))]
     finally:
         if network_path is not None and os.path.exists(network_path):
             os.unlink(network_path)

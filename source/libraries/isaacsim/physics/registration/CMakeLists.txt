@@ -28,8 +28,10 @@ isaacsim_add_module(
         isaacsim/physics/registration/simulator/SceneQuery.hpp
         isaacsim/physics/registration/simulator/ContactEvent.hpp
         isaacsim/physics/registration/tensors/TensorTypes.hpp
-        isaacsim/physics/registration/tensors/TensorDescription.hpp
         isaacsim/physics/registration/tensors/TensorSpecification.hpp
+        isaacsim/physics/registration/tensors/ArrayTensorSpecification.hpp
+        isaacsim/physics/registration/tensors/TensorDescription.hpp
+        isaacsim/physics/registration/tensors/TensorConversion.hpp
         isaacsim/physics/registration/tensors/PhysicsEnums.hpp
         isaacsim/physics/registration/tensors/Metadata.hpp
         isaacsim/physics/registration/tensors/IEntityView.hpp
@@ -39,6 +41,8 @@ isaacsim_add_module(
         src/Physics.cpp
         src/SimulationRegistry.cpp
         src/tensors/TensorRegistry.cpp
+    PUBLIC_DEPENDENCIES
+        isaacsim::common-array
     PRIVATE_DEPENDENCIES
         isaacsim::common-logging
 )

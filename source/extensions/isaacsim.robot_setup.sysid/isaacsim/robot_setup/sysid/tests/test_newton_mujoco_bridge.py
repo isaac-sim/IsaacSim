@@ -39,10 +39,12 @@ from isaacsim.robot_setup.sysid.inertia_param import (
 from isaacsim.robot_setup.sysid.newton_sysid_bridge import (
     NEWTON_CLAMP_DC_MOTOR,
     NEWTON_CLAMP_MAX_EFFORT,
+    NEWTON_CONTROLLER_NEURAL_MLP,
     NewtonActuatorConfig,
     NewtonSysIdBridge,
     _replace_invalid_rollout_worlds,
     _reported_net_joint_effort,
+    classify_newton_neural_prim,
     newton_dependency_compatibility,
     newton_modules_available,
 )
@@ -60,6 +62,9 @@ _NEWTON_AVAILABLE, _NEWTON_REASON = newton_modules_available()
 
 _NUM_STEPS = 30
 _DT = 0.01
+# Scales the 5 N*m/rad baseline drive to 5e4 N*m/rad on a ~0.07 kg*m^2 link:
+# omega*dt ~ 8, far past MuJoCo's explicit-stiffness bound of 2 at the 10 ms sample.
+_DIVERGENT_STIFFNESS_SCALE = 1.0e4
 
 _MUJOCO_PROBE: tuple[bool, str] | None = None
 
@@ -68,10 +73,10 @@ class NewtonDependencyCompatibilityTests(omni.kit.test.AsyncTestCase):
     async def test_kit_module_metadata_aliases_are_accepted(self) -> None:
         """Accept underscore metadata keys used by Kit's bundled pip importer."""
         versions = {
-            "newton": "1.5.0",
-            "newton_usd_schemas": "0.4.1",
-            "mujoco": "3.11.0",
-            "mujoco_warp": "3.11.0",
+            "newton": "1.6.1rc1",
+            "newton_usd_schemas": "0.5.0",
+            "mujoco": "3.12.0",
+            "mujoco_warp": "3.12.0",
         }
 
         def _version(name: str) -> str:
@@ -88,9 +93,9 @@ class NewtonDependencyCompatibilityTests(omni.kit.test.AsyncTestCase):
     async def test_alias_version_mismatch_uses_canonical_distribution_name(self) -> None:
         """Keep diagnostics actionable even when the Kit metadata alias was queried."""
         versions = {
-            "newton": "1.5.0",
-            "newton_usd_schemas": "0.4.1",
-            "mujoco": "3.11.0",
+            "newton": "1.6.1rc1",
+            "newton_usd_schemas": "0.5.0",
+            "mujoco": "3.12.0",
             "mujoco_warp": "3.9.0",
         }
 
@@ -230,6 +235,43 @@ def _build_chain(num_joints: int):
     return builder
 
 
+def _build_floating_pendulum():
+    """Build a free root followed by one actuated revolute joint.
+
+    Returns:
+        Newton model builder containing the floating-base articulation.
+    """
+    import newton
+    import warp as wp
+
+    builder = newton.ModelBuilder()
+    base = builder.add_link(
+        mass=2.0,
+        com=(0.0, 0.0, 0.0),
+        inertia=np.diag([0.1, 0.1, 0.1]).tolist(),
+        label="/robot/base",
+    )
+    base_joint = builder.add_joint_free(child=base)
+    arm = builder.add_link(
+        mass=0.7,
+        com=(0.0, 0.0, -0.1),
+        inertia=np.diag([0.01, 0.015, 0.02]).tolist(),
+        label="/robot/arm",
+    )
+    revolute_joint = builder.add_joint_revolute(
+        parent=base,
+        child=arm,
+        axis=(0.0, 1.0, 0.0),
+        parent_xform=wp.transform((0.0, 0.0, 0.2), wp.quat_identity()),
+        child_xform=wp.transform((0.0, 0.0, 0.0), wp.quat_identity()),
+        target_ke=4.0,
+        target_kd=0.3,
+        label="/robot/joint0",
+    )
+    builder.add_articulation([base_joint, revolute_joint], label="floating")
+    return builder
+
+
 def _sine_trajectory(num_dof: int) -> TrajectoryDataset:
     times = np.arange(_NUM_STEPS, dtype=np.float64) * _DT
     zeros = np.zeros((_NUM_STEPS, num_dof), dtype=np.float64)
@@ -293,6 +335,7 @@ class NewtonMujocoBridgeRolloutTests(omni.kit.test.AsyncTestCase):
         *,
         link_paths: list[str] | None = None,
         cuda_graph_capture: bool = True,
+        mujoco_substeps: int = 1,
     ) -> NewtonSysIdBridge:
         num_dof = len(joint_paths)
         return NewtonSysIdBridge(
@@ -300,6 +343,7 @@ class NewtonMujocoBridgeRolloutTests(omni.kit.test.AsyncTestCase):
             newton_config=NewtonSimulationRunSpec(
                 solver=NEWTON_SOLVER_MUJOCO,
                 cuda_graph_capture=cuda_graph_capture,
+                mujoco_substeps=mujoco_substeps,
             ),
             joint_baselines=[_joint_snapshot() for _ in range(num_dof)],
             joint_paths=joint_paths,
@@ -351,6 +395,25 @@ class NewtonMujocoBridgeRolloutTests(omni.kit.test.AsyncTestCase):
         self.assertEqual(tuple(result.positions.shape), (3, _NUM_STEPS, 2))
         self.assertTrue(torch.allclose(result.positions[0], result.positions[2], atol=1e-5))
         self.assertFalse(torch.allclose(result.positions[0], result.positions[1], atol=1e-4))
+
+    async def test_floating_base_uses_coordinate_layout_for_position_targets(self) -> None:
+        """Keep position targets separate from the velocity-DOF layout."""
+        bridge = self._make_bridge(_build_floating_pendulum(), ["/robot/joint0"])
+
+        result = await self._rollout(bridge, num_dof=1, world_count=2)
+
+        ctx = bridge._mujoco_cache[2]
+        self.assertEqual(tuple(result.positions.shape), (2, _NUM_STEPS, 1))
+        self.assertTrue(torch.all(torch.isfinite(result.positions)))
+        self.assertEqual(ctx.dof_map_np.tolist(), [6, 13])
+        self.assertEqual(ctx.target_pos_map_np.tolist(), [7, 15])
+        self.assertEqual(int(ctx.target_pos_stage.shape[1]), int(ctx.model.joint_target_q.shape[0]))
+        expected = np.tile(_sine_trajectory(1).commands, (1, 2))
+        np.testing.assert_allclose(
+            ctx.target_pos_stage.numpy()[:_NUM_STEPS, ctx.target_pos_map_np],
+            expected,
+            atol=1e-6,
+        )
 
     async def test_link_inertial_candidates_refresh_and_reuse_cuda_graph(self) -> None:
         """Mass, COM, and SPD inertia vary per world without graph recapture."""
@@ -532,6 +595,56 @@ class NewtonMujocoBridgeRolloutTests(omni.kit.test.AsyncTestCase):
         await bridge.run_rollout_async(theta, entries, commands, _NUM_STEPS)
         self.assertEqual(len(ctx.capture_cache), 0)
         self.assertEqual(len(ctx.capture_warm_keys), 1)
+
+    async def _stiff_rollout(self, bridge: NewtonSysIdBridge, scales: list[float]):
+        trajectory = _sine_trajectory(1)
+        bridge.set_trajectory(trajectory)
+        commands = torch.as_tensor(trajectory.commands, dtype=torch.float32)
+        theta = torch.tensor([[scale] for scale in scales], dtype=torch.float32)
+        # Run twice so the CUDA-graph replay path is exercised as well as the warmup.
+        await bridge.run_rollout_async(theta, _stiffness_entries(1), commands, _NUM_STEPS)
+        return await bridge.run_rollout_async(theta, _stiffness_entries(1), commands, _NUM_STEPS)
+
+    async def test_divergent_stiff_drive_fails_with_substep_guidance(self) -> None:
+        """A drive far past MuJoCo's explicit-stiffness bound fails closed instead of scoring 1e6."""
+        bridge = self._make_bridge(_build_chain(1), ["/robot/joint0"])
+        with self.assertRaisesRegex(
+            SysIdEnvironmentBridgeError, r"diverged in 1/1 world.*mujoco_substeps to at least"
+        ) as caught:
+            await self._stiff_rollout(bridge, [_DIVERGENT_STIFFNESS_SCALE])
+        self.assertIn("/robot/joint0", str(caught.exception))
+
+    async def test_impractical_substep_count_points_at_the_asset(self) -> None:
+        """A drive that would need hundreds of substeps is reported as an asset problem."""
+        bridge = self._make_bridge(_build_chain(1), ["/robot/joint0"])
+        with self.assertRaisesRegex(SysIdEnvironmentBridgeError, r"so the asset itself needs correcting") as caught:
+            await self._stiff_rollout(bridge, [1.0e7])
+        self.assertNotIn("to at least", str(caught.exception))
+
+    async def test_divergent_world_is_quarantined_from_stable_candidates(self) -> None:
+        """Only the diverged world is invalidated, and the stable world matches a solo rollout."""
+        bridge = self._make_bridge(_build_chain(1), ["/robot/joint0"])
+        result = await self._stiff_rollout(bridge, [1.0, _DIVERGENT_STIFFNESS_SCALE])
+        solo = await self._stiff_rollout(self._make_bridge(_build_chain(1), ["/robot/joint0"]), [1.0])
+
+        self.assertTrue(torch.all(result.positions[1] == 1.0e6))
+        self.assertTrue(torch.all(torch.isfinite(result.positions[0])))
+        self.assertTrue(torch.allclose(result.positions[0], solo.positions[0], atol=1e-5))
+        self.assertTrue(torch.allclose(result.velocities[0], solo.velocities[0], atol=1e-4))
+
+    async def test_mujoco_substeps_stabilize_stiff_drive(self) -> None:
+        """Substepping the same stiff drive keeps the rollout finite and bounded."""
+        bridge = self._make_bridge(_build_chain(1), ["/robot/joint0"], mujoco_substeps=16)
+        result = await self._stiff_rollout(bridge, [_DIVERGENT_STIFFNESS_SCALE])
+
+        self.assertEqual(bridge.actuator_metadata["mujoco_substeps"], 16)
+        self.assertTrue(torch.all(torch.isfinite(result.positions)))
+        self.assertTrue(torch.all(torch.isfinite(result.velocities)))
+        self.assertLess(float(result.positions.abs().max()), 1.0)
+
+    async def test_mujoco_substeps_must_be_positive(self) -> None:
+        with self.assertRaisesRegex(SysIdEnvironmentBridgeError, "mujoco_substeps must be at least 1"):
+            self._make_bridge(_build_chain(1), ["/robot/joint0"], mujoco_substeps=0)
 
 
 class NewtonMujocoBridgeFeedforwardTests(omni.kit.test.AsyncTestCase):
@@ -828,6 +941,61 @@ class NewtonMujocoBridgeGuardTests(omni.kit.test.AsyncTestCase):
 
         with self.assertRaisesRegex(SysIdEnvironmentBridgeError, "unusable NewtonNeuralControlAPI"):
             bridge._config_from_usd_prim(NeuralPrim(), NewtonActuatorConfig(dof_index=0))
+
+    async def test_newton_16_neural_drive_is_classified(self) -> None:
+        """Read Newton 1.6 drive metadata without consulting deprecated aliases."""
+
+        class DriveNeuralMLP:
+            pass
+
+        class Parsed:
+            drive_class = DriveNeuralMLP
+            drive_kwargs = {"model_path": "models/actuator.onnx"}
+
+            @property
+            def controller_class(self):
+                raise AssertionError("Deprecated controller metadata was accessed")
+
+            @property
+            def controller_kwargs(self):
+                raise AssertionError("Deprecated controller metadata was accessed")
+
+        class AssetPath:
+            path = "models/actuator.onnx"
+            resolvedPath = "/tmp/models/actuator.onnx"
+
+        prim = SimpleNamespace(GetAttribute=lambda _name: SimpleNamespace(Get=lambda: AssetPath()))
+        actuators = SimpleNamespace(parse_actuator_prim=lambda _prim: Parsed())
+
+        classified = classify_newton_neural_prim(actuators, prim)
+
+        self.assertEqual(classified["controller_kind"], NEWTON_CONTROLLER_NEURAL_MLP)
+        self.assertEqual(classified["model_type"], "mlp")
+        self.assertEqual(classified["controller_class_name"], "DriveNeuralMLP")
+        self.assertEqual(classified["unsupported_schemas"], [])
+
+    async def test_newton_16_neural_drive_class_is_resolved(self) -> None:
+        """Resolve the Newton 1.6 drive class before any legacy alias."""
+
+        class DriveNeuralMLP:
+            pass
+
+        class Actuators:
+            def __getattr__(self, name):
+                if name == "DriveNeuralMLP":
+                    return DriveNeuralMLP
+                raise AssertionError(f"Deprecated actuator alias was accessed: {name}")
+
+        bridge = NewtonSysIdBridge.__new__(NewtonSysIdBridge)
+        config = NewtonActuatorConfig(
+            dof_index=0,
+            controller_kind=NEWTON_CONTROLLER_NEURAL_MLP,
+            controller_class_name="DriveNeuralMLP",
+        )
+
+        resolved = bridge._resolve_neural_controller_class(Actuators(), config)
+
+        self.assertIs(resolved, DriveNeuralMLP)
 
     async def test_nonfinite_physics_world_is_replaced_by_invalid_sentinel(self) -> None:
         positions = torch.zeros((2, 3, 1), dtype=torch.float32)

@@ -14,18 +14,16 @@
 -- limitations under the License.
 
 local ext = get_current_extension_info()
+dofile(root .. "/tools/isaac_build/extension_wheel.lua")
+
 project_ext(ext)
+stage_isaacsim_extension_wheel_with_python_overlays(ext, "isaacsim.asset.importer.urdf", {
+    "isaacsim/asset/importer/urdf/impl/extension.py",
+})
 
 repo_build.prebuild_link {
-    { "python/impl", ext.target_dir .. "/isaacsim/asset/importer/urdf/impl" },
-    { "python/tests", ext.target_dir .. "/isaacsim/asset/importer/urdf/tests" },
     { "docs", ext.target_dir .. "/docs" },
     { "data", ext.target_dir .. "/data" },
-    { "$root/_build/target-deps/isaac_urdf_usd_prebundle", ext.target_dir .. "/pip_prebundle" },
+    { "isaacsim/asset/importer/urdf/tests", ext.target_dir .. "/isaacsim/asset/importer/urdf/tests" },
+    { "$root/_build/target-deps/isaac_urdf_usd_prebundle", ext.target_dir .. "/urdf_prebundle" },
 }
-
--- Copy Python module files
-repo_build.prebuild_copy {
-    { "python/*.py", ext.target_dir .. "/isaacsim/asset/importer/urdf" },
-}
-

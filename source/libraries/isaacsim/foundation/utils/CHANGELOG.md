@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Initialize the dependency-owned OVStage runtime before loading the Python bindings.
+
 ## [7.0.0a1] - 2026-09-16
 
 ### Added

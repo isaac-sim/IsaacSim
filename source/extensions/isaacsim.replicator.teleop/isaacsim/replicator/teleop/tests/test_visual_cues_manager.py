@@ -161,3 +161,28 @@ class TestVisualCuesManager(omni.kit.test.AsyncTestCase):
         self.assertIsNone(self._manager._layer)  # noqa: SLF001
         self.assertFalse(self._manager.is_side_active("right"))
         self.assertIsNone(self._manager._update_subscription)  # noqa: SLF001
+
+    async def test_update_tolerates_stage_loss_after_initial_lookup(self) -> None:
+        """A stage that disappears after the callback's first lookup must stay inside the callback."""
+        Cube("/World/visual_cue_anchor", sizes=0.1, positions=[0.0, 0.0, 1.0])
+        await app_utils.update_app_async()
+        self._manager.set_override_prim_path("right", "/World/visual_cue_anchor")
+        ok, _message = self._manager.show_side("right")
+        self.assertTrue(ok)
+
+        original_get_current_stage = stage_utils.get_current_stage
+        calls = {"count": 0}
+
+        def get_stage_once_then_fail(*args: object, **kwargs: object) -> object:
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return original_get_current_stage(*args, **kwargs)
+            raise ValueError("No stage found")
+
+        with patch.object(stage_utils, "get_current_stage", side_effect=get_stage_once_then_fail):
+            self._manager._on_update(None)  # noqa: SLF001
+
+        self.assertGreater(calls["count"], 1)
+        self.assertIsNone(self._manager._layer)  # noqa: SLF001
+        self.assertFalse(self._manager.is_side_active("right"))
+        self.assertIsNone(self._manager._update_subscription)  # noqa: SLF001

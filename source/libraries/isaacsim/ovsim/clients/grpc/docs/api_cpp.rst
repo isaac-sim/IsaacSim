@@ -32,7 +32,8 @@ The client supports these remote operations:
 
 - ``importStageFromString`` and ``closeStage`` to create and delete a hosted simulation.
 - ``initialize`` to wait for the hosted simulation to become ready.
-- ``step`` for drift-free manual 60 Hz stepping.
+- ``step`` for drift-free manual stepping at the configured physics timestep (60 Hz by default).
+- ``setSimulationParameter`` and ``getSimulationParameter`` for ``physics`` / ``time-step`` in seconds.
 - ``read`` for latest-value reads using the protocol value codec.
 - ``write`` for immediate CPU float32 or float64 position arrays.
 
@@ -44,6 +45,7 @@ timestamps are not supported. Consult each method's Doxygen contract for its val
     using isaacsim::ovsim::clients::grpc::GrpcSession;
 
     GrpcSession client({ { "endpoint", "127.0.0.1:50051" } });
+    client.setSimulationParameter("physics", "time-step", 0.005); // 200 Hz; configure before import.
     client.importStageFromString(usdContent);
     client.initialize();
     client.step();

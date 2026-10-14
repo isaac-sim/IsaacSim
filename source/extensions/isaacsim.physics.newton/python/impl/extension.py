@@ -32,6 +32,7 @@ from .register_simulation import NewtonSimulationRegistry
 # Global public interface objects
 _newton_physics_interface = None
 _newton_stage = None
+_pending_newton_config: NewtonConfig | None = None
 
 
 def acquire_physics_interface() -> NewtonPhysicsInterface | None:
@@ -63,8 +64,10 @@ def configure_newton(cfg: NewtonConfig) -> None:
     Args:
         cfg: Newton simulation configuration.
     """
+    global _pending_newton_config
+
+    _pending_newton_config = cfg
     if _newton_stage is None:
-        carb.log_warn("configure_newton() called before the Newton stage exists; configuration ignored. ")
         return
     _newton_stage.cfg = cfg
     _newton_stage.initialized = False
@@ -75,9 +78,9 @@ def get_newton_config() -> NewtonConfig | None:
     """Return the live Newton configuration.
 
     Returns:
-        The current configuration, or None if the Newton stage has not been created.
+        The current or pending configuration, or None if Newton has not been configured.
     """
-    return _newton_stage.cfg if _newton_stage is not None else None
+    return _newton_stage.cfg if _newton_stage is not None else _pending_newton_config
 
 
 def get_active_physics_engine() -> str:
@@ -195,11 +198,12 @@ class NewtonSimExtension(omni.ext.IExt):
         Args:
             ext_id: Extension identifier provided by the extension manager.
         """
-        global _newton_stage, _newton_physics_interface
+        global _newton_stage, _newton_physics_interface, _pending_newton_config
 
         _install_texture_policy()
 
-        cfg = NewtonConfig()
+        cfg = _pending_newton_config or NewtonConfig()
+        _pending_newton_config = cfg
         _newton_stage = NewtonStage(cfg=cfg)
         _newton_physics_interface = NewtonPhysicsInterface(_newton_stage)
 

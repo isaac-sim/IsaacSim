@@ -234,13 +234,13 @@ def test_gpu_profile_has_concrete_samples_and_closes_nvml(monkeypatch: pytest.Mo
             self.closed = True
 
     monitor = FakeMonitor()
-    monkeypatch.setattr(runner, "_NvmlMonitor", lambda: monitor)
+    monkeypatch.setattr(profiles, "_NvmlMonitor", lambda: monitor)
 
     @benchmark.subsystem("tests.runner.gpu", warmup_samples=0, measured_samples=1, metrics=("gpu",))
     def step() -> None:
         pass
 
-    result = asyncio.run(run_definition(step.__benchmark_definition__))
+    result = asyncio.run(run_definition(step.__benchmark_definition__, resource_backend="builtin"))
     document = result_document(result)
 
     assert result.valid
@@ -274,9 +274,9 @@ def test_unavailable_requested_gpu_metrics_are_invalid_and_teardown_runs(monkeyp
     def unavailable_monitor() -> None:
         raise RuntimeError("NVML driver unavailable")
 
-    monkeypatch.setattr(runner, "_NvmlMonitor", unavailable_monitor)
+    monkeypatch.setattr(profiles, "_NvmlMonitor", unavailable_monitor)
 
-    result = asyncio.run(run_definition(Stateful.__benchmark_definition__))
+    result = asyncio.run(run_definition(Stateful.__benchmark_definition__, resource_backend="builtin"))
 
     assert not result.valid
     assert events == ["setup", "teardown"]

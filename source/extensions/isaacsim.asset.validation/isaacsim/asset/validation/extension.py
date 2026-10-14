@@ -30,6 +30,7 @@ _VALIDATION_MODULES = (
     "simready.foundation.tier_core.capabilities",
     "simready.foundation.tier_isaac.capabilities",
     "isaacsim.asset.validation.collision_validation",
+    "isaacsim.asset.validation.sensor_capabilities",
     "isaacsim.asset.validation.sensor_rules",
 )
 

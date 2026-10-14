@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import traceback
 from functools import partial
 
 from isaacsim import SimulationApp
@@ -270,7 +271,12 @@ def main() -> None:
             robot.close()
 
 
+exit_code = 0
 try:
     main()
+except BaseException:  # Report failures, including interrupts, before Kit fast shutdown.
+    exit_code = 1
+    traceback.print_exc()
 finally:
-    simulation_app.close()
+    simulation_app.close(exit_code=exit_code)
+raise SystemExit(exit_code)

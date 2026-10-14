@@ -1,5 +1,5 @@
 context:
-  version: "0.5.11"
+  version: "0.6.3"
 
 package:
   name: ovphysx-sdk
@@ -9,15 +9,15 @@ source:
   - if: linux and x86_64
     then:
       - url: https://github.com/NVIDIA-Omniverse/PhysX/releases/download/ovphysx-${{ version }}/ovphysx-linux-x86_64-${{ version }}.tar.gz
-        sha256: d3936f0d056a667ebc99b68e8ca31506f559862cc3016a91569513812ea5055e
+        sha256: e112b3e7ce608f85d519d8b755632a494d0f89cf2f8afb14f31833c215e1fc37
   - if: linux and aarch64
     then:
       - url: https://github.com/NVIDIA-Omniverse/PhysX/releases/download/ovphysx-${{ version }}/ovphysx-linux-aarch64-${{ version }}.tar.gz
-        sha256: cf2f67448621cb613b7125888dea2a0c2b98b5d788139f383124cbb698923f1a
+        sha256: 54f1a322cf049d5c10a694429dbd80192ebcb6dba60d0e728ff240f0bd821233
   - if: win
     then:
       - url: https://github.com/NVIDIA-Omniverse/PhysX/releases/download/ovphysx-${{ version }}/ovphysx-windows-x86_64-${{ version }}.zip
-        sha256: 6fbe601cec8e851740fe22717c14af3d1f566072d31527dc8914949d4f39ab1b
+        sha256: baaaf6981e52b39f29d6498524fae39a2e3a17fa5225bd6db1fc0a5fe88dea92
 
 requirements:
   build:

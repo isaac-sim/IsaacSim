@@ -44,47 +44,24 @@ size_t PhysicsEntity::numPrims() const noexcept
 
 array::Array PhysicsEntity::getData(const std::string& name, const std::optional<array::Array>& indices)
 {
-    tensors::TensorDescription indicesDescription =
-        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
-    tensors::TensorDescription dataDescription = m_entityView->getData(name, indicesDescription, {});
-    return details::convertTensorDescriptionToArray(dataDescription);
+    return m_entityView->getArrayData(name, indices);
 }
 
 void PhysicsEntity::setData(const std::string& name, const array::Array& data, const std::optional<array::Array>& indices)
 {
-    tensors::TensorDescription indicesDescription =
-        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
-    tensors::TensorDescription dataDescription = details::convertArrayToTensorDescription(data);
-    m_entityView->setData(name, dataDescription, indicesDescription);
+    m_entityView->setArrayData(name, data, indices);
 }
 
 std::vector<array::Array> PhysicsEntity::getMultiData(const std::string& name, const std::optional<array::Array>& indices)
 {
-    tensors::TensorDescription indicesDescription =
-        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
-    std::vector<tensors::TensorDescription> dataDescriptions = m_entityView->getDataMulti(name, indicesDescription, {});
-    std::vector<array::Array> result;
-    result.reserve(dataDescriptions.size());
-    for (const auto& dataDescription : dataDescriptions)
-    {
-        result.push_back(details::convertTensorDescriptionToArray(dataDescription));
-    }
-    return result;
+    return m_entityView->getArrayDataMulti(name, indices);
 }
 
 void PhysicsEntity::setMultiData(const std::string& name,
                                  const std::vector<array::Array>& data,
                                  const std::optional<array::Array>& indices)
 {
-    tensors::TensorDescription indicesDescription =
-        indices.has_value() ? details::convertArrayToTensorDescription(*indices) : tensors::TensorDescription{};
-    std::vector<tensors::TensorDescription> dataDescriptions;
-    dataDescriptions.reserve(data.size());
-    for (const auto& array : data)
-    {
-        dataDescriptions.push_back(details::convertArrayToTensorDescription(array));
-    }
-    m_entityView->setDataMulti(name, dataDescriptions, indicesDescription);
+    m_entityView->setArrayDataMulti(name, data, indices);
 }
 
 } // namespace entities

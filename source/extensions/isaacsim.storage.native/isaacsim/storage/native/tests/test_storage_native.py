@@ -17,6 +17,9 @@
 
 import asyncio
 import os
+import threading
+import time
+from collections.abc import Callable
 from unittest.mock import AsyncMock, Mock, call, patch
 
 import carb
@@ -42,7 +45,50 @@ from isaacsim.storage.native.impl.extension import (
     Extension,
 )
 from isaacsim.storage.native.impl.file_utils import _URL_SCHEMES
+from isaacsim.storage.native.nucleus import check_server
 from pxr import UsdUtils
+
+
+def _stat_with_callback(stat: Callable) -> Callable:
+    """Adapt a metadata response fixture to the client's callback API."""
+
+    def complete(url: str, callback: Callable) -> Mock:
+        callback(*stat(url))
+        return Mock()
+
+    return complete
+
+
+class TestServerCheck(omni.kit.test.AsyncTestCase):
+    """Check that synchronous metadata requests finish within their timeout."""
+
+    async def test_check_server_cancels_unresponsive_request(self) -> None:
+        """Cancel a metadata request that never completes within its timeout."""
+        request = Mock()
+        with patch.object(omni.client, "stat_with_callback", return_value=request):
+            start = time.monotonic()
+            self.assertFalse(check_server("omniverse://unresponsive.example", "/Isaac", timeout=0.02))
+            self.assertLess(time.monotonic() - start, 1.0)
+        request.stop.assert_called_once_with()
+
+    async def test_check_server_completes_from_client_thread(self) -> None:
+        """Accept a successful metadata response from the client's worker thread."""
+        request = Mock()
+        timer = None
+
+        def stat(url: str, callback: Callable) -> Mock:
+            nonlocal timer
+            timer = threading.Timer(0.01, callback, args=(omni.client.Result.OK, None))
+            timer.start()
+            return request
+
+        try:
+            with patch.object(omni.client, "stat_with_callback", side_effect=stat):
+                self.assertTrue(check_server("omniverse://responsive.example", "/Isaac", timeout=1.0))
+            request.stop.assert_not_called()
+        finally:
+            if timer is not None:
+                timer.join()
 
 
 class TestPathJoin(omni.kit.test.AsyncTestCase):
@@ -283,6 +329,7 @@ class TestVerifyAssetRootPath(omni.kit.test.AsyncTestCase):
         """Run version verification with deterministic application and storage responses."""
         if stat_results is None:
             stat_results = []
+        stat_mock = Mock(side_effect=stat_results)
         with (
             patch(
                 "isaacsim.storage.native.nucleus.get_version",
@@ -292,7 +339,7 @@ class TestVerifyAssetRootPath(omni.kit.test.AsyncTestCase):
             patch.object(omni.client, "push_base_url"),
             patch.object(omni.client, "combine_with_base_url", return_value=f"{path}/version.txt"),
             patch.object(omni.client, "read_file", return_value=(read_result, None, file_content)),
-            patch.object(omni.client, "stat", side_effect=stat_results) as stat_mock,
+            patch.object(omni.client, "stat_with_callback", side_effect=_stat_with_callback(stat_mock)),
         ):
             result, version = verify_asset_root_path(path)
         return result, version, stat_mock
@@ -510,7 +557,7 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         settings.set("/persistent/isaac/asset_root/default", profile_assets_url)
         try:
             with (
-                patch.object(omni.client, "stat", side_effect=stat_asset_directory),
+                patch.object(omni.client, "stat_with_callback", side_effect=_stat_with_callback(stat_asset_directory)),
                 patch.object(omni.client, "stat_async", new=AsyncMock(side_effect=stat_asset_directory)),
             ):
                 self.assertEqual(get_assets_root_path(), profile_assets_url)
@@ -528,7 +575,9 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         try:
             with (
                 patch.object(
-                    omni.client, "stat", return_value=(omni.client.Result.ERROR_NOT_SUPPORTED, None)
+                    omni.client,
+                    "stat_with_callback",
+                    side_effect=_stat_with_callback(lambda url: (omni.client.Result.ERROR_NOT_SUPPORTED, None)),
                 ) as stat_mock,
                 patch.object(
                     omni.client,
@@ -552,7 +601,11 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         settings.set("/persistent/isaac/asset_root/default", storage_assets_url)
 
         try:
-            with patch.object(omni.client, "stat", return_value=(omni.client.Result.ERROR_ACCESS_DENIED, None)):
+            with patch.object(
+                omni.client,
+                "stat_with_callback",
+                side_effect=_stat_with_callback(lambda url: (omni.client.Result.ERROR_ACCESS_DENIED, None)),
+            ):
                 with self.assertRaises(RuntimeError):
                     get_assets_root_path()
             with patch.object(
@@ -573,7 +626,11 @@ class TestStorageNative(omni.kit.test.AsyncTestCase):
         settings.set("/persistent/isaac/asset_root/default", storage_assets_url)
 
         try:
-            with patch.object(omni.client, "stat", return_value=(omni.client.Result.ERROR_NOT_SUPPORTED, None)):
+            with patch.object(
+                omni.client,
+                "stat_with_callback",
+                side_effect=_stat_with_callback(lambda url: (omni.client.Result.ERROR_NOT_SUPPORTED, None)),
+            ):
                 with self.assertRaises(RuntimeError):
                     get_assets_root_path(accept_unsupported=False)
             with patch.object(

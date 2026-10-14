@@ -18,10 +18,10 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Optional
 
+import carb
 import numpy as np
 import torch
 
@@ -34,8 +34,6 @@ from ..runtime import yield_control
 from .cost_utils import finite_cost_mask
 from .gp_core import expected_improvement_numpy, gp_posterior, standardize_observations
 from .parameter_transform import BoxParameterTransform
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def _select_diverse_acquisition_batch(
@@ -196,7 +194,7 @@ class BayesianOptimizer(RolloutOptimizerBase):
                     ei = expected_improvement_numpy(mu, sigma, best_standard)
                     batch_norm = _select_diverse_acquisition_batch(candidates_norm, ei, current_batch_size)
                 except np.linalg.LinAlgError as exc:
-                    _LOGGER.warning("GP posterior failed (%s); evaluating random candidates instead.", exc)
+                    carb.log_warn(f"GP posterior failed ({exc}); evaluating random candidates instead.")
                     batch_norm = candidates_norm[:current_batch_size]
 
             batch_count = int(batch_norm.shape[0])

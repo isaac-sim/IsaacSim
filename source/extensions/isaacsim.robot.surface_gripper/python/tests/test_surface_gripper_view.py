@@ -18,7 +18,13 @@
 
 """Verifies the GripperView interface for initializing surface grippers, reading status and properties, and applying single- and multi-joint gripper actions."""
 
+import faulthandler
+import os
+import threading
 import time
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
@@ -27,11 +33,28 @@ import numpy as np
 #   omni.kit.test - std python's unittest module with additional wrapping to add suport for async/await tests
 #   For most things refer to unittest docs: https://docs.python.org/3/library/unittest.html
 import omni.kit.test
+import warp as wp
 from isaacsim.robot.surface_gripper import GripperView, create_surface_gripper
 from isaacsim.robot.surface_gripper.bindings._surface_gripper import GripperStatus
 from omni.physx.scripts.physicsUtils import add_ground_plane
-from pxr import Gf, Sdf, UsdGeom, UsdLux, UsdPhysics
+from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdLux, UsdPhysics
 from usd.schema.isaac import robot_schema
+
+
+@contextmanager
+def _fail_on_native_stall() -> Iterator[None]:
+    """Fail the Kit process if a native call or executor cleanup stops making progress.
+
+    Yields:
+        Control to the test with a wall-clock watchdog covering native calls and teardown.
+    """
+    # A Python future timeout cannot cancel native work. Keep the watchdog armed through
+    # executor shutdown so a stalled worker cannot hang the entire extension test process.
+    faulthandler.dump_traceback_later(60, exit=True)
+    try:
+        yield
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 
 # Having a test class dervived from omni.kit.test.AsyncTestCase declared on the root of module will make it auto-discoverable by omni.kit.test
@@ -372,3 +395,459 @@ class TestSurfaceGripperView(omni.kit.test.AsyncTestCase):
         Runs the gripper action test with 100 grippers having 9 joints each.
         """
         await self.test_surface_gripper_apply_action(100, 9)
+
+    async def test_property_array_types_and_atomic_validation(self) -> None:
+        """Supported arrays round-trip; malformed batches do not partially author USD."""
+        for path in ("/Gripper0", "/Gripper1"):
+            robot_schema.CreateSurfaceGripper(self.stage, path)
+        properties = ("max_grip_distance", "coaxial_force_limit", "shear_force_limit", "retry_interval")
+        factories = [list, lambda x: np.array(x, dtype=np.float32), lambda x: np.array(x, dtype=np.float64)]
+        for device in wp.get_devices():
+            factories.append(lambda x, device=device: wp.array(x, dtype=wp.float32, device=device))
+        for factory in factories:
+            values = factory([0.125, 0.25])
+            view = GripperView("/Gripper.*", **dict.fromkeys(properties, values))
+            for result in view.get_surface_gripper_properties():
+                np.testing.assert_allclose(result, [0.125, 0.25])
+            view.set_surface_gripper_properties(**{name: factory([0.5, 0.75]) for name in properties}, indices=[1])
+            for result in view.get_surface_gripper_properties():
+                np.testing.assert_allclose(result, [0.125, 0.75])
+            before = view.get_surface_gripper_properties()
+            with self.assertRaises(ValueError):
+                view.set_surface_gripper_properties(max_grip_distance=[1.0, 2.0], retry_interval=[1.0])
+            self.assertEqual(before, view.get_surface_gripper_properties())
+            with self.assertRaises(ValueError):
+                view.set_surface_gripper_properties(max_grip_distance=[1.0, 2.0], indices=[0, 2])
+            self.assertEqual(before, view.get_surface_gripper_properties())
+
+    async def test_reject_non_grippers_before_authoring(self) -> None:
+        """Wrong or changed schemas fail with the offending path and no partial writes."""
+        real = robot_schema.CreateSurfaceGripper(self.stage, "/Gripper0")
+        fake = UsdGeom.Xform.Define(self.stage, "/Gripper1").GetPrim()
+        before = self.stage.GetRootLayer().ExportToString()
+        with self.assertRaisesRegex(ValueError, "/Gripper1"):
+            GripperView("/Gripper.*", translations=[[1, 2, 3], [4, 5, 6]])
+        self.assertEqual(before, self.stage.GetRootLayer().ExportToString())
+        self.stage.RemovePrim(fake.GetPath())
+        robot_schema.CreateSurfaceGripper(self.stage, "/Gripper1")
+        view = GripperView("/Gripper.*")
+        old_value = real.GetAttribute(robot_schema.Attributes.MAX_GRIP_DISTANCE.name).Get()
+        self.stage.GetPrimAtPath("/Gripper1").SetTypeName("Xform")
+        with self.assertRaisesRegex(ValueError, "/Gripper1"):
+            view.set_surface_gripper_properties(max_grip_distance=[1.0, 2.0])
+        self.assertEqual(old_value, real.GetAttribute(robot_schema.Attributes.MAX_GRIP_DISTANCE.name).Get())
+        with self.assertRaisesRegex(ValueError, "/Gripper1"):
+            view.apply_gripper_action([1.0, 1.0])
+        self.stage.RemovePrim("/Gripper1")
+        with self.assertRaisesRegex(ValueError, "/Gripper1"):
+            view.get_surface_gripper_properties()
+
+    async def test_removed_attachment_joint(self) -> None:
+        """A joint removed after initialization must not leave a usable cached pointer."""
+        await self.setup_physics()
+        await self.setup_gripper(1)
+        self._timeline.play()
+        for _ in range(8):
+            await omni.kit.app.get_app().next_update_async()
+        self.stage.RemovePrim("/env0/box1/d6Joint0")
+        for _ in range(4):
+            await omni.kit.app.get_app().next_update_async()
+        self.gripper_view.apply_gripper_action([1.0])
+        for _ in range(4):
+            await omni.kit.app.get_app().next_update_async()
+        self.assertEqual(self.gripper_view.get_gripped_objects(), [[]])
+        self.gripper_view.apply_gripper_action([-1.0])
+        self._timeline.stop()
+
+    async def test_deleted_active_joint_without_force_limits(self) -> None:
+        """Deleting an active joint opens the gripper even with both force limits disabled."""
+        await self.setup_physics()
+        await self.setup_gripper(2)
+        self.gripper_view.set_surface_gripper_properties(
+            coaxial_force_limit=[0.0, 500000.0], shear_force_limit=[0.0, 500000.0], retry_interval=[0.0, 0.0]
+        )
+        self._timeline.play()
+        for _ in range(8):
+            await omni.kit.app.get_app().next_update_async()
+        self.gripper_view.apply_gripper_action([1.0, 1.0])
+        for _ in range(8):
+            await omni.kit.app.get_app().next_update_async()
+        self.assertEqual(
+            [GripperStatus(value) for value in self.gripper_view.get_surface_gripper_status()],
+            [GripperStatus.Closed] * 2,
+        )
+        self.assertTrue(all(self.gripper_view.get_gripped_objects()))
+        for i in range(2):
+            self.stage.RemovePrim(f"/env{i}/box1/d6Joint0")
+        for _ in range(4):
+            await omni.kit.app.get_app().next_update_async()
+        self.assertEqual(
+            [GripperStatus(value) for value in self.gripper_view.get_surface_gripper_status()], [GripperStatus.Open] * 2
+        )
+        self.assertEqual(self.gripper_view.get_gripped_objects(), [[], []])
+        self._timeline.stop()
+
+    async def test_unique_and_mixed_batch_paths(self) -> None:
+        """Parallel batches retain all success flags and per-path order for mixed duplicate requests."""
+        await self.setup_physics()
+        count = (os.cpu_count() or 1) + 1
+        await self.setup_gripper(count)
+        self._timeline.play()
+        for _ in range(8):
+            await omni.kit.app.get_app().next_update_async()
+        paths = [f"/env{i}/SurfaceGripper" for i in range(count)]
+        interface = self.gripper_view.surface_gripper_interface
+        self.assertEqual(list(interface.close_gripper_batch(paths)), [True] * count)
+        self.assertEqual(
+            [GripperStatus(value) for value in interface.get_gripper_status_batch(paths)],
+            [GripperStatus.Closed] * count,
+        )
+        for _ in range(2):
+            await omni.kit.app.get_app().next_update_async()
+        self.assertTrue(all(interface.get_gripped_objects_batch(paths)))
+        self.assertEqual(list(interface.open_gripper_batch(paths)), [True] * count)
+        self.assertEqual(
+            [GripperStatus(value) for value in interface.get_gripper_status_batch(paths)], [GripperStatus.Open] * count
+        )
+        # Equal strings are separately allocated, so grouping must compare contents, not pointers.
+        mixed_paths = paths + [f"/env{i}/SurfaceGripper" for i in range(count)]
+        actions = [1.0] * count + [-1.0] * count
+        self.assertEqual(list(interface.set_gripper_action_batch(mixed_paths, actions)), [True] * (2 * count))
+        expected = [GripperStatus.Open] * count
+        self.assertEqual([GripperStatus(value) for value in interface.get_gripper_status_batch(paths)], expected)
+        for _ in range(2):
+            await omni.kit.app.get_app().next_update_async()
+        objects = interface.get_gripped_objects_batch(paths)
+        self.assertEqual(list(objects), [[] for _ in paths])
+        # Neutral commands report false; alternating results exercise independent byte storage.
+        actions = [-1.0 if i % 2 else 0.0 for i in range(count)]
+        self.assertEqual(list(interface.set_gripper_action_batch(paths, actions)), [bool(i % 2) for i in range(count)])
+        self._timeline.stop()
+
+    async def test_duplicate_batch_actions_preserve_order(self) -> None:
+        """A batch processes every duplicate occurrence and returns every success flag."""
+        await self.setup_physics()
+        await self.setup_gripper(1)
+        self._timeline.play()
+        for _ in range(8):
+            await omni.kit.app.get_app().next_update_async()
+        # Exceeds the former worker threshold even on high-core-count hosts.
+        count = 2 * (os.cpu_count() or 1)
+        paths = ["/env0/SurfaceGripper"] * count
+        values = [1.0, -1.0] * (count // 2)
+        interface = self.gripper_view.surface_gripper_interface
+        results = interface.set_gripper_action_batch(paths, values)
+        self.assertEqual(list(results), [True] * count)
+        self.assertEqual(interface.get_gripper_status(paths[-1]), GripperStatus.Open)
+        self._timeline.stop()
+
+    async def test_async_main_thread_gripper_calls(self) -> None:
+        """Main-thread reads and mutations complete while physics runs asynchronously."""
+        with _fail_on_native_stall():
+            import omni.physx
+
+            await self.setup_physics()
+            await self.setup_gripper(1)
+            PhysxSchema.PhysxSceneAPI.Apply(self._scene.GetPrim()).CreateUpdateTypeAttr().Set(
+                PhysxSchema.Tokens.Asynchronous
+            )
+            interface = self.gripper_view.surface_gripper_interface
+            main_thread = threading.get_ident()
+            callback_threads: set[int] = set()
+
+            def query_after_step(dt: float) -> None:
+                """Exercise reentrant reads on the physics callback thread.
+
+                Args:
+                    dt: Physics timestep.
+                """
+                interface.get_gripper_status("/env0/SurfaceGripper")
+                interface.get_gripped_objects("/env0/SurfaceGripper")
+                callback_threads.add(threading.get_ident())
+
+            subscription = None
+            self._timeline.play()
+            try:
+                for _ in range(12):
+                    await omni.kit.app.get_app().next_update_async()
+                subscription = omni.physx.get_physx_interface().subscribe_physics_on_step_events(
+                    query_after_step, False, 1
+                )
+                for write_to_usd in (False, True):
+                    interface.set_write_to_usd(write_to_usd)
+                    for _ in range(12):
+                        await omni.kit.app.get_app().next_update_async()
+                        self.assertTrue(interface.close_gripper("/env0/SurfaceGripper"))
+                        self.assertIsInstance(interface.get_gripped_objects("/env0/SurfaceGripper"), list)
+                        self.assertTrue(interface.open_gripper("/env0/SurfaceGripper"))
+                        self.assertEqual(interface.get_gripper_status("/env0/SurfaceGripper"), GripperStatus.Open)
+                        self.assertEqual(interface.get_gripped_objects("/env0/SurfaceGripper"), [])
+                        self.assertEqual(
+                            list(interface.set_gripper_action_batch(["/env0/SurfaceGripper"] * 2, [1.0, -1.0])),
+                            [True, True],
+                        )
+                self.assertTrue(
+                    callback_threads - {main_thread}, "No off-main physics callback completed its API reads"
+                )
+            finally:
+                self._timeline.stop()
+                interface.set_write_to_usd(False)
+                if subscription is not None:
+                    subscription.unsubscribe()
+
+    async def test_duplicate_batch_actions_with_asynchronous_physics(self) -> None:
+        """Exercise the original duplicate-path workload on worker-thread physics steps."""
+        with _fail_on_native_stall():
+            import omni.physx
+
+            await self.setup_physics()
+            await self.setup_gripper(1)
+            update_type = PhysxSchema.PhysxSceneAPI.Apply(self._scene.GetPrim()).CreateUpdateTypeAttr()
+            update_type.Set(PhysxSchema.Tokens.Asynchronous)
+            self.assertEqual(update_type.Get(), PhysxSchema.Tokens.Asynchronous)
+
+            main_thread = threading.get_ident()
+            step_threads: set[int] = set()
+
+            def record_step(dt: float) -> None:
+                """Record which OS thread runs a physics step.
+
+                Args:
+                    dt: Physics timestep.
+                """
+                step_threads.add(threading.get_ident())
+
+            physics = omni.physx.get_physx_interface()
+            step_subscription = None
+            interface = self.gripper_view.surface_gripper_interface
+            # This must exceed the former `parallelForIndex` serial threshold on this host.
+            duplicate_count = 2 * ((os.cpu_count() or 1) // 2 + 1)
+            paths = ["/env0/SurfaceGripper"] * duplicate_count
+            close_then_open = [1.0, -1.0] * (duplicate_count // 2)
+            try:
+                self._timeline.play()
+                for _ in range(12):
+                    await omni.kit.app.get_app().next_update_async()
+                step_subscription = physics.subscribe_physics_on_step_events(record_step, True, 0)
+                for _ in range(8):
+                    await omni.kit.app.get_app().next_update_async()
+                self.assertTrue(
+                    step_threads - {main_thread}, "Asynchronous physics never ran a step off the main thread"
+                )
+
+                async def call_while_pumping(fn: Callable[..., Any], *args: Any) -> Any:
+                    result = pool.submit(fn, *args)
+                    for _ in range(120):
+                        await omni.kit.app.get_app().next_update_async()
+                        if result.done():
+                            return result.result()
+                    self.fail("Native gripper operation did not complete after 120 Kit updates")
+
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    try:
+                        self.assertTrue(await call_while_pumping(interface.close_gripper, "/env0/SurfaceGripper"))
+                        for _ in range(8):
+                            await omni.kit.app.get_app().next_update_async()
+                        self.assertTrue(await call_while_pumping(interface.get_gripped_objects, "/env0/SurfaceGripper"))
+                        for _ in range(40):
+                            self.assertEqual(
+                                list(
+                                    await call_while_pumping(interface.set_gripper_action_batch, paths, close_then_open)
+                                ),
+                                [True] * duplicate_count,
+                            )
+                            await omni.kit.app.get_app().next_update_async()
+                        self.assertEqual(
+                            await call_while_pumping(interface.get_gripper_status, "/env0/SurfaceGripper"),
+                            GripperStatus.Open,
+                        )
+                    finally:
+                        self._timeline.stop()
+                self.assertTrue(step_threads - {main_thread}, "No worker-thread physics step was observed")
+            finally:
+                self._timeline.stop()
+                if step_subscription is not None:
+                    step_subscription.unsubscribe()
+
+    async def test_deleted_active_joint_with_asynchronous_physics(self) -> None:
+        """An async physics step must release a deleted active joint without stale-pointer use."""
+        with _fail_on_native_stall():
+            import omni.physx
+
+            await self.setup_physics()
+            await self.setup_gripper(1)
+            PhysxSchema.PhysxSceneAPI.Apply(self._scene.GetPrim()).CreateUpdateTypeAttr().Set(
+                PhysxSchema.Tokens.Asynchronous
+            )
+            self.gripper_view.set_surface_gripper_properties(
+                coaxial_force_limit=[0.0], shear_force_limit=[0.0], retry_interval=[0.0]
+            )
+            main_thread = threading.get_ident()
+            step_threads: set[int] = set()
+
+            def record_step(dt: float) -> None:
+                """Record the physics callback thread.
+
+                Args:
+                    dt: Physics timestep.
+                """
+                step_threads.add(threading.get_ident())
+
+            step_subscription = None
+            try:
+                self._timeline.play()
+                for _ in range(12):
+                    await omni.kit.app.get_app().next_update_async()
+                step_subscription = omni.physx.get_physx_interface().subscribe_physics_on_step_events(
+                    record_step, True, 0
+                )
+                for _ in range(8):
+                    await omni.kit.app.get_app().next_update_async()
+                self.assertTrue(
+                    step_threads - {main_thread}, "Asynchronous physics never ran a step off the main thread"
+                )
+                interface = self.gripper_view.surface_gripper_interface
+
+                async def call_while_pumping(pool: ThreadPoolExecutor, fn: Callable[..., Any], *args: Any) -> Any:
+                    result = pool.submit(fn, *args)
+                    for _ in range(120):
+                        await omni.kit.app.get_app().next_update_async()
+                        if result.done():
+                            return result.result()
+                    self.fail("Native gripper operation did not complete after 120 Kit updates")
+
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    try:
+                        self.assertTrue(await call_while_pumping(pool, interface.close_gripper, "/env0/SurfaceGripper"))
+                        for _ in range(8):
+                            await omni.kit.app.get_app().next_update_async()
+                        self.assertEqual(
+                            await call_while_pumping(pool, interface.get_gripper_status, "/env0/SurfaceGripper"),
+                            GripperStatus.Closed,
+                        )
+                        self.assertTrue(
+                            await call_while_pumping(pool, interface.get_gripped_objects, "/env0/SurfaceGripper")
+                        )
+                        self.stage.RemovePrim("/env0/box1/d6Joint0")
+                        for _ in range(8):
+                            await omni.kit.app.get_app().next_update_async()
+                        self.assertEqual(
+                            await call_while_pumping(pool, interface.get_gripper_status, "/env0/SurfaceGripper"),
+                            GripperStatus.Open,
+                        )
+                        self.assertEqual(
+                            await call_while_pumping(pool, interface.get_gripped_objects, "/env0/SurfaceGripper"), []
+                        )
+                    finally:
+                        self._timeline.stop()
+            finally:
+                self._timeline.stop()
+                if step_subscription is not None:
+                    step_subscription.unsubscribe()
+
+    async def test_concurrent_native_batches_and_lifecycle(self) -> None:
+        """Overlap GIL-releasing native batches with physics, property notices, removal and stop."""
+        with _fail_on_native_stall():
+            await self.setup_physics()
+            await self.setup_gripper(2)
+            self._timeline.play()
+            for _ in range(8):
+                await omni.kit.app.get_app().next_update_async()
+            interface = self.gripper_view.surface_gripper_interface
+            interface.set_write_to_usd(True)
+            paths = ["/env0/SurfaceGripper", "/env1/SurfaceGripper"] * 16
+            barrier = threading.Barrier(4)
+            stop = threading.Event()
+
+            def exercise_batches(worker: int) -> int:
+                """Exercise native calls from a competing Python thread.
+
+                Args:
+                    worker: Index choosing the worker's operation.
+
+                Returns:
+                    Number of completed operations.
+                """
+                barrier.wait(timeout=10)
+                completed = 0
+                while not stop.is_set():
+                    if worker == 0:
+                        result = interface.set_gripper_action_batch(paths, [1.0, -1.0] * 16)
+                    elif worker == 1:
+                        result = interface.get_gripped_objects_batch(paths)
+                    else:
+                        result = interface.open_gripper_batch(paths)
+                    self.assertEqual(len(result), len(paths))
+                    completed += 1
+                return completed
+
+            pool = ThreadPoolExecutor(max_workers=3)
+            futures = [pool.submit(exercise_batches, worker) for worker in range(3)]
+            try:
+                barrier.wait(timeout=10)
+                for _ in range(12):
+                    await omni.kit.app.get_app().next_update_async()
+                # Only remove gripper schema prims, not externally owned PhysX joints/actors.
+                self.stage.RemovePrim("/env0/SurfaceGripper")
+                for _ in range(4):
+                    await omni.kit.app.get_app().next_update_async()
+                self._timeline.stop()
+                for _ in range(4):
+                    await omni.kit.app.get_app().next_update_async()
+            finally:
+                stop.set()
+                self._timeline.stop()
+                deadline = time.monotonic() + 10
+                while not all(future.done() for future in futures) and time.monotonic() < deadline:
+                    await omni.kit.app.get_app().next_update_async()
+                pool.shutdown(wait=True)
+                if all(future.done() for future in futures):
+                    interface.set_write_to_usd(False)
+            for future in futures:
+                self.assertTrue(future.done(), "A native batch deadlocked against a callback")
+                self.assertGreater(future.result(), 0)
+            self.assertEqual(list(interface.open_gripper_batch(paths)), [False] * len(paths))
+
+    async def test_native_calls_from_physics_callbacks(self) -> None:
+        """Keep synchronous gripper commands callable from pre-step and post-step subscribers."""
+        import omni.physx
+
+        await self.setup_physics()
+        await self.setup_gripper(1)
+        self._timeline.play()
+        for _ in range(8):
+            await omni.kit.app.get_app().next_update_async()
+        interface = self.gripper_view.surface_gripper_interface
+        counts = [0, 0]
+
+        def before_step(dt: float) -> None:
+            """Open the gripper before a simulation step.
+
+            Args:
+                dt: Physics timestep.
+            """
+            self.assertTrue(interface.open_gripper("/env0/SurfaceGripper"))
+            counts[0] += 1
+
+        def after_step(dt: float) -> None:
+            """Close and query the gripper after a simulation step.
+
+            Args:
+                dt: Physics timestep.
+            """
+            self.assertTrue(interface.close_gripper("/env0/SurfaceGripper"))
+            self.assertEqual(len(interface.get_gripped_objects_batch(["/env0/SurfaceGripper"])), 1)
+            counts[1] += 1
+
+        physics = omni.physx.get_physx_interface()
+        before = physics.subscribe_physics_on_step_events(before_step, True, 0)
+        after = physics.subscribe_physics_on_step_events(after_step, False, 0)
+        try:
+            for _ in range(4):
+                await omni.kit.app.get_app().next_update_async()
+        finally:
+            before.unsubscribe()
+            after.unsubscribe()
+        self.assertGreater(counts[0], 0)
+        self.assertEqual(counts[0], counts[1])
+        self._timeline.stop()

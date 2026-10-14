@@ -46,6 +46,7 @@ def get_schema_properties(schema: str) -> list[Any]:
 # "NewtonPhysicsSceneAPI" - ExtensionSchemaWidget (ExtendedNewtonSceneWidget)
 # "NewtonPhysicsXpbdSceneAPI" - NewtonWidgetBase below
 # "NewtonPhysicsKaminoSceneAPI" - NewtonWidgetBase below
+# "NewtonPhysicsMPMSceneAPI" - NewtonWidgetBase below
 # "NewtonPhysicsArticulationRootAPI"
 # "NewtonPhysicsJointAPI" - NewtonWidgetBase below
 # "NewtonPhysicsMassAPI"
@@ -53,7 +54,10 @@ def get_schema_properties(schema: str) -> list[Any]:
 # "NewtonPhysicsMeshCollisionAPI"
 # "NewtonPhysicsSDFCollisionAPI"
 # "NewtonPhysicsSiteAPI"
+# "NewtonPhysicsPointsDeformableSimAPI"
 # "NewtonPhysicsMaterialAPI"
+# "NewtonPhysicsMPMMaterialAPI"
+# "NewtonPhysicsCurvesDeformableMaterialAPI"
 # "NewtonPhysicsMimicAPI"
 # "NewtonPhysicsActuator" - Ignored, not a API schema, but a prim type
 # "NewtonPhysicsActuatorDelayAPI"
@@ -96,6 +100,7 @@ collision_exclusive_classes = [
 solver_scene_exclusive_classes = [
     "NewtonXpbdSceneAPI",
     "NewtonKaminoSceneAPI",
+    "NewtonMPMSceneAPI",
 ]
 
 # Base APIs are applied transitively with derived control/clamping schemas; suppress their
@@ -134,6 +139,21 @@ newton_schema_menu_items = [
             api="NewtonKaminoSceneAPI",
         ),
         show_fn=lambda p: not p.HasAPI("NewtonKaminoSceneAPI") and p.IsA("PhysicsScene"),
+        exclusive_classes=solver_scene_exclusive_classes,
+    ),
+    NewtonSchemaItem(
+        "NewtonPhysicsMPMSceneAPI",  # name
+        "Physics/Newton",  # prefix
+        "Newton MPM Scene",  # title
+        "Newton MPM Scene",  # menu label
+        "NewtonMPMSceneAPI",  # schema
+        attributes=get_schema_properties("NewtonMPMSceneAPI"),
+        apply_fn=partial(
+            apply_codeless_api_with_dependencies,
+            dependencies=("NewtonSceneAPI",),
+            api="NewtonMPMSceneAPI",
+        ),
+        show_fn=lambda p: not p.HasAPI("NewtonMPMSceneAPI") and p.IsA("PhysicsScene"),
         exclusive_classes=solver_scene_exclusive_classes,
     ),
     NewtonSchemaItem(
@@ -204,6 +224,15 @@ newton_schema_menu_items = [
         show_fn=lambda p: not p.HasAPI("NewtonSiteAPI") and p.IsA("Gprim"),
     ),
     NewtonSchemaItem(
+        "NewtonPhysicsPointsDeformableSimAPI",  # name
+        "Physics/Newton",  # prefix
+        "Newton Points Deformable Simulation",  # title
+        "Newton Points Deformable Simulation",  # menu label
+        "NewtonPointsDeformableSimAPI",  # schema
+        attributes=get_schema_properties("NewtonPointsDeformableSimAPI"),
+        show_fn=lambda p: not p.HasAPI("NewtonPointsDeformableSimAPI") and p.IsA("Points"),
+    ),
+    NewtonSchemaItem(
         "NewtonPhysicsMaterialAPI",  # name
         "Physics/Newton",  # prefix
         "Newton Material",  # title
@@ -211,6 +240,34 @@ newton_schema_menu_items = [
         "NewtonMaterialAPI",  # schema
         attributes=get_schema_properties("NewtonMaterialAPI"),
         show_fn=lambda p: not p.HasAPI("NewtonMaterialAPI") and p.IsA("Material"),
+    ),
+    NewtonSchemaItem(
+        "NewtonPhysicsMPMMaterialAPI",  # name
+        "Physics/Newton",  # prefix
+        "Newton MPM Material",  # title
+        "Newton MPM Material",  # menu label
+        "NewtonMPMMaterialAPI",  # schema
+        attributes=get_schema_properties("NewtonMPMMaterialAPI"),
+        apply_fn=partial(
+            apply_codeless_api_with_dependencies,
+            dependencies=("PhysicsMaterialAPI",),
+            api="NewtonMPMMaterialAPI",
+        ),
+        show_fn=lambda p: not p.HasAPI("NewtonMPMMaterialAPI") and p.IsA("Material"),
+    ),
+    NewtonSchemaItem(
+        "NewtonPhysicsCurvesDeformableMaterialAPI",  # name
+        "Physics/Newton",  # prefix
+        "Newton Curves Deformable Material",  # title
+        "Newton Curves Deformable Material",  # menu label
+        "NewtonCurvesDeformableMaterialAPI",  # schema
+        attributes=get_schema_properties("NewtonCurvesDeformableMaterialAPI"),
+        apply_fn=partial(
+            apply_codeless_api_with_dependencies,
+            dependencies=("PhysicsMaterialAPI",),
+            api="NewtonCurvesDeformableMaterialAPI",
+        ),
+        show_fn=lambda p: not p.HasAPI("NewtonCurvesDeformableMaterialAPI") and p.IsA("Material"),
     ),
     NewtonSchemaItem(
         "NewtonPhysicsMimicAPI",  # name

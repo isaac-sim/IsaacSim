@@ -23,16 +23,11 @@ from isaacsim.core.simulation_manager import SimulationManager
 from ._sensor_base import _PhysicsSensorRuntime
 from .raycast import Raycast
 
-_INVALID_RAYCAST_READING = None
-
 
 def _get_invalid_raycast_reading() -> object:
-    global _INVALID_RAYCAST_READING
-    if _INVALID_RAYCAST_READING is None:
-        from .. import _physics_sensors
+    from .. import _physics_sensors
 
-        _INVALID_RAYCAST_READING = _physics_sensors.RaycastSensorReading()
-    return _INVALID_RAYCAST_READING
+    return _physics_sensors.RaycastSensorReading()
 
 
 class RaycastSensor(_PhysicsSensorRuntime):
@@ -40,7 +35,8 @@ class RaycastSensor(_PhysicsSensorRuntime):
 
     Wraps a :class:`Raycast` authoring object and owns the C++ ``IRaycastSensor``
     Carbonite interface. Exposes :meth:`get_data` for a structured per-step
-    dictionary and :meth:`get_sensor_reading` for the raw C++ struct.
+    dictionary, :meth:`get_sensor_reading` for an owned snapshot, and
+    :meth:`get_sensor_reading_view` for a read-only view of live buffers.
 
     Args:
         path: Either a string USD path to an existing IsaacRaycastSensor prim,
@@ -86,13 +82,57 @@ class RaycastSensor(_PhysicsSensorRuntime):
         return _get_invalid_raycast_reading()
 
     def get_sensor_reading(self) -> object:
-        """Get the current raycast sensor reading as the raw C++ struct.
+        """Get a mutable owned snapshot of the current raycast reading.
+
+        The snapshot and its NumPy arrays remain valid after later physics
+        steps, sensor reset, or removal. Its values and ``is_valid`` flag do
+        not change after capture.
 
         Returns:
-            The C++ ``RaycastSensorReading`` struct. Access fields via
-            ``reading.depths``, ``reading.hit_positions``, etc.
+            An owned ``RaycastSensorReading`` snapshot. Access fields via
+            ``reading.depths``, ``reading.hit_positions``, and related properties.
         """
         return self._get_reading()
+
+    def get_sensor_reading_view(self) -> object:
+        """Get a read-only zero-copy view of the live raycast buffers.
+
+        Numeric arrays returned from the view retain its native backing frame
+        even if the view variable is released. Their values and ``view.time``
+        update on each physics step. ``view.is_valid`` becomes ``False`` after
+        reset, removal, or timeline stop; retained arrays then remain readable
+        with their last values. A numeric property lookup creates a NumPy array
+        header without copying data; cache the returned array in a tight loop.
+
+        The view performs no synchronization with the physics step that writes
+        its buffers, so reading it while a step is in flight yields torn values
+        that mix the current and the previous reading. Read it only from the
+        thread that drives physics and only between steps; use
+        :meth:`get_sensor_reading` when a reader cannot be ordered against the
+        step.
+
+        Returns:
+            A ``RaycastSensorReadingView`` with read-only NumPy arrays.
+
+        Example:
+
+        .. code-block:: python
+
+            view = sensor.get_sensor_reading_view()
+            if view.is_valid:
+                depths = view.depths  # read-only and owner-backed
+        """
+        from .. import _physics_sensors
+
+        if not self._sensor_created and not self._ensure_sensor():
+            return _physics_sensors.RaycastSensorReadingView()
+        view = self._iface.get_sensor_reading_view(self._prim_path)
+        if not view.is_valid:
+            self._sensor_created = False
+            if not self._ensure_sensor():
+                return view
+            view = self._iface.get_sensor_reading_view(self._prim_path)
+        return view
 
     def get_data(self) -> dict:
         """Get the current raycast sensor data as a structured frame.
