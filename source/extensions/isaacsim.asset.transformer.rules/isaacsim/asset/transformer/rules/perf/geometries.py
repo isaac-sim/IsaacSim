@@ -3342,6 +3342,7 @@ class GeometriesRoutingRule(RuleInterface):
         - Were tracked during relocation (in _relocated_material_sources)
         - Have a prim spec in the source layer (not from references/sublayers)
         - Are not inside the VisualMaterials scope (already relocated)
+        - Are not physics materials (physics bindings still target the original)
         """
         if not hasattr(self, "_relocated_material_sources") or not self._relocated_material_sources:
             return
@@ -3362,6 +3363,12 @@ class GeometriesRoutingRule(RuleInterface):
         for material_path in self._relocated_material_sources:
             # Skip materials already in VisualMaterials scope
             if material_path.startswith(visual_materials_scope):
+                continue
+
+            # Keep physics materials: physics bindings, including those of colliders this rule
+            # does not route, still target the original material
+            material_prim = self.source_stage.GetPrimAtPath(material_path)
+            if material_prim and "PhysicsMaterialAPI" in material_prim.GetAppliedSchemas():
                 continue
 
             # Only delete if the prim spec exists in the source layer
