@@ -455,3 +455,49 @@ class TestSchemaRoutingRule(omni.kit.test.AsyncTestCase):
             ({"PhysicsCollisionAPI"}, {"physics:collisionEnabled"}),
         )
         self._success = True
+
+    async def test_process_rule_routes_builtin_api_properties_in_profile_order(self) -> None:
+        """Verify built-in API properties follow their schema when the physics rule runs before the MuJoCo rule."""
+        stage = _build_builtin_api_stage(os.path.join(self._tmpdir, "robot.usda"))
+
+        physics_layer = self._route_schemas(stage, _PHYSICS_RULE_PARAMS)
+        mujoco_layer = self._route_schemas(stage, _MUJOCO_RULE_PARAMS)
+
+        self.assertEqual(
+            _get_prim_spec_contents(physics_layer, "/robot/follow"),
+            ({"NewtonMimicAPI"}, {"newton:mimicJoint", "newton:mimicCoef0", "newton:mimicCoef1"}),
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(physics_layer, "/robot/collider"), ({"NewtonCollisionAPI"}, {"newton:contactGap"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(mujoco_layer, "/robot/follow"), ({"MjcEqualityJointAPI"}, {"mjc:solref"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(mujoco_layer, "/robot/collider"), ({"MjcCollisionAPI"}, {"mjc:condim"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(stage.GetRootLayer(), "/robot/collider"),
+            ({"PhysicsCollisionAPI"}, {"physics:collisionEnabled"}),
+        )
+        self._success = True
+
+    async def test_process_rule_keeps_properties_of_ignored_api_in_shared_namespace(self) -> None:
+        """Verify a matched API schema does not take the properties of an ignored API schema in its namespace."""
+        stage = Usd.Stage.CreateNew(os.path.join(self._tmpdir, "robot.usda"))
+        stage.SetDefaultPrim(UsdGeom.Xform.Define(stage, "/robot").GetPrim())
+        # MJCF colliders carry `PhysicsMassAPI`, whose `physics:` namespace also covers `PhysicsCollisionAPI`.
+        collider = UsdGeom.Cube.Define(stage, "/robot/collider").GetPrim()
+        UsdPhysics.CollisionAPI.Apply(collider).CreateCollisionEnabledAttr(False)
+        UsdPhysics.MassAPI.Apply(collider).CreateMassAttr(1.0)
+
+        physics_layer = self._route_schemas(stage, _PHYSICS_RULE_PARAMS)
+
+        self.assertEqual(
+            _get_prim_spec_contents(physics_layer, "/robot/collider"), ({"PhysicsMassAPI"}, {"physics:mass"})
+        )
+        self.assertEqual(
+            _get_prim_spec_contents(stage.GetRootLayer(), "/robot/collider"),
+            ({"PhysicsCollisionAPI"}, {"physics:collisionEnabled"}),
+        )
+        self._success = True

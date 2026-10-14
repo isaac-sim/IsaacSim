@@ -209,7 +209,10 @@ def move_applied_apis_and_props(
     """Move applied API schemas and their properties from source prim to destination layer.
 
     Works with the resolved composition arc, moving matching API schemas and their
-    associated properties from the source layer to the destination layer.
+    associated properties from the source layer to the destination layer. Properties
+    declared by an applied schema that is not moved (not counting those of its built-in
+    API schemas) stay in the source layer, even when a matched schema has it as a built-in
+    API schema or shares its property namespace.
 
     Args:
         src_prim: Source prim from the composed stage.
@@ -251,6 +254,12 @@ def move_applied_apis_and_props(
     # Move all matched schema tokens in a single operation
     move_applied_api_schemas(src_spec, dst_prim_spec, matched)
 
+    # Properties declared by applied schemas that this rule does not route stay with those schemas
+    kept_props = set()
+    for schema_token in applied:
+        if schema_token not in matched:
+            kept_props.update(props_from_applied_api_token(schema_token))
+
     # Collect property namespaces for matched schemas
     schema_namespaces = []
     for schema_token in matched:
@@ -259,7 +268,7 @@ def move_applied_apis_and_props(
             schema_namespaces.append(namespace)
         # Also get properties from schema registry as fallback
         registry_props = props_from_applied_api_token(schema_token)
-        for prop_name in registry_props:
+        for prop_name in registry_props - kept_props:
             prop_path = prim_path.AppendProperty(prop_name)
             src_prop_spec = src_layer.GetPropertyAtPath(prop_path)
             if src_prop_spec:
@@ -272,6 +281,8 @@ def move_applied_apis_and_props(
         props_to_move = []
         for prop_name in src_spec.properties.keys():  # noqa: SIM118
             prop_str = str(prop_name)
+            if prop_str in kept_props:
+                continue
             for namespace in schema_namespaces:
                 if prop_str.startswith(namespace):
                     props_to_move.append(prop_str)
