@@ -1,4 +1,4 @@
-![Isaac Sim](docs/readme/hero_shot_compressed.png)
+![Isaac Sim ](docs/readme/hero_shot_compressed.png)
 
 ---
 # Isaac Sim
