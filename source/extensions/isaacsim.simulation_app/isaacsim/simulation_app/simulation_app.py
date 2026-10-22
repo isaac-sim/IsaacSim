@@ -292,6 +292,8 @@ class SimulationApp:
         # Get Omniverse application
         self._app = omni.kit.app.get_app()
         self._start_app()
+        # Kit is running from here on: close it at interpreter exit even if the rest of the startup fails
+        atexit.register(self._atexit_close)
 
         # Register signal handler to exit when ctrl-c happens
         # This needs to happen after the app starts so that we can overide the default handler
@@ -383,8 +385,6 @@ class SimulationApp:
         self.update()  # This app update triggers app ready status.
         builtins.ISAACSIM_APP_LAUNCHED = True
 
-        atexit.register(self._atexit_close)
-
     def _apply_renderer_defaults(self, launch_config: dict | None) -> None:
         """Apply renderer-specific defaults when values are not provided in the launch config.
 
@@ -429,7 +429,12 @@ class SimulationApp:
         """Automatically close the application during interpreter shutdown if close() was not called."""
         if not self._exiting:
             carb.log_warn("SimulationApp.close() was not called explicitly. Shutting down automatically")
-            self.close(wait_for_replicator=False)
+            # An unhandled exception sets sys.last_exc before atexit callbacks run
+            exit_code = 1 if getattr(sys, "last_exc", None) is not None else 0
+            if exit_code != 0:
+                # Kit's fast shutdown then exits with this code even if close() raises on a partially started app
+                self._app.post_quit(exit_code)
+            self.close(wait_for_replicator=False, exit_code=exit_code)
 
     ### Private methods
 
