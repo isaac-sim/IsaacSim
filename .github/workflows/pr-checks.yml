@@ -90,10 +90,13 @@ jobs:
           fi
 
           # GraphQL query: fetch commit history with signature signer identity.
-          # Paginate in batches of 100 (GitHub max per page)
+          # Paginate in batches of 100 (GitHub max per page). History is walked
+          # from the checked-out commit rather than a branch name, so it works for
+          # any commit GitHub can resolve in this repository, including fork PR
+          # heads reachable only through refs/pull/<number>/head.
           OWNER="${{ github.repository_owner }}"
           REPO="${{ github.event.repository.name }}"
-          REF="${{ github.ref_name }}"
+          HEAD_SHA=$(git rev-parse HEAD)
 
           COMMITS_FILE=$(mktemp)
           HAS_NEXT="true"
@@ -108,24 +111,22 @@ jobs:
             fi
 
             RESPONSE=$(gh api graphql -f query='
-              query($owner: String!, $repo: String!, $ref: String!) {
+              query($owner: String!, $repo: String!, $sha: GitObjectID!) {
                 repository(owner: $owner, name: $repo) {
-                  ref(qualifiedName: $ref) {
-                    target {
-                      ... on Commit {
-                        history(first: 100'"$AFTER_CLAUSE"') {
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                          nodes {
-                            oid
-                            signature {
-                              isValid
-                              email
-                              signer {
-                                login
-                              }
+                  object(oid: $sha) {
+                    ... on Commit {
+                      history(first: 100'"$AFTER_CLAUSE"') {
+                        pageInfo {
+                          hasNextPage
+                          endCursor
+                        }
+                        nodes {
+                          oid
+                          signature {
+                            isValid
+                            email
+                            signer {
+                              login
                             }
                           }
                         }
@@ -134,13 +135,13 @@ jobs:
                   }
                 }
               }
-            ' -f owner="$OWNER" -f repo="$REPO" -f ref="refs/heads/$REF")
+            ' -f owner="$OWNER" -f repo="$REPO" -f sha="$HEAD_SHA")
 
-            HAS_NEXT=$(echo "$RESPONSE" | jq -r '.data.repository.ref.target.history.pageInfo.hasNextPage')
-            CURSOR=$(echo "$RESPONSE" | jq -r '.data.repository.ref.target.history.pageInfo.endCursor')
+            HAS_NEXT=$(echo "$RESPONSE" | jq -r '.data.repository.object.history.pageInfo.hasNextPage')
+            CURSOR=$(echo "$RESPONSE" | jq -r '.data.repository.object.history.pageInfo.endCursor')
 
             echo "$RESPONSE" | jq -c '
-              .data.repository.ref.target.history.nodes[]
+              .data.repository.object.history.nodes[]
               | {
                   oid,
                   valid: (.signature.isValid == true),
@@ -157,7 +158,7 @@ jobs:
               if echo "$BRANCH_SHAS" | grep -qxF "$OID"; then
                 FOUND_COUNT=$((FOUND_COUNT + 1))
               fi
-            done <<< "$(echo "$RESPONSE" | jq -r '.data.repository.ref.target.history.nodes[].oid')"
+            done <<< "$(echo "$RESPONSE" | jq -r '.data.repository.object.history.nodes[].oid')"
           done
 
           BRANCH_COMMITS=$(mktemp)
