@@ -15,6 +15,8 @@
 
 """Verifies SimulationManager backend selection, physics scene settings, callbacks, lifecycle state, engine switching, Fabric handlers, stage transitions, and multi-tick rendering behavior. The tests ensure stale scene references are invalidated and simulation state remains consistent across stage changes."""
 
+import gc
+import weakref
 from typing import Any
 from unittest import mock
 
@@ -611,6 +613,44 @@ class TestSimulationManagerCallbacks(omni.kit.test.AsyncTestCase):
 
         # Test deregistering invalid callback (log a warning and do nothing)
         self.assertFalse(SimulationManager.deregister_callback(999999))
+
+    async def test_bound_method_callback_does_not_keep_instance_alive(self) -> None:
+        """Test that registering bound methods does not prevent the instance from being garbage-collected."""
+
+        class CallbackHolder:
+            def __init__(self) -> None:
+                # same pattern as `isaacsim.core.experimental.prims.Prim`: register in __init__, deregister in __del__
+                self.callback_ids = [
+                    SimulationManager.register_callback(self.on_event, event=IsaacEvents.PHYSICS_READY),
+                    SimulationManager.register_callback(self.on_step, event=IsaacEvents.POST_PHYSICS_STEP),
+                    SimulationManager.register_callback(self.on_event, event=IsaacEvents.PRIM_DELETION),
+                ]
+
+            def __del__(self) -> None:
+                for callback_id in self.callback_ids:
+                    SimulationManager.deregister_callback(callback_id)
+
+            def on_event(self, event: Any) -> None:
+                pass
+
+            def on_step(self, dt: float, context: Any) -> None:
+                pass
+
+        num_callbacks = len(SimulationManager._callbacks)
+        holder = CallbackHolder()
+        holder_ref = weakref.ref(holder)
+        self.assertEqual(len(SimulationManager._callbacks), num_callbacks + 2)
+        del holder
+        gc.collect()
+        self.assertIsNone(holder_ref(), "Registered bound-method callbacks must not keep the instance alive")
+        self.assertEqual(len(SimulationManager._callbacks), num_callbacks)
+        # dispatching events after the instance has been collected must not fail
+        timeline = omni.timeline.get_timeline_interface()
+        timeline.play()
+        await omni.kit.app.get_app().next_update_async()
+        await omni.kit.app.get_app().next_update_async()
+        timeline.stop()
+        await omni.kit.app.get_app().next_update_async()
 
     async def test_event_dispatch(self) -> None:
         """Test that all events are dispatched correctly."""
