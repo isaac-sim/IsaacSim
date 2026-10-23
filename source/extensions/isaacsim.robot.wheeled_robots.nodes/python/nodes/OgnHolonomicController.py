@@ -132,6 +132,16 @@ class OgnHolonomicController:
         state = db.per_instance_state
 
         try:
+            if state.initialized and (
+                not np.array_equal(db.inputs.wheelRadius, state.wheel_radius)
+                or not np.array_equal(db.inputs.wheelPositions, state.wheel_positions)
+                or not np.array_equal(db.inputs.wheelOrientations, state.wheel_orientations)
+                or not np.array_equal(db.inputs.mecanumAngles, state.mecanum_angles)
+                or not np.array_equal(db.inputs.wheelAxis, state.wheel_axis)
+                or not np.array_equal(db.inputs.upAxis, state.up_axis)
+            ):
+                state.initialized = False
+
             if not state.initialized:
                 stop = False
                 error_log = ""
