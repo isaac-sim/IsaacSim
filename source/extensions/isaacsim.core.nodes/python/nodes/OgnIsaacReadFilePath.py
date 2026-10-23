@@ -30,7 +30,7 @@ class OgnIsaacReadFilePath:
             db: OmniGraph database for this node.
 
         Returns:
-            False when the input path is empty or missing.
+            False when the input path is empty or missing, True after a successful read.
         """
         # Empty input:
         db.outputs.fileContents = ""
@@ -43,3 +43,4 @@ class OgnIsaacReadFilePath:
         else:
             with open(db.inputs.path) as f:
                 db.outputs.fileContents = f.read()
+        return True
