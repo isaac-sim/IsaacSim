@@ -63,7 +63,7 @@ def main() -> int:
             "This installer never invokes runheadless.sh."
         )
     )
-    parser.add_argument("--image", default="nvcr.io/nvidia/isaac-sim:6.0.1")
+    parser.add_argument("--image", default="nvcr.io/nvidia/isaac-sim:6.2.0")
     parser.add_argument("--execute", action="store_true", help="Pull the image. Default is dry-run.")
     args = parser.parse_args()
 

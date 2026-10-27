@@ -4,7 +4,7 @@
 
 | Parameter | Default | Notes |
 |---|---|---|
-| `ISAAC_SIM_IMAGE` | latest from NGC tags page | Default is whatever the catalog marks **Latest** (today: `nvcr.io/nvidia/isaac-sim:6.0.1`). Override with `--image`. |
+| `ISAAC_SIM_IMAGE` | latest from NGC tags page | Default is whatever the live catalog marks **Latest**. Override with `--image`. |
 | Compose file | `<skill-dir>/docker/docker-compose.yml` | Shipped with the skill. Optional `--compose-file` / `--repo-root` only if the operator points at another copy. |
 | Compose project | `isim` | `-p isim` |
 | `WEB_VIEWER_PORT` | `8210` | HTTP port for the browser. |

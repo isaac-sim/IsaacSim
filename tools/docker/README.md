@@ -333,10 +333,14 @@ On first run, Docker Compose will build the `web-viewer` image automatically. Th
 By default the compose file uses the locally built `isaac-sim-docker:latest` image. To use a prebuilt NGC image instead, set `ISAAC_SIM_IMAGE`:
 
 ```bash
-ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1 docker compose -p isim -f tools/docker/docker-compose.yml up --build -d
+ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.2.0 docker compose -p isim -f tools/docker/docker-compose.yml up --build -d
 ```
 
 This skips the local Isaac Sim build steps (`prep_docker_build.sh` and `build_docker.sh`).
+
+The container starts streaming through `/isaac-sim/runheadless.sh`, which launches
+`isaac-sim.streaming.sh` in the default PhysX mode. A startup message from the
+desktop app alone does not confirm that streaming is ready.
 
 ### Checking status and endpoints
 
@@ -354,7 +358,7 @@ Override any variable via the shell or a `.env` file next to `docker-compose.yml
 
 | Variable                 | Default                      | Description                                                              |
 | ------------------------ | ---------------------------- | ------------------------------------------------------------------------ |
-| **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.0.1`) to skip local build steps. |
+| **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.2.0`) to skip local build steps. |
 | **ISAACSIM_PHYSICS_ENGINE** | `physx`                  | Streaming physics backend: `physx` or `newton`. Requires an image supporting this entrypoint option. |
 | **ISAACSIM_HOST**        | `127.0.0.1`                  | Host IP for WebRTC streaming (used by both services). See [Cloud Deployment](#cloud-deployment-aws-gcp-azure) for cloud VMs. |
 | **ISAACSIM_SIGNAL_PORT** | `49100`                      | WebRTC signaling port (TCP)                                              |

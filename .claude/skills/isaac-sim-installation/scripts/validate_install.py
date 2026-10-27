@@ -357,7 +357,7 @@ def main() -> int:
     python_compatibility_parser.add_argument("--execute", action="store_true")
 
     container_parser = subparsers.add_parser("container")
-    container_parser.add_argument("--image", default="nvcr.io/nvidia/isaac-sim:6.0.1")
+    container_parser.add_argument("--image", default="nvcr.io/nvidia/isaac-sim:6.2.0")
     container_parser.add_argument(
         "--timeout-seconds",
         type=float,
