@@ -3,7 +3,7 @@
 | Error / symptom | Cause | Solution |
 |---|---|---|
 | `pull access denied` for `nvcr.io/nvidia/isaac-sim` | Not logged in to NGC | Operator must `docker login nvcr.io` locally (do not paste the key into chat), then retry compose |
-| `ASK_USER_IMAGE_TAG` / `manifest unknown` | NGC tag does not exist | Stop. Ask the operator for a published tag. Do not compose up. Public NGC latest is `nvcr.io/nvidia/isaac-sim:6.0.1`. |
+| `ASK_USER_IMAGE_TAG` / `manifest unknown` | NGC tag does not exist | Stop. Check the live NGC tags page and ask the operator for a published tag. Do not compose up. |
 | Web viewer never becomes healthy | Isaac Sim still starting or GPU/EULA issue | `docker compose -p isim logs isaac-sim`; wait for `Isaac Sim Full Streaming App is loaded` |
 | URL given before stream is ready | Agent printed the URL on web-viewer healthy / AppReady | Wait for `Isaac Sim Full Streaming App is loaded`, then intimate the operator with the URL |
 | Browser connects but black screen / WAITING FOR STREAM | Browser URL host does not match baked `ISAACSIM_HOST` | Same-machine browser → `http://127.0.0.1:8210`. Other computer → `http://<this-machine-IP>:8210` with `--host auto` (or that IP) and `--build`. Close extra tabs. |

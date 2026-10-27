@@ -358,7 +358,7 @@ Override any variable via the shell or a `.env` file next to `docker-compose.yml
 
 | Variable                 | Default                      | Description                                                              |
 | ------------------------ | ---------------------------- | ------------------------------------------------------------------------ |
-| **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.0.1`) to skip local build steps. |
+| **ISAAC_SIM_IMAGE**      | `isaac-sim-docker:latest`    | Docker image to run. Set to a prebuilt NGC image (e.g. `nvcr.io/nvidia/isaac-sim:6.2.0`) to skip local build steps. |
 | **ISAACSIM_PHYSICS_ENGINE** | `physx`                  | Streaming physics backend: `physx` or `newton`. Requires an image supporting this entrypoint option. |
 | **ISAACSIM_HOST**        | `127.0.0.1`                  | Host IP for WebRTC streaming (used by both services). See [Cloud Deployment](#cloud-deployment-aws-gcp-azure) for cloud VMs. |
 | **ISAACSIM_SIGNAL_PORT** | `49100`                      | WebRTC signaling port (TCP)                                              |

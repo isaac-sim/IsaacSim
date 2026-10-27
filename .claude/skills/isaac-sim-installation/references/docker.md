@@ -5,7 +5,7 @@ Use this workflow only on native Linux x86_64 or supported DGX Spark Linux aarch
 Current public image:
 
 ```text
-nvcr.io/nvidia/isaac-sim:6.0.1
+nvcr.io/nvidia/isaac-sim:6.2.0
 ```
 
 ## Installation boundary
@@ -18,14 +18,14 @@ nvcr.io/nvidia/isaac-sim:6.0.1
 Dry-run:
 
 ```bash
-python3 scripts/install_container.py --image nvcr.io/nvidia/isaac-sim:6.0.1
+python3 scripts/install_container.py --image nvcr.io/nvidia/isaac-sim:6.2.0
 ```
 
 Execute only after the preflight, compatibility, EULA, and plan-approval gates:
 
 ```bash
 python3 scripts/install_container.py \
-  --image nvcr.io/nvidia/isaac-sim:6.0.1 \
+  --image nvcr.io/nvidia/isaac-sim:6.2.0 \
   --execute
 ```
 

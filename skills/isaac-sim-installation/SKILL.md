@@ -173,7 +173,7 @@ python3 <skill-dir>/scripts/install_binary.py \
 
 # Docker image pull only
 python3 <skill-dir>/scripts/install_container.py \
-  --image nvcr.io/nvidia/isaac-sim:6.0.1
+  --image nvcr.io/nvidia/isaac-sim:6.2.0
 
 # Python package installation only
 python3 <skill-dir>/scripts/install_python.py \
