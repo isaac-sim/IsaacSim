@@ -1202,12 +1202,21 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
         # test cases
         for indices, expected_count in draw_indices(count=num_prims, step=2):
             cprint(f"  |    |-- indices: {type(indices).__name__}, expected_count: {expected_count}")
+            selected_prims = indices.numpy() if isinstance(indices, wp.array) else indices
+            unselected_prims = np.setdiff1d(np.arange(num_prims), selected_prims) if indices is not None else []
             # DOF-related
             for dof_indices, expected_dof_count in draw_indices(count=prim.num_dofs, step=2):
                 cprint(f"  |    |    |-- dof_indices: {type(dof_indices).__name__}, count: {expected_dof_count}")
+                selected_dofs = dof_indices.numpy() if isinstance(dof_indices, wp.array) else dof_indices
+                unselected_dofs = (
+                    np.setdiff1d(np.arange(prim.num_dofs), selected_dofs) if dof_indices is not None else []
+                )
                 # positions
                 for v0, expected_v0 in draw_sample(shape=(expected_count, expected_dof_count), dtype=wp.float32):
                     with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                        previous_states = prim.get_dof_positions(indices=unselected_prims).numpy().copy()
+                        previous_targets = prim.get_dof_position_targets(indices=unselected_prims).numpy().copy()
+                        prim.set_dof_position_targets(expected_v0[:, :1], indices=indices)
                         prim.set_dof_positions(v0, indices=indices, dof_indices=dof_indices)
                         output = prim.get_dof_positions(indices=indices, dof_indices=dof_indices)
                     check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
@@ -1216,9 +1225,17 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                         output = prim.get_dof_position_targets(indices=indices, dof_indices=dof_indices)
                     check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
                     check_allclose(expected_v0, output, given=(v0,))
+                    with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                        check_allclose(previous_states, prim.get_dof_positions(indices=unselected_prims))
+                        check_allclose(previous_targets, prim.get_dof_position_targets(indices=unselected_prims))
+                        output = prim.get_dof_position_targets(indices=indices, dof_indices=unselected_dofs)
+                    check_allclose(np.broadcast_to(expected_v0[:, :1], output.shape), output)
                 # velocities
                 for v0, expected_v0 in draw_sample(shape=(expected_count, expected_dof_count), dtype=wp.float32):
                     with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                        previous_states = prim.get_dof_velocities(indices=unselected_prims).numpy().copy()
+                        previous_targets = prim.get_dof_velocity_targets(indices=unselected_prims).numpy().copy()
+                        prim.set_dof_velocity_targets(expected_v0[:, :1], indices=indices)
                         prim.set_dof_velocities(v0, indices=indices, dof_indices=dof_indices)
                         output = prim.get_dof_velocities(indices=indices, dof_indices=dof_indices)
                     check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
@@ -1227,6 +1244,11 @@ class TestArticulation(omni.kit.test.AsyncTestCase):
                         output = prim.get_dof_velocity_targets(indices=indices, dof_indices=dof_indices)
                     check_array(output, shape=(expected_count, expected_dof_count), dtype=wp.float32, device=device)
                     check_allclose(expected_v0, output, given=(v0,))
+                    with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
+                        check_allclose(previous_states, prim.get_dof_velocities(indices=unselected_prims))
+                        check_allclose(previous_targets, prim.get_dof_velocity_targets(indices=unselected_prims))
+                        output = prim.get_dof_velocity_targets(indices=indices, dof_indices=unselected_dofs)
+                    check_allclose(np.broadcast_to(expected_v0[:, :1], output.shape), output)
                 # efforts
                 for v0, expected_v0 in draw_sample(shape=(expected_count, expected_dof_count), dtype=wp.float32):
                     with use_backend(backend, raise_on_unsupported=True, raise_on_fallback=True):
