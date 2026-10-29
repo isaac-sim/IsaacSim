@@ -1680,6 +1680,8 @@ class Articulation(XformPrim):
         )
         wp.copy(data[indices, dof_indices], positions)
         self._physics_articulation_view.set_dof_positions(data, indices)
+        data = self._physics_articulation_view.get_dof_position_targets()
+        wp.copy(data[indices, dof_indices], positions)
         self._physics_articulation_view.set_dof_position_targets(data, indices)
 
     def set_dof_velocity_targets(
@@ -1806,6 +1808,8 @@ class Articulation(XformPrim):
         )
         wp.copy(data[indices, dof_indices], velocities)
         self._physics_articulation_view.set_dof_velocities(data, indices)
+        data = self._physics_articulation_view.get_dof_velocity_targets()
+        wp.copy(data[indices, dof_indices], velocities)
         self._physics_articulation_view.set_dof_velocity_targets(data, indices)
 
     def set_dof_efforts(
