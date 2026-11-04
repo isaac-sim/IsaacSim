@@ -184,7 +184,7 @@ grep -q ASK_USER_HOST /tmp/isaac-sim-web-viewer-refuse-wildcard.err || fail "wil
 pass "launch rejects wildcard and hostile ISAACSIM_HOST"
 
 # Pin the image so dry-run does not fetch the NGC catalog.
-OFFLINE_IMAGE="nvcr.io/nvidia/isaac-sim:6.0.1"
+OFFLINE_IMAGE="nvcr.io/nvidia/isaac-sim:6.2.0"
 URL="$("${LAUNCH}" --image "${OFFLINE_IMAGE}" --signal-port "${LOCAL_SIGNAL_PORT}" --dry-run)"
 [[ "${URL}" == "http://127.0.0.1:8210" ]] || fail "local dry-run URL should be http://127.0.0.1:8210 (got: ${URL})"
 pass "dry-run URL ${URL} (this machine)"

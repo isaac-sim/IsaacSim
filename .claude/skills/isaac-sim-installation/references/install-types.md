@@ -21,7 +21,7 @@ Use only on native Linux x86_64 or supported DGX Spark Linux aarch64 hosts to pu
 Default script:
 
 ```bash
-python3 scripts/install_container.py --image nvcr.io/nvidia/isaac-sim:6.0.1
+python3 scripts/install_container.py --image nvcr.io/nvidia/isaac-sim:6.2.0
 ```
 
 ## Python Package
