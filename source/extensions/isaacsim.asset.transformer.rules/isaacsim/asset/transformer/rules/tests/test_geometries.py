@@ -1538,6 +1538,73 @@ class TestGeometriesRoutingRule(omni.kit.test.AsyncTestCase):
 
         self._success = True
 
+    async def test_process_rule_keeps_physics_material_bound_as_visual_material(self) -> None:
+        """Verify a physics material that is also bound as a visual material still resolves for physics.
+
+        The visual binding relocates the material to VisualMaterials, but physics bindings still target
+        the original material: the binding lifted onto the instanceable prim and the binding of a cube
+        collider. The original material must therefore be kept.
+        """
+        os.makedirs(os.path.join(self._tmpdir, "payloads"), exist_ok=True)
+        input_path = os.path.join(self._tmpdir, "phys_binding_visual_material.usda")
+
+        stage = Usd.Stage.CreateNew(input_path)
+        stage.SetMetadata("metersPerUnit", 1.0)
+        stage.SetMetadata("upAxis", "Z")
+
+        root = UsdGeom.Xform.Define(stage, "/root")
+        stage.SetDefaultPrim(root.GetPrim())
+
+        # Visual material that also carries physics properties
+        material = UsdShade.Material.Define(stage, "/root/Materials/Rubber")
+        UsdPhysics.MaterialAPI.Apply(material.GetPrim()).CreateStaticFrictionAttr(0.9)
+
+        # Mesh bound to it for all purposes and for physics
+        UsdGeom.Xform.Define(stage, "/root/body")
+        mesh = UsdGeom.Mesh.Define(stage, "/root/body/Mesh")
+        mesh.GetPointsAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)])
+        mesh.GetFaceVertexCountsAttr().Set([3])
+        mesh.GetFaceVertexIndicesAttr().Set([0, 1, 2])
+        binding_api = UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim())
+        binding_api.Bind(material)
+        binding_api.Bind(material, materialPurpose="physics")
+
+        # Cube collider bound to it for physics only
+        cube = UsdGeom.Cube.Define(stage, "/root/base/Cube")
+        UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+        UsdShade.MaterialBindingAPI.Apply(cube.GetPrim()).Bind(material, materialPurpose="physics")
+
+        stage.Export(input_path)
+        stage = Usd.Stage.Open(input_path)
+
+        rule = GeometriesRoutingRule(
+            source_stage=stage,
+            package_root=self._tmpdir,
+            destination_path="payloads",
+            args={
+                "params": {
+                    "geometries_layer": "geometries.usd",
+                    "instance_layer": "instances.usda",
+                }
+            },
+        )
+
+        updated_path = rule.process_rule()
+        self.assertIsNotNone(updated_path)
+
+        updated_stage = Usd.Stage.Open(updated_path)
+        mesh_prim = updated_stage.GetPrimAtPath("/root/body/Mesh")
+        self.assertTrue(mesh_prim.IsInstanceProxy())
+        for prim in (mesh_prim, updated_stage.GetPrimAtPath("/root/base/Cube")):
+            physics_material, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial(materialPurpose="physics")
+            self.assertEqual(
+                physics_material.GetPath().pathString if physics_material else None,
+                "/root/Materials/Rubber",
+                f"{prim.GetPath()} must keep its physics material",
+            )
+
+        self._success = True
+
     async def test_multiple_sibling_meshes_not_merged_into_parent(self) -> None:
         """Verify that a parent Xform with multiple Mesh children keeps all children as separate references.
 
