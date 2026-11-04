@@ -121,7 +121,7 @@ This section guides you through building Isaac Sim from source code.
 
 
 ```bash
-git clone -b main https://github.com/isaac-sim/IsaacSim.git isaacsim
+git clone https://github.com/isaac-sim/IsaacSim.git isaacsim
 cd isaacsim
 git lfs install
 git lfs pull
@@ -334,6 +334,7 @@ To cite Isaac Sim, click on "Cite this repository" in the right sidebar of the [
 
 ## Contributing
 
-Isaac Sim accepts a limited set of external code and documentation contributions. Before opening a pull request,
+Isaac Sim accepts a limited set of external code and documentation contributions. External pull requests should
+target the repository's current default branch. Before opening a pull request,
 read the [contribution guidelines](CONTRIBUTING.md) for the contribution terms, supported scope, validation
 requirements, and pull request process.
