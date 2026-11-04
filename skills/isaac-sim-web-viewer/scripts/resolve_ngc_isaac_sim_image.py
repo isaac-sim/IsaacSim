@@ -26,7 +26,7 @@ import urllib.request
 
 NGC_TAGS_URL = "https://catalog.ngc.nvidia.com/orgs/nvidia/-/containers/isaac-sim/-/tags"
 IMAGE_REPO = "nvcr.io/nvidia/isaac-sim"
-FALLBACK_TAG = "6.0.1"
+FALLBACK_TAG = "6.2.0"
 
 #: Exit status when the catalog could not be read and ``--allow-fallback`` was not given.
 EXIT_UNRESOLVED = 2 + 2

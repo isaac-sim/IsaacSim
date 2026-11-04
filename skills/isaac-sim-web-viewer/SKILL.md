@@ -130,12 +130,12 @@ Execute the shell helpers directly. They do not need Isaac Sim's `python.sh` or 
 By default the compose file uses a prebuilt NGC image. Set `ISAAC_SIM_IMAGE` if the operator names a tag; otherwise resolve Latest from the catalog:
 
 ```bash
-ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1 docker compose -p isim -f <skill-dir>/docker/docker-compose.yml up --build -d
+ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.2.0 docker compose -p isim -f <skill-dir>/docker/docker-compose.yml up --build -d
 ```
 
 `--build` is still required so Compose can build the **web-viewer** image. It does not rebuild Isaac Sim.
 
-If the user names a published NGC tag, use that tag. Otherwise **look up Latest on the NGC tags page** and pull that image. Do not assume `6.1.0` exists as a container tag.
+If the user names a published NGC tag, use that tag. Otherwise **look up Latest on the NGC tags page** and pull that image. Verify that the selected tag is published rather than guessing a version.
 
 ## Resolve latest NGC tag (mandatory)
 
@@ -147,7 +147,7 @@ https://catalog.ngc.nvidia.com/orgs/nvidia/-/containers/isaac-sim/-/tags
 <skill-dir>/scripts/resolve_ngc_isaac_sim_image.py
 ```
 
-Use the tag marked **Latest** (currently `nvcr.io/nvidia/isaac-sim:6.0.1`). Skip `-dev`, `_ea`, and preview tags unless the operator asks for them.
+Use the tag marked **Latest** in the live catalog. Skip `-dev`, `_ea`, and preview tags unless the operator asks for them.
 
 `pull_isaac_sim_image.sh` and `launch_prebuilt_web_viewer.sh` call this when `--image` / `ISAAC_SIM_IMAGE` is unset.
 
