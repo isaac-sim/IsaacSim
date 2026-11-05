@@ -103,15 +103,23 @@ state why so maintainers can determine the required coverage.
 
 ## Pull request process
 
+External contributions must target the repository's current default branch.
+Contributions targeting other branches are not currently accepted unless
+requested by an NVIDIA maintainer. You can find the current default branch on
+the [repository home page](https://github.com/isaac-sim/IsaacSim).
+
+`develop` tracks the next major release, currently 7.0. Versioned branches such
+as `release/6.3` track their respective release lines.
+
 1. Before implementing a feature or public API change, obtain a public comment
    from an NVIDIA maintainer explicitly confirming that the proposed scope is
    suitable for contribution. A focused bug fix may proceed without prior
    approval.
-2. Create a topic branch from the public `develop` branch.
+2. Create a topic branch from the repository's current default branch.
 3. Keep the change within the external contribution path policy.
 4. Add or update tests when they can be expressed in allowed source files, and
    complete the validation steps above.
-5. Sign off every commit and open the pull request against `develop`.
+5. Sign off every commit and open the pull request against that same branch.
 6. Respond to public review and continuous integration feedback. Push a new
    revision when a maintainer requests a change.
 
