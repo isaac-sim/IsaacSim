@@ -110,6 +110,10 @@ class MockOccupancyMap:
 class TestUtilsFunctions(omni.kit.test.AsyncTestCase):
     """Test suite for occupancy map utility functions."""
 
+    def test_public_contribution_failure_probe(self) -> None:
+        """Verify that public contribution CI reports an intentional unit-test failure."""
+        self.fail("Intentional public contribution CI failure probe; do not merge.")
+
     def test_update_location(self) -> None:
         """Test update_location function."""
         mock_om = MockOccupancyMap()
