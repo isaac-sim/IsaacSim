@@ -19,6 +19,7 @@ _LANGUAGE_NAMES = {
     ".h": "C header",
     ".hpp": "C++ header",
     ".md": "Markdown",
+    ".ogn": "OmniGraph node",
     ".py": "Python",
     ".rst": "reStructuredText",
 }
@@ -68,8 +69,8 @@ Files outside `{allowed_root}` and files with any other suffix are not
 open to external modification. This includes:
 
 - Extension manifests and build files such as `.toml` and `.lua`.
-- OmniGraph, configuration, and schema files such as `.ogn`, `.json`, `.yaml`,
-  `.yml`, `.xml`, and `.proto`.
+- Configuration and schema files such as `.json`, `.yaml`, `.yml`, `.xml`,
+  and `.proto`.
 - Assets, datasets, archives, executables, and other binary files.
 - Python bytecode and generated source or documentation.
 - Repository infrastructure, dependencies, workflows, and this policy.

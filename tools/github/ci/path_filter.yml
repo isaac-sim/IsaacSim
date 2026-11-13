@@ -17,6 +17,7 @@ allowed_suffixes:
   - ".hpp"      # C++ header
   - ".cu"       # CUDA source
   - ".cuh"      # CUDA header
+  - ".ogn"      # OmniGraph node
   - ".md"       # Markdown
   - ".rst"      # reStructuredText
 

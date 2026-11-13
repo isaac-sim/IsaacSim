@@ -22,6 +22,7 @@ one allowed suffix. Paths and suffixes are case-sensitive.
 | C++ header | `source/extensions/**/*.hpp` |
 | CUDA source | `source/extensions/**/*.cu` |
 | CUDA header | `source/extensions/**/*.cuh` |
+| OmniGraph node | `source/extensions/**/*.ogn` |
 | Markdown | `source/extensions/**/*.md` |
 | reStructuredText | `source/extensions/**/*.rst` |
 
@@ -36,8 +37,8 @@ Files outside `source/extensions/` and files with any other suffix are not
 open to external modification. This includes:
 
 - Extension manifests and build files such as `.toml` and `.lua`.
-- OmniGraph, configuration, and schema files such as `.ogn`, `.json`, `.yaml`,
-  `.yml`, `.xml`, and `.proto`.
+- Configuration and schema files such as `.json`, `.yaml`, `.yml`, `.xml`,
+  and `.proto`.
 - Assets, datasets, archives, executables, and other binary files.
 - Python bytecode and generated source or documentation.
 - Repository infrastructure, dependencies, workflows, and this policy.
