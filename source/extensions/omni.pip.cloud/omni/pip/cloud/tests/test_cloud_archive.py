@@ -23,6 +23,18 @@ import omni.kit.test
 class TestPipArchive(omni.kit.test.AsyncTestCase):
     """TestPipArchive implementation."""
 
+    async def test_startup_preserves_typing_extensions_classes(self) -> None:
+        """Verify extension startup does not replace live typing_extensions classes."""
+        import typing_extensions
+        from omni.pip.cloud import Extension
+
+        alias_type = typing_extensions.TypeAliasType
+        alias_before = typing_extensions.TypeAliasType("AliasBefore", int)
+        Extension().on_startup("omni.pip.cloud")
+        alias_after = typing_extensions.TypeAliasType("AliasAfter", int)
+        self.assertIs(typing_extensions.TypeAliasType, alias_type)
+        self.assertIs(type(alias_after), type(alias_before))
+
     # import all packages to make sure dependencies were not missed
     async def test_import_all(self) -> None:
         """Verify import all."""
