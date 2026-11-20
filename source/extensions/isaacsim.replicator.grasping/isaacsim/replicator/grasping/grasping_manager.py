@@ -1538,7 +1538,7 @@ class GraspingManager:
                 )
                 return world_poses
             except Exception as e:
-                carb.log_warn(f"Failed to transform local poses to world for '{self.object_path}': {e}")
+                carb.log_warn(f"Failed to transform local poses to world for '{self._object_prim_path}': {e}")
                 return []
         else:
             # Return local poses
@@ -1574,7 +1574,8 @@ class GraspingManager:
             object_prim = self.get_object_prim()
             if not object_prim:
                 carb.log_warn(
-                    f"Cannot transform pose at index {index} to world frame " f"for object '{self.object_path}': {e}"
+                    f"Cannot transform pose at index {index} to world frame: "
+                    f"Object prim at path '{self._object_prim_path}' is not valid or not found."
                 )
                 return None
 
@@ -1585,7 +1586,8 @@ class GraspingManager:
                 return world_pose
             except Exception as e:
                 carb.log_warn(
-                    f"Failed to transform pose at index {index} to world frame " f"for object '{self.object_path}': {e}"
+                    f"Failed to transform pose at index {index} to world frame "
+                    f"for object '{self._object_prim_path}': {e}"
                 )
                 return None
 
