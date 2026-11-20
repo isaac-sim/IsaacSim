@@ -26,7 +26,7 @@ import omni.usd
 import yaml
 from isaacsim.replicator.grasping.grasping_manager import GraspingManager
 from isaacsim.storage.native import get_assets_root_path_async
-from pxr import UsdGeom, UsdPhysics
+from pxr import Gf, UsdGeom, UsdPhysics
 
 from .common import check_grasp_pose_generation_dependencies
 
@@ -133,6 +133,24 @@ class TestGraspingManager(omni.kit.test.AsyncTestCase):
         # Unknown component names are reported as failed, valid ones still load
         manager, status = load_config({"gripper_path": gripper_path}, ["grip", "gripper"])
         self.assertEqual(status, {"grip": "Failed (Unknown component)", "gripper": "Success"})
+
+    async def test_world_frame_poses_missing_object_prim(self) -> None:
+        """Test that world frame pose getters warn and return empty results when the object prim is missing."""
+        stage = stage_utils.get_current_stage()
+        object_path = "/World/Object"
+        UsdGeom.Xform.Define(stage, object_path)
+        await app_utils.update_app_async()
+
+        grasping_manager = GraspingManager()
+        grasping_manager.set_object_prim_path(object_path)
+        grasping_manager.grasp_locations = [Gf.Vec3d(0.0, 0.0, 0.1)]
+        grasping_manager.grasp_orientations = [Gf.Quatd(1.0, 0.0, 0.0, 0.0)]
+        self.assertIsNotNone(grasping_manager.get_grasp_pose_at_index(0, in_world_frame=True))
+
+        stage.RemovePrim(object_path)
+        await app_utils.update_app_async()
+        self.assertIsNone(grasping_manager.get_grasp_pose_at_index(0, in_world_frame=True))
+        self.assertEqual(grasping_manager.get_grasp_poses(in_world_frame=True), [])
 
     async def test_grasp_pose_generation_assets(self) -> None:
         """Test grasp pose generation on a referenced USD asset."""
